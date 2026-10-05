@@ -1,0 +1,126 @@
+{
+  "notes": "Ambient, B dorian, 84 BPM in half time. A broadcast heard from very far: ghostly 'ooh' voices whose vowel flickers on a sample-and-hold LFO (VOICE SOUL OOH), a faint beacon that pings a chord tone every two bars into a long dark echo (LOFI on a soft triangle), the player's Wurlitzer on the Smart Keys (minor pentatonic from B3, tremolo, tape-dark echoes), DUST on the master for the hiss and crackle, and glitch ticks for percussion. Scenes: A one chord, the voices in a hollow fifth under the beacon (the beacon alone at low ENERGY); B the dorian vamp (i7, IV add9) two bars each, full voices and the first ticks; C the signal clears and the harmony opens out through III, IV, VII and home; D the signal is lost again, VII sus2 to i add9, four bars each, in a bigger and darker room. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "lost_signal",
+  "name": "LOST SIGNAL",
+  "category": "AMBIENT",
+  "blurb": "Far voices, dying beacon",
+  "tempo": {"bpm": 84, "min": 72, "max": 96},
+  "key": {"root": "B", "scale": "DOR"},
+  "tracks": [
+    {"name": "ghosts", "role": "pad", "register": "G2", "sound": {"engine": "VOICE", "preset": "SOUL OOH",
+      "params": {"level": 72, "atk": 96, "rel": 90, "BRTH": 40, "lwave": "S&H", "lrate": 26, "ld_flt": 10,
+                 "chor": 64, "dly": 26, "rev": 92, "pan": -8}}},
+    {"name": "beacon", "role": "texture", "register": "C4", "sound": {"engine": "LOFI", "preset": "GAME LEAD",
+      "params": {"WAVE": "TRI", "VIB": 0, "TONE": 96, "level": 110, "dec": 60, "sus": 50, "rel": 60,
+                 "dly": 76, "rev": 72, "pan": 14}}},
+    {"name": "keys", "role": "keys", "register": "B2", "sound": {"engine": "DIGITAL", "preset": "WURLI",
+      "params": {"level": 108, "IDX": 52, "dist": 0, "rel": 60, "chor": 40, "dly": 46, "rev": 66}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "GLITCH", "params": {"level": 110, "rev": 64}}}
+  ],
+  "fx": {"dtime": "1/8", "dfdbk": 58, "dcolor": 34, "dmix": 90, "rsize": 102, "rdamp": 70, "crate": 22, "cdepth": 80,
+         "dust": 10},
+  "patterns": {
+    "ghost_open": {"track": "ghosts", "div": "1/4", "steps": "[c1 c5] - - - | - - - -"},
+    "ghost_hold": {"track": "ghosts", "div": "1/4", "steps": "[c1 c5 c3'] - - - | - - - -"},
+    "beacon": {"track": "beacon", "div": "1/8", "steps": "c5 . . . . . . . | . . . . c9_ . . ."},
+    "dr_tick": {"track": "drums", "lanes": {
+      "kick":   "x...............|................",
+      "rim":    "........g.......|........g.......",
+      "hat":    "..g...g...g...g.|..g...g...g.g.g."}},
+    "dr_clear": {"track": "drums", "lanes": {
+      "kick":   "x.........s.....|x...............",
+      "rim":    "........g.......|........g.....g.",
+      "hat":    "g.g.g.g.g.g.g.g.|g.g.g.g.g.g.g.gg",
+      "open":   "..............s.|................"}},
+    "dr_glitch": {"track": "drums", "lanes": {
+      "kick":   "x...............",
+      "hat":    "g.g.g.g.g.g.gggg",
+      "rim":    "....g.......g...",
+      "tomlo":  "..........g...s."}}
+  },
+  "progressions": {
+    "static": ["i7:16"],
+    "carrier": ["i7:8", "IV9:8"],
+    "clear": ["III:8", "IV9:8", "VII:8", "i7:8"],
+    "lost": ["VIIsus2:16", "i9:16"]
+  },
+  "scenes": {
+    "A": {"name": "STATIC", "role": "intro", "progression": "static", "energy": "e_static", "transition": 2,
+          "patterns": {"ghosts": "ghost_open", "beacon": "beacon", "drums": "dr_tick"}},
+    "B": {"name": "CARRIER", "role": "main", "progression": "carrier", "energy": "e_carrier", "fill": "dr_glitch",
+          "transition": 2, "patterns": {"ghosts": "ghost_hold", "beacon": "beacon", "drums": "dr_tick"}},
+    "C": {"name": "CLEAR", "role": "lift", "progression": "clear", "energy": "e_clear", "fill": "dr_glitch",
+          "transition": "phrase", "params": {"ghosts.ld_flt": 4, "ghosts.level": 75}, "fx": {"dust": 4},
+          "patterns": {"ghosts": "ghost_hold", "beacon": "beacon", "drums": "dr_clear"}},
+    "D": {"name": "LOST", "role": "breakdown", "progression": "lost", "energy": "e_lost", "transition": 4,
+          "params": {"ghosts.ld_flt": 16, "ghosts.level": 77}, "fx": {"rsize": 112, "rdamp": 80, "dust": 14},
+          "patterns": {"ghosts": "ghost_hold", "beacon": "beacon", "drums": "dr_tick"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "FAR AWAY": {"params": {"ghosts.level": 71, "keys.IDX": 40, "beacon.TONE": 80}, "fx": {"dust": 18, "dcolor": 24, "rdamp": 84},
+                 "energy_bias": -0.06, "macros": {"SPACE": 0.64, "COLOR": 0.4}},
+    "CLEAR SKY": {"params": {"keys.IDX": 64, "ghosts.BUZZ": 40, "beacon.TONE": 100}, "fx": {"dust": 6, "dcolor": 52, "rdamp": 56},
+                  "macros": {"COLOR": 0.62}},
+    "WARBLE": {"params": {"ghosts.lrate": 40, "keys.ld_pit": 2, "keys.lrate": 30, "beacon.VIB": 18},
+               "fx": {"crate": 34, "cdepth": 100}, "macros": {"MOTION": 0.66}}
+  },
+  "macros": {
+    "COLOR": [{"to": "ghosts.@BRIGHT", "min": -16, "max": 16},
+              {"to": "keys.@BRIGHT", "min": -20, "max": 24},
+              {"to": "beacon.@BRIGHT", "min": -30, "max": 24},
+              {"to": "g.dcolor", "min": -20, "max": 22},
+              {"to": "g.dust", "min": 6, "max": -4}],
+    "MOTION": [{"to": "ghosts.ld_flt", "min": -10, "max": 16, "smooth": "slow"},
+               {"to": "ghosts.lrate", "min": -12, "max": 18, "smooth": "slow"},
+               {"to": "keys.ld_amp", "min": -10, "max": 20, "smooth": "slow"},
+               {"to": "beacon.@MOVE", "min": 0, "max": 16, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "*.rev", "min": -40, "max": 14, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 10},
+              {"to": "g.dfdbk", "min": -30, "max": 6},
+              {"to": "beacon.dly", "min": -36, "max": 14},
+              {"to": "keys.dly", "min": -30, "max": 14},
+              {"to": "drums.rev", "min": -34, "max": 16}],
+    "ENERGY": [{"to": "drums.level", "min": -12, "max": 6},
+               {"to": "ghosts.level", "min": 2, "max": -3},
+               {"to": "beacon.level", "min": -4, "max": 2},
+               {"to": "ghosts.~bright", "min": 0, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -26}, {"to": "g.dfdbk", "add": -20},
+                                                     {"to": "beacon.dly", "add": -16}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "ghosts.@RESO", "add": -10}, {"to": "keys.@BRIGHT", "add": -8}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "ghosts.ld_flt", "add": -10}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_static": {"bands": [
+      {"from": 0.00, "layers": ["beacon", "keys"]},
+      {"from": 0.36, "layers": ["ghosts", "beacon", "keys"]},
+      {"from": 0.84, "layers": "all", "drums": ["hat"]}]},
+    "e_carrier": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["ghosts", "keys"]},
+      {"from": 0.24, "layers": ["ghosts", "beacon", "keys"]},
+      {"from": 0.38, "layers": "all", "drums": ["kick", "rim", "hat"], "density": "x...x...x...x..."},
+      {"from": 0.72, "layers": "all", "fills": true}]},
+    "e_clear": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["ghosts", "beacon", "keys"]},
+      {"from": 0.26, "layers": "all", "drums": ["kick", "rim", "hat", "open"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.64, "layers": "all", "fills": true}]},
+    "e_lost": {"bands": [
+      {"from": 0.00, "layers": ["ghosts", "keys"]},
+      {"from": 0.30, "layers": ["ghosts", "beacon", "keys"]},
+      {"from": 0.84, "layers": "all", "drums": ["hat", "rim"]}]}
+  },
+  "smart_keys": {"track": "keys", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord+9",
+                 "tonic": "B3", "range": ["D3", "A6"]},
+  "guard": {
+    "notes": {"keys": {"max_poly": 4, "loop_follow": "snap", "avoid": "classic"}, "ghosts": {"range": ["E2", "A4"]}},
+    "record": {"quantize": 0.45},
+    "sound": {"ranges": {"g.dfdbk": [0, 88], "g.dust": [0, 24]}, "max_level": 116, "max_dfdbk": 88},
+    "arrangement": {"mute_change": "2bars", "density_change": "bar", "fills_every": 8, "min_band_bars": 2},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

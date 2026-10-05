@@ -1,0 +1,123 @@
+{
+  "notes": "Ambient, C# phrygian, 52 BPM: the slowest World. A sine sub holds the floor, a nebula of granular strings (GRAIN on the STRGS set) breathes the chords in open fifths, the player's distant choir swells in slowly on the Smart Keys (minor pentatonic: no b2, so any key is safe), and a tribal heartbeat sounds far away once every two bars. The harmony barely moves: A is one chord for eight bars over the C# pedal, B turns to the phrygian II (D major 7) and back every four bars, C lifts through the major chords of the mode (VI, II, III) two bars each, D sinks to iv over the C# pedal and home. No 9th voicings on i (the minor 9th of phrygian). All material is original.",
+  "format": "flowstate-world/1",
+  "id": "deep_space",
+  "name": "DEEP SPACE",
+  "category": "AMBIENT",
+  "blurb": "Sub drone, distant choir",
+  "tempo": {"bpm": 52, "min": 44, "max": 60},
+  "key": {"root": "C#", "scale": "PHRY"},
+  "tracks": [
+    {"name": "sub", "role": "bass", "register": "E1", "sound": {"engine": "ANALOG", "preset": "SUB BASS",
+      "params": {"level": 72, "atk": 90, "rel": 96, "rev": 10}}},
+    {"name": "nebula", "role": "pad", "register": "C3", "sound": {"engine": "GRAIN", "preset": "LOFI CLOUD",
+      "params": {"SRC": "STRGS", "POS": 40, "SIZE": 110, "DENS": 72, "SPRD": 40, "RAND": 18, "TONE": 62,
+                 "level": 83, "atk": 104, "rel": 100, "chor": 44, "dly": 22, "rev": 100}}},
+    {"name": "choir", "role": "lead", "register": "C3", "sound": {"engine": "VOICE", "preset": "CHOIR AAH",
+      "params": {"level": 72, "atk": 92, "rel": 96, "dly": 40, "rev": 96, "pan": -6}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "TRIBAL", "params": {"level": 104, "rev": 100}}}
+  ],
+  "fx": {"dtime": "1/8", "dfdbk": 56, "dcolor": 44, "dmix": 92, "rsize": 122, "rdamp": 72, "crate": 10, "cdepth": 72},
+  "patterns": {
+    "sub_root": {"track": "sub", "div": "1/4", "steps": "c1 - - - | - - - - | - - - - | - - - -"},
+    "sub_pedal": {"track": "sub", "div": "1/4", "steps": "1 - - - | - - - - | - - - - | - - - -"},
+    "neb_breath": {"track": "nebula", "div": "1/4", "steps": "[c1 c5 c3'] - - - | - - - -"},
+    "neb_low": {"track": "nebula", "div": "1/4", "steps": "[c1 c5] - - - | - - - - | - - - - | - - - -"},
+    "dr_beat": {"track": "drums", "lanes": {
+      "kick":   "x..g............|................",
+      "shaker": "........g.......|g.......s.......",
+      "tomlo":  "................|............g..."}},
+    "dr_pulse": {"track": "drums", "lanes": {
+      "kick":   "x..g............|x..g............",
+      "conga":  "......g.....g...|......g...g.....",
+      "shaker": "..s...g...s...g.|..s...g...s.g.s.",
+      "tomlo":  "................|..............s."}},
+    "dr_fall": {"track": "drums", "lanes": {
+      "kick":   "x...............",
+      "shaker": "g...g...g...g...",
+      "tomhi":  "....g.....g.....",
+      "tomlo":  "........g.....g."}}
+  },
+  "progressions": {
+    "drift": ["i:32"],
+    "void": ["i:16", "IImaj7:16"],
+    "nebula": ["VImaj7:8", "IImaj7:8", "III:8", "i:8"],
+    "horizon": ["iv9:16", "i:16"]
+  },
+  "scenes": {
+    "A": {"name": "DRIFT", "role": "intro", "progression": "drift", "energy": "e_drift", "transition": 4,
+          "patterns": {"sub": "sub_pedal", "nebula": "neb_breath", "drums": "dr_beat"}},
+    "B": {"name": "VOID", "role": "main", "progression": "void", "energy": "e_void", "transition": 2,
+          "patterns": {"sub": "sub_root", "nebula": "neb_breath", "drums": "dr_beat"}},
+    "C": {"name": "NEBULA", "role": "lift", "progression": "nebula", "energy": "e_nebula", "fill": "dr_fall",
+          "transition": 4, "params": {"nebula.SPRD": 56}, "fx": {"dfdbk": 54},
+          "patterns": {"sub": "sub_root", "nebula": "neb_breath", "drums": "dr_pulse"}},
+    "D": {"name": "HORIZON", "role": "breakdown", "progression": "horizon", "energy": "e_horizon", "transition": 4,
+          "fx": {"rsize": 124, "rdamp": 80},
+          "patterns": {"sub": "sub_pedal", "nebula": "neb_low", "drums": "dr_beat"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "ABYSS": {"params": {"nebula.PTCH": -12, "nebula.level": 83, "nebula.TONE": 50, "choir.BUZZ": 30},
+              "fx": {"rdamp": 86, "dcolor": 32}, "macros": {"COLOR": 0.38}},
+    "STARDUST": {"params": {"nebula.PTCH": 12, "nebula.level": 80, "nebula.RAND": 40, "nebula.SIZE": 80, "choir.BRTH": 40},
+                 "fx": {"dfdbk": 60, "rdamp": 56}, "macros": {"COLOR": 0.6, "SPACE": 0.6}},
+    "SOLAR WIND": {"params": {"nebula.SPRD": 76, "nebula.RAND": 34, "nebula.lrate": 20, "nebula.ld_flt": 18},
+                   "fx": {"crate": 18, "cdepth": 90}, "energy_bias": 0.08, "macros": {"MOTION": 0.68}}
+  },
+  "macros": {
+    "COLOR": [{"to": "nebula.@BRIGHT", "min": -30, "max": 28, "curve": "s"},
+              {"to": "choir.@BRIGHT", "min": -14, "max": 12}, {"to": "choir.level", "min": 3, "max": -4},
+              {"to": "g.dcolor", "min": -20, "max": 22},
+              {"to": "g.rdamp", "min": 14, "max": -16}],
+    "MOTION": [{"to": "nebula.@MOVE", "min": -24, "max": 40, "smooth": "slow"},
+               {"to": "nebula.@DETUNE", "min": -12, "max": 30, "smooth": "slow"},
+               {"to": "nebula.@SHAPE", "min": -12, "max": 18, "smooth": "slow"},
+               {"to": "choir.@MOVE", "min": 0, "max": 30, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 20}],
+    "SPACE": [{"to": "nebula+choir.rev", "min": -40, "max": 14, "curve": "s"},
+              {"to": "g.rsize", "min": -40, "max": 2},
+              {"to": "g.dfdbk", "min": -34, "max": 4},
+              {"to": "choir.dly", "min": -30, "max": 16},
+              {"to": "nebula.rel", "min": -24, "max": 8, "smooth": "slow"},
+              {"to": "drums.rev", "min": -40, "max": 14}],
+    "ENERGY": [{"to": "drums.level", "min": -12, "max": 8},
+               {"to": "sub.level", "min": -4, "max": 2},
+               {"to": "nebula.level", "min": 2, "max": -3},
+               {"to": "nebula.~bright", "min": 0, "max": 12}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -30}, {"to": "g.dfdbk", "add": -20},
+                                                     {"to": "sub.rev", "add": -8}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "nebula.@BRIGHT", "add": -10}, {"to": "choir.@RESO", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "nebula.@MOVE", "add": -20}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_drift": {"bands": [
+      {"from": 0.00, "layers": ["nebula", "choir"]},
+      {"from": 0.62, "layers": ["sub", "nebula", "choir"]},
+      {"from": 0.86, "layers": "all", "drums": ["kick"]}]},
+    "e_void": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["nebula", "choir"]},
+      {"from": 0.24, "layers": ["sub", "nebula", "choir"]},
+      {"from": 0.38, "layers": "all", "drums": ["kick", "shaker"]},
+      {"from": 0.76, "layers": "all"}]},
+    "e_nebula": {"density_lanes": ["shaker", "conga"], "bands": [
+      {"from": 0.00, "layers": ["sub", "nebula", "choir"]},
+      {"from": 0.26, "layers": "all", "drums": ["kick", "shaker", "conga"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.64, "layers": "all", "fills": true}]},
+    "e_horizon": {"bands": [
+      {"from": 0.00, "layers": ["sub", "nebula", "choir"]},
+      {"from": 0.84, "layers": "all", "drums": ["kick"]}]}
+  },
+  "smart_keys": {"track": "choir", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord",
+                 "tonic": "C#3", "range": ["E2", "C#6"]},
+  "guard": {
+    "notes": {"choir": {"max_poly": 3, "loop_follow": "snap", "avoid": "classic"}, "sub": {"range": ["F#1", "G#2"]}},
+    "record": {"quantize": 0.4},
+    "sound": {"ranges": {"g.dfdbk": [0, 88]}, "max_level": 116, "max_dfdbk": 88, "max_rsize": 126},
+    "arrangement": {"mute_change": "2bars", "density_change": "bar", "fills_every": 8, "min_band_bars": 2},
+    "cpu": {"max_unison": 4, "grain_dens": 84}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

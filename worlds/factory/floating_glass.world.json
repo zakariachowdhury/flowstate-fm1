@@ -1,0 +1,127 @@
+{
+  "notes": "Ambient, A mixolydian, 72 BPM, everything in triplets. A glass pad of slow FM bells (DIGITAL, a soft index, the modulator held), crystal plucks (TRIO, three triangles an octave and two octaves apart) that float in eighth-note triplets through each chord into an 8T echo, the player's glass harmonica on the Smart Keys (a triangle voice, major pentatonic from A3: over the mixolydian VII the C# is a lydian colour, never a clash), and ticks of a minimal kit that fall three against four. No bass and no kick: nothing pulls down. Scenes: A sus2 and the flat VII, two bars each; B leans: each chord lands, then a suspension two beats before the next (6 + 2); C climbs a bar a chord, vi7, VIIadd9, Isus2, IVmaj7 (roots F#, G, A, D); D sinks back through IVmaj7 to the open sus2, two bars each, the glass alone until ENERGY rises. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "floating_glass",
+  "name": "FLOATING GLASS",
+  "category": "AMBIENT",
+  "blurb": "Glass bells in slow air",
+  "tempo": {"bpm": 72, "min": 62, "max": 82},
+  "key": {"root": "A", "scale": "MIX"},
+  "tracks": [
+    {"name": "glass", "role": "pad", "register": "E3", "sound": {"engine": "DIGITAL", "preset": "TRAP BELL",
+      "params": {"level": 78, "atk": 60, "dec": 100, "sus": 100, "rel": 92, "IDX": 34, "MDEC": 96,
+                 "lrate": 18, "ld_pit": 1, "chor": 60, "dly": 20, "rev": 96}}},
+    {"name": "shards", "role": "texture", "register": "A3", "sound": {"engine": "TRIO", "preset": "MIN STAB",
+      "params": {"WAVE": "TRI3", "INT2": 12, "INT3": 24, "DTN": 4, "CUT": 100, "RES": 12, "level": 96,
+                 "atk": 0, "dec": 84, "sus": 24, "rel": 72, "chor": 30, "dly": 64, "rev": 84, "pan": 18}}},
+    {"name": "harp", "role": "lead", "register": "A3", "sound": {"engine": "ANALOG", "preset": "TRAP PLUCK",
+      "params": {"WAVE": "TRI", "CUT": 96, "RES": 8, "level": 86, "atk": 26, "dec": 90, "sus": 96, "rel": 80,
+                 "ed_flt": 0, "chor": 60, "dly": 46, "rev": 88, "pan": -10}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "MINIMAL", "params": {"level": 120, "rev": 80}}}
+  ],
+  "fx": {"dtime": "8T", "dfdbk": 54, "dcolor": 82, "dmix": 88, "rsize": 116, "rdamp": 36, "crate": 16, "cdepth": 66},
+  "patterns": {
+    "glass_lean": {"track": "glass", "div": "1/4", "steps": "[c1 c5 c3'] - - - | - - [c1 c5 c3']_ - | [c1 c5 c3'] - - - | - - [c1 c5 c3']_ -"},
+    "glass_bar": {"track": "glass", "div": "1/4", "steps": "[c1 c5 c3'] - - -"},
+    "shards": {"track": "shards", "div": "8T", "steps": "c1 . c5 . c3' . . . . c5' . . | . . . c3' . . c5 . . . . ."},
+    "dr_tick": {"track": "drums", "lanes": {
+      "hat":    "x..s..x..s..x..s|..x..s..x..s..x.",
+      "rim":    "........s.......|........s.......",
+      "conga":  "................|......s.........",
+      "shaker": "..s.......s.....|..s.......s....."}},
+    "dr_rise": {"track": "drums", "lanes": {
+      "hat":    "x..s..x..s..x..s|..x..s..x..s..x.",
+      "rim":    "....s.......s...|....s.......s..g",
+      "conga":  "......s.......s.|......s...s.....",
+      "shaker": "..s...s...s...s.|..s...s...s.s.s.",
+      "open":   "................|..............g."}},
+    "dr_chime": {"track": "drums", "lanes": {
+      "hat":    "g.g.g.g.g.g.g.g.",
+      "rim":    "s.....s.....s...",
+      "conga":  "........g...g.g.",
+      "open":   "..............s."}}
+  },
+  "progressions": {
+    "surface": ["Isus2:8", "VIIadd9:8"],
+    "float": ["Iadd9:6", "Isus4:2", "VIIadd9:6", "VIIsus2:2"],
+    "rise": ["vi7:4", "VIIadd9:4", "Isus2:4", "IVmaj7:4"],
+    "sink": ["IVmaj7:8", "Isus2:8"]
+  },
+  "scenes": {
+    "A": {"name": "SURFACE", "role": "intro", "progression": "surface", "energy": "e_surface", "transition": 2,
+          "patterns": {"glass": "glass_lean", "shards": "shards", "drums": "dr_tick"}},
+    "B": {"name": "FLOAT", "role": "main", "progression": "float", "energy": "e_float", "fill": "dr_chime",
+          "transition": 2, "patterns": {"glass": "glass_lean", "shards": "shards", "drums": "dr_tick"}},
+    "C": {"name": "RISING", "role": "lift", "progression": "rise", "energy": "e_rise", "fill": "dr_chime",
+          "transition": "phrase", "params": {"shards.CUT": 108}, "fx": {"rsize": 120},
+          "patterns": {"glass": "glass_bar", "shards": "shards", "drums": "dr_rise"}},
+    "D": {"name": "SINKING", "role": "breakdown", "progression": "sink", "energy": "e_sink", "transition": 4,
+          "params": {"glass.ed_flt": -6, "shards.CUT": 86}, "fx": {"rsize": 120, "rdamp": 50},
+          "patterns": {"glass": "glass_lean", "shards": "shards", "drums": "dr_tick"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "CRYSTAL": {"params": {"glass.IDX": 48, "glass.level": 78, "harp.CUT": 108}, "fx": {"rdamp": 24, "dcolor": 96},
+                "macros": {"COLOR": 0.64}},
+    "FROSTED": {"params": {"glass.IDX": 22, "glass.level": 77, "harp.CUT": 76},
+                "fx": {"rdamp": 60, "dcolor": 56}, "energy_bias": -0.06, "macros": {"COLOR": 0.38, "SPACE": 0.6}},
+    "PRISM": {"params": {"glass.ld_pit": 2, "glass.lrate": 26, "shards.DTN": 10, "harp.ld_pit": 1, "harp.lrate": 40},
+              "fx": {"crate": 26, "cdepth": 94}, "macros": {"MOTION": 0.66}}
+  },
+  "macros": {
+    "COLOR": [{"to": "glass.@BRIGHT", "min": -18, "max": 24, "curve": "s"},
+              {"to": "shards.@BRIGHT", "min": -30, "max": 18},
+              {"to": "harp.@BRIGHT", "min": -30, "max": 18},
+              {"to": "g.dcolor", "min": -26, "max": 20}],
+    "MOTION": [{"to": "glass.ld_pit", "min": -1, "max": 2, "smooth": "slow"},
+               {"to": "glass.lrate", "min": -10, "max": 16, "smooth": "slow"},
+               {"to": "shards.@DETUNE", "min": -4, "max": 10, "smooth": "slow"},
+               {"to": "harp.ld_pit", "min": 0, "max": 2, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 26}],
+    "SPACE": [{"to": "*.rev", "min": -40, "max": 14, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 6},
+              {"to": "g.dfdbk", "min": -30, "max": 8},
+              {"to": "shards.dly", "min": -34, "max": 16},
+              {"to": "harp.dly", "min": -30, "max": 14},
+              {"to": "drums.rev", "min": -40, "max": 14}],
+    "ENERGY": [{"to": "drums.level", "min": -12, "max": 6},
+               {"to": "glass.level", "min": 2, "max": -3},
+               {"to": "shards.level", "min": -4, "max": 2},
+               {"to": "glass.~bright", "min": 0, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -30}, {"to": "g.dfdbk", "add": -20},
+                                                     {"to": "shards.dly", "add": -16}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "shards.@RESO", "add": -8}, {"to": "glass.@BRIGHT", "add": -8}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "glass.ld_pit", "add": -1}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_surface": {"bands": [
+      {"from": 0.00, "layers": ["glass", "harp"]},
+      {"from": 0.58, "layers": ["glass", "shards", "harp"]},
+      {"from": 0.84, "layers": "all", "drums": ["hat", "rim"]}]},
+    "e_float": {"bands": [
+      {"from": 0.00, "layers": ["glass", "harp"]},
+      {"from": 0.22, "layers": ["glass", "shards", "harp"]},
+      {"from": 0.38, "layers": "all", "drums": ["hat", "rim", "shaker"]},
+      {"from": 0.74, "layers": "all", "fills": true}]},
+    "e_rise": {"bands": [
+      {"from": 0.00, "layers": ["glass", "shards", "harp"]},
+      {"from": 0.26, "layers": "all", "drums": ["hat", "rim", "shaker", "conga"]},
+      {"from": 0.64, "layers": "all", "fills": true}]},
+    "e_sink": {"bands": [
+      {"from": 0.00, "layers": ["glass", "harp"]},
+      {"from": 0.62, "layers": ["glass", "shards", "harp"]},
+      {"from": 0.86, "layers": "all", "drums": ["hat"]}]}
+  },
+  "smart_keys": {"track": "harp", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord",
+                 "tonic": "A3", "range": ["B2", "A6"]},
+  "guard": {
+    "notes": {"harp": {"max_poly": 4, "loop_follow": "snap", "avoid": "classic"}, "glass": {"range": ["E3", "E6"]}},
+    "record": {"quantize": 0.45},
+    "sound": {"ranges": {"g.dfdbk": [0, 88], "shards.RES": [0, 40]}, "max_level": 116, "max_dfdbk": 88},
+    "arrangement": {"mute_change": "2bars", "density_change": "bar", "fills_every": 8, "min_band_bars": 2},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

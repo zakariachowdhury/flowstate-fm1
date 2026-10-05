@@ -1,0 +1,127 @@
+{
+  "notes": "Ambient, G lydian, 76 BPM, a little swing. Warm phase-distortion strings that re-bow only when the chord changes, a mist of breathy flute grains (GRAIN FLUTE DUST) drifting through each chord's fifth, ninth and third, the player's marimba on the Smart Keys (major pentatonic from G3: the lydian #4 is left to the backing, so every key is safe), and brushes: ghosted sweeps, a soft ride, a kick that barely touches. The lydian II (A major) is the light of the World. Scenes: A two chords of two bars; B a lilting 6 + 6 + 4 beat cycle (Imaj7, II, vi7); C one chord a bar, rising through iii7 and vi7 to II and home; D the relative minor and II, four bars each, the strings and the mist alone until ENERGY is high. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "morning_haze",
+  "name": "MORNING HAZE",
+  "category": "AMBIENT",
+  "blurb": "Warm strings, soft light",
+  "tempo": {"bpm": 76, "min": 66, "max": 86},
+  "key": {"root": "G", "scale": "LYD"},
+  "swing": 14,
+  "tracks": [
+    {"name": "strings", "role": "pad", "register": "D3", "sound": {"engine": "PHASE", "preset": "CZ STRING",
+      "params": {"level": 70, "atk": 72, "rel": 66, "DCW": 66, "lrate": 22, "ld_pit": 1, "chor": 66, "dly": 14, "rev": 84}}},
+    {"name": "mist", "role": "texture", "register": "G3", "sound": {"engine": "GRAIN", "preset": "FLUTE DUST",
+      "params": {"level": 88, "atk": 80, "rel": 84, "SPRD": 20, "RAND": 14, "TONE": 78, "chor": 30, "dly": 40, "rev": 90}}},
+    {"name": "keys", "role": "keys", "register": "G3", "sound": {"engine": "DIGITAL", "preset": "MARIMBA",
+      "params": {"level": 110, "rel": 70, "chor": 36, "dly": 44, "rev": 70, "pan": 6}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "JAZZ", "params": {"level": 116, "rev": 60}}}
+  ],
+  "fx": {"dtime": "1/4", "dfdbk": 44, "dcolor": 58, "dmix": 84, "rsize": 104, "rdamp": 46, "crate": 30, "cdepth": 58},
+  "patterns": {
+    "str_two": {"track": "strings", "div": "1/4", "steps": "[c1 c5 c3'] - - - | - - - -"},
+    "str_lilt": {"track": "strings", "div": "1/4", "steps": "[c1 c5 c3'] - - - | - - [c1 c5 c3'] - | - - - - | [c1 c5 c3'] - - -"},
+    "str_bar": {"track": "strings", "div": "1/4", "steps": "[c1 c5 c7] - - -"},
+    "mist_line": {"track": "mist", "div": "1/4", "steps": "c5 - - - | c9 - c3' -"},
+    "mist_birds": {"track": "mist", "div": "1/8", "steps": "c5 - . c9 - - c3' . | . c5' - - c9 . . ."},
+    "dr_brush": {"track": "drums", "lanes": {
+      "kick":  "x.........s.....",
+      "snare": "g.g.g.g.g.g.g.g.",
+      "ride":  "s.......s.......",
+      "hat":   "....s.......s..."}},
+    "dr_gold": {"track": "drums", "lanes": {
+      "kick":  "x.....s...x.....|x.....s.........",
+      "snare": "g.gsg.g.g.gsg.g.|g.gsg.g.g.gsg.gg",
+      "ride":  "s...s...s...s...|s...s...s...s.s.",
+      "hat":   "....s.......s...|....s.......s..."}},
+    "dr_turn": {"track": "drums", "lanes": {
+      "kick":  "x...............",
+      "snare": "s.g.s.g.s.gsg.gs",
+      "ride":  "s...s...........",
+      "tomhi": "..........g.....",
+      "tomlo": ".............g.."}}
+  },
+  "progressions": {
+    "dawn": ["Imaj7:8", "II:8"],
+    "warm": ["Imaj7:6", "II:6", "vi7:4"],
+    "golden": ["iii7:4", "vi7:4", "II:4", "Imaj7:4"],
+    "dew": ["vi7:16", "II:16"]
+  },
+  "scenes": {
+    "A": {"name": "DAWN", "role": "intro", "progression": "dawn", "energy": "e_dawn", "transition": 2,
+          "patterns": {"strings": "str_two", "mist": "mist_line", "drums": "dr_brush"}},
+    "B": {"name": "WARM AIR", "role": "main", "progression": "warm", "energy": "e_warm", "fill": "dr_turn",
+          "transition": 2, "patterns": {"strings": "str_lilt", "mist": "mist_line", "drums": "dr_brush"}},
+    "C": {"name": "GOLDEN", "role": "lift", "progression": "golden", "energy": "e_golden", "fill": "dr_turn",
+          "transition": "phrase", "params": {"strings.ed_flt": 10, "mist.SPRD": 34}, "fx": {"rsize": 108},
+          "patterns": {"strings": "str_bar", "mist": "mist_line", "drums": "dr_gold"}},
+    "D": {"name": "DEWDROPS", "role": "breakdown", "progression": "dew", "energy": "e_dew", "transition": 4,
+          "params": {"strings.ed_flt": -8}, "fx": {"rsize": 112, "rdamp": 58},
+          "patterns": {"strings": "str_two", "mist": "mist_line", "drums": "dr_brush"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "SUNNY": {"params": {"strings.DCW": 80, "mist.TONE": 88, "keys.IDX": 74, "strings.level": 69},
+              "fx": {"rdamp": 34, "dcolor": 70}, "macros": {"COLOR": 0.62}},
+    "FOGGY": {"params": {"strings.DCW": 54, "mist.level": 89, "mist.TONE": 64, "strings.rev": 98, "keys.rev": 86},
+              "fx": {"rsize": 112, "rdamp": 66, "dfdbk": 50}, "energy_bias": -0.06, "macros": {"SPACE": 0.64, "COLOR": 0.42}},
+    "BIRDSONG": {"swap": {"mist_line": "mist_birds"}, "params": {"mist.level": 87, "mist.SPRD": 30},
+                 "macros": {"MOTION": 0.6}}
+  },
+  "macros": {
+    "COLOR": [{"to": "strings.@BRIGHT", "min": -16, "max": 34, "curve": "s"},
+              {"to": "mist.@BRIGHT", "min": -40, "max": 34},
+              {"to": "keys.@BRIGHT", "min": -24, "max": 20},
+              {"to": "g.dcolor", "min": -22, "max": 20}],
+    "MOTION": [{"to": "strings.lrate", "min": -10, "max": 14, "smooth": "slow"},
+               {"to": "strings.ld_pit", "min": -1, "max": 2, "smooth": "slow"},
+               {"to": "mist.@MOVE", "min": -14, "max": 40, "smooth": "slow"},
+               {"to": "mist.@DETUNE", "min": -10, "max": 30, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "*.rev", "min": -40, "max": 16, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 10},
+              {"to": "g.dfdbk", "min": -30, "max": 10},
+              {"to": "keys.dly", "min": -30, "max": 20},
+              {"to": "strings.rel", "min": -20, "max": 12, "smooth": "slow"},
+              {"to": "drums.rev", "min": -30, "max": 16}],
+    "ENERGY": [{"to": "drums.level", "min": -12, "max": 6},
+               {"to": "strings.level", "min": 2, "max": -3},
+               {"to": "mist.level", "min": -3, "max": 2},
+               {"to": "strings.~bright", "min": 0, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -24}, {"to": "g.dfdbk", "add": -18},
+                                                     {"to": "mist.rev", "add": -14}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "strings.@BRIGHT", "add": -8}, {"to": "mist.@BRIGHT", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "mist.@MOVE", "add": -18}, {"to": "g.cdepth", "add": -18}]}
+  ],
+  "energy": {
+    "e_dawn": {"bands": [
+      {"from": 0.00, "layers": ["strings", "keys"]},
+      {"from": 0.60, "layers": ["strings", "mist", "keys"]},
+      {"from": 0.86, "layers": "all", "drums": ["ride", "snare"]}]},
+    "e_warm": {"density_lanes": ["snare"], "bands": [
+      {"from": 0.00, "layers": ["strings", "keys"]},
+      {"from": 0.22, "layers": ["strings", "mist", "keys"]},
+      {"from": 0.38, "layers": "all", "drums": ["kick", "snare", "ride"], "density": "x...x...x...x..."},
+      {"from": 0.72, "layers": "all", "fills": true}]},
+    "e_golden": {"density_lanes": ["snare"], "bands": [
+      {"from": 0.00, "layers": ["strings", "mist", "keys"]},
+      {"from": 0.28, "layers": "all", "drums": ["kick", "snare", "ride", "hat"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.66, "layers": "all", "fills": true}]},
+    "e_dew": {"bands": [
+      {"from": 0.00, "layers": ["strings", "keys"]},
+      {"from": 0.30, "layers": ["strings", "mist", "keys"]},
+      {"from": 0.84, "layers": "all", "drums": ["ride", "snare"]}]}
+  },
+  "smart_keys": {"track": "keys", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord+9",
+                 "tonic": "G3", "range": ["A2", "D6"]},
+  "guard": {
+    "notes": {"keys": {"max_poly": 4, "loop_follow": "snap", "avoid": "classic"}, "strings": {"range": ["D3", "B5"]}},
+    "record": {"quantize": 0.5},
+    "sound": {"ranges": {"g.dfdbk": [0, 86]}, "max_level": 116, "max_dfdbk": 86},
+    "arrangement": {"mute_change": "2bars", "density_change": "bar", "fills_every": 8, "min_band_bars": 2},
+    "cpu": {"max_unison": 4, "grain_dens": 84}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

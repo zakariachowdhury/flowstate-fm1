@@ -1,0 +1,126 @@
+{
+  "notes": "Ambient, F minor (aeolian), 60 BPM. A drawbar organ on its slow rotary speaker (the orbit you hear turning), a felt piano that circles a seven-eighth figure (F C Eb G Eb C, rest) so it drifts against the bar and comes back into line only every seven bars, the player's looped strings on the Smart Keys (minor pentatonic from F3), and a soft sampled kit. The orbit figure uses only F G Bb C Eb, which sit well over every chord here (i9, VImaj7, iv9, VII, III), so it needs no chord tokens and can be any length. Scenes: A two chords of four bars; B an eccentric cycle, i9 and VImaj7 for three bars each and iv9 for two; C closer and brighter, VI VII III i two bars each with a five-eighth orbit; D the far point: VImaj7 held for eight bars, the orbit thinned to two notes. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "slow_orbit",
+  "name": "SLOW ORBIT",
+  "category": "AMBIENT",
+  "blurb": "Rotary organ, far piano",
+  "tempo": {"bpm": 60, "min": 50, "max": 70},
+  "key": {"root": "F", "scale": "MIN"},
+  "tracks": [
+    {"name": "organ", "role": "pad", "register": "A2", "sound": {"engine": "WHEEL", "preset": "SOUL ORGAN",
+      "params": {"REG": "SMOOT", "CLICK": 0, "DRV": 0, "ROTR": "SLOW", "level": 75, "atk": 70, "rel": 80,
+                 "dly": 10, "rev": 90}}},
+    {"name": "piano", "role": "keys", "register": "C4", "sound": {"engine": "SAMPLE", "preset": "DUSTY PNO",
+      "params": {"CUT": 84, "BITS": 0, "DRV": 0, "level": 84, "rel": 70, "chor": 20, "dly": 56, "rev": 84, "pan": 12}}},
+    {"name": "strings", "role": "lead", "register": "F3", "sound": {"engine": "SAMPLE", "preset": "STRING STB",
+      "params": {"CUT": 96, "DRV": 0, "level": 90, "atk": 44, "rel": 76, "lrate": 30, "ld_pit": 1,
+                 "chor": 40, "dly": 30, "rev": 88, "pan": -10}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "DEEP", "params": {"level": 60, "rev": 70}}}
+  ],
+  "fx": {"dtime": "1/8", "dfdbk": 52, "dcolor": 50, "dmix": 86, "rsize": 112, "rdamp": 62, "crate": 12, "cdepth": 40},
+  "patterns": {
+    "organ_cycle": {"track": "organ", "div": "1/4", "steps": "[c1 c5 c3'] - - - | - - - - | - - - - | [c1 c5 c3'] - - - | - - - - | - - - - | [c1 c5 c3'] - - - | - - - -"},
+    "organ_two": {"track": "organ", "div": "1/4", "steps": "[c1 c5 c3'] - - - | - - - -"},
+    "orbit": {"track": "piano", "div": "1/8", "steps": "1 5_ 7_ 2' 7_ 5_ ."},
+    "orbit_wide": {"track": "piano", "div": "1/8", "steps": "5, 1 2_ 5 2_ 1_ ."},
+    "orbit_near": {"track": "piano", "div": "1/8", "steps": "1 5_ 2' 5_ 7_"},
+    "orbit_far": {"track": "piano", "div": "1/8", "steps": "5 . . . . 2'_ . . . ."},
+    "dr_drift": {"track": "drums", "lanes": {
+      "kick":   "x...............|x...............",
+      "ride":   "........s.......|........s.......",
+      "shaker": "..g...g...g...g.|..g...g...g.g.g."}},
+    "dr_near": {"track": "drums", "lanes": {
+      "kick":   "x.......g.......|x.......g.......",
+      "ride":   "s.......s.......|s.......s...s...",
+      "shaker": "..g.s.g...g.s.g.|..g.s.g...g.s.g.",
+      "conga":  "......g.......g.|......g...g....."}},
+    "dr_turn": {"track": "drums", "lanes": {
+      "kick":   "x...............",
+      "ride":   "s...............",
+      "conga":  "g.g.g.g.s.g.s.s.",
+      "shaker": "g...g...g...g..."}}
+  },
+  "progressions": {
+    "ascent": ["i9:16", "iv9:16"],
+    "orbit": ["i9:12", "VImaj7:12", "iv9:8"],
+    "near": ["VImaj7:8", "VII:8", "III:8", "i9:8"],
+    "far": ["VImaj7:32"]
+  },
+  "scenes": {
+    "A": {"name": "ASCENT", "role": "intro", "progression": "ascent", "energy": "e_ascent", "transition": 2,
+          "patterns": {"organ": "organ_two", "piano": "orbit", "drums": "dr_drift"}},
+    "B": {"name": "ORBIT", "role": "main", "progression": "orbit", "energy": "e_orbit", "fill": "dr_turn",
+          "transition": 2, "patterns": {"organ": "organ_cycle", "piano": "orbit", "drums": "dr_drift"}},
+    "C": {"name": "PERIGEE", "role": "lift", "progression": "near", "energy": "e_near", "fill": "dr_turn",
+          "transition": 4, "params": {"piano.CUT": 96}, "fx": {"rsize": 108},
+          "patterns": {"organ": "organ_two", "piano": "orbit_near", "drums": "dr_near"}},
+    "D": {"name": "APOGEE", "role": "breakdown", "progression": "far", "energy": "e_far", "transition": 4,
+          "params": {"piano.CUT": 72}, "fx": {"rsize": 120, "rdamp": 72},
+          "patterns": {"organ": "organ_two", "piano": "orbit_far", "drums": "dr_drift"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "ECLIPSE": {"params": {"organ.TOP": -3, "organ.level": 76, "piano.level": 85, "strings.CUT": 80},
+                "fx": {"rdamp": 80, "dcolor": 34}, "macros": {"COLOR": 0.38}},
+    "SUNLIT": {"params": {"organ.TOP": 2, "organ.level": 79, "strings.CUT": 100}, "fx": {"rdamp": 46, "dcolor": 66},
+               "macros": {"COLOR": 0.62}},
+    "WIDE ORBIT": {"swap": {"orbit": "orbit_wide"}, "params": {"piano.dly": 64}, "fx": {"dfdbk": 56},
+                   "macros": {"SPACE": 0.6, "MOTION": 0.6}}
+  },
+  "macros": {
+    "COLOR": [{"to": "organ.@BRIGHT", "min": -5, "max": 4}, {"to": "organ.level", "min": 0, "max": 3},
+              {"to": "piano.@BRIGHT", "min": -40, "max": 28},
+              {"to": "strings.@BRIGHT", "min": -44, "max": 24},
+              {"to": "g.dcolor", "min": -22, "max": 22}],
+    "MOTION": [{"to": "organ.@MOVE", "min": -1, "max": 0, "curve": "late"},
+               {"to": "strings.ld_pit", "min": -1, "max": 2, "smooth": "slow"},
+               {"to": "piano.ld_pit", "min": 0, "max": 1, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 30}],
+    "SPACE": [{"to": "*.rev", "min": -40, "max": 14, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 6},
+              {"to": "g.dfdbk", "min": -30, "max": 6},
+              {"to": "piano.dly", "min": -36, "max": 14},
+              {"to": "organ.rel", "min": -20, "max": 10, "smooth": "slow"},
+              {"to": "drums.rev", "min": -36, "max": 14}],
+    "ENERGY": [{"to": "drums.level", "min": -10, "max": 8},
+               {"to": "organ.level", "min": 2, "max": -3},
+               {"to": "piano.level", "min": -4, "max": 2},
+               {"to": "piano.~bright", "min": 0, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -30}, {"to": "g.dfdbk", "add": -18},
+                                                     {"to": "piano.dly", "add": -16}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "piano.@BRIGHT", "add": -10}, {"to": "strings.@BRIGHT", "add": -8}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "strings.ld_pit", "add": -1}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_ascent": {"bands": [
+      {"from": 0.00, "layers": ["organ", "strings"]},
+      {"from": 0.56, "layers": ["organ", "piano", "strings"]},
+      {"from": 0.84, "layers": "all", "drums": ["kick", "ride"]}]},
+    "e_orbit": {"bands": [
+      {"from": 0.00, "layers": ["organ", "strings"]},
+      {"from": 0.22, "layers": ["organ", "piano", "strings"]},
+      {"from": 0.38, "layers": "all", "drums": ["kick", "ride"]},
+      {"from": 0.72, "layers": "all", "fills": true}]},
+    "e_near": {"bands": [
+      {"from": 0.00, "layers": ["organ", "piano", "strings"]},
+      {"from": 0.26, "layers": "all", "drums": ["kick", "ride", "shaker"]},
+      {"from": 0.64, "layers": "all", "fills": true}]},
+    "e_far": {"bands": [
+      {"from": 0.00, "layers": ["organ", "strings"]},
+      {"from": 0.36, "layers": ["organ", "piano", "strings"]},
+      {"from": 0.86, "layers": "all", "drums": ["ride"]}]}
+  },
+  "smart_keys": {"track": "strings", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord",
+                 "tonic": "F3", "range": ["Ab2", "Eb6"]},
+  "guard": {
+    "notes": {"strings": {"max_poly": 3, "loop_follow": "snap", "avoid": "classic"}, "organ": {"range": ["Bb2", "Bb5"]}},
+    "record": {"quantize": 0.4},
+    "sound": {"ranges": {"g.dfdbk": [0, 86]}, "max_level": 116, "max_dfdbk": 86},
+    "arrangement": {"mute_change": "2bars", "density_change": "bar", "fills_every": 8, "min_band_bars": 2},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}
