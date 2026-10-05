@@ -540,4 +540,8 @@ run "validate-world: the factory Worlds clean (quick sweep), every bad World fai
 run "authoring tool: the API (files, check, model, harmony, patterns, validate, export, import, preview), the page" \
     python3 tests/author_test.py
 
+# the FM-1 console monitor (Phase 17: tools/fm1_monitor.py): its parsers, CSV, summary, --fit and the live path
+# against a pseudo-terminal playing the console (no hardware)
+run "hardware monitor: flow / status parsing, CSV, --fit, a pseudo-terminal console (no FM-1)" python3 tests/fm1_monitor_test.py
+
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }

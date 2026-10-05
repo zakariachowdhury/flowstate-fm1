@@ -203,6 +203,65 @@ static void con_status(void)
 #endif
 }
 
+#if FELUCCA_WORLD
+static void con_f(const char *k, int32_t v)             /* " key=value", for the one-line `flow` */
+{
+    con_putc(' ');
+    con_puts(k);
+    con_putc('=');
+    con_dec(v);
+}
+
+/* `flow`: one line of what a World, the macros and the CPU guard are doing now, for tools/fm1_monitor.py (Phase 17,
+ * docs/hardware-calibration.md). Read-only: every field is read from the main loop, torn reads are harmless.
+ *   mode   PLAY, ADV or SLOOP        macro  COLOR,MOTION,SPACE,ENERGY, 0..1000 (the screen shows a tenth)
+ *   band   ENERGY band now / bands   voices synth voices sounding, drums drum voices sounding
+ *   est    the guard's estimate of the last DMA half (host instr/sample; 0 outside a World)
+ *   load   the guard's load: the larger of cpu_q8 and est x 256 / GL_CPU_FULL; ceil its ceiling; guard 1 = holding
+ *   max_us the costliest half since boot, last_us the latest; late halves the DMA outran (dropouts; kept over resets) */
+static void con_flow(void)
+{
+    static const char *const MODE[] = {"SLOOP", "PLAY", "ADV"};   /* WM_* order */
+    uint32_t p, i, nv = 0, nd = 0, w = wrt.loaded && wrt.mode != WM_SLOOP;
+    con_puts("flow mode=");
+    con_puts(MODE[wrt.mode % 3u]);
+    con_puts(" world=\"");
+    con_puts(w ? world_name() : "-");
+    con_puts("\" id=");
+    con_hex(w ? wrt.id : 0u, 8);
+    con_puts(" scene=");
+    con_putc(w ? (char)('A' + wrt.scene % 4u) : '-');
+    con_puts(" var=\"");
+    con_puts(w ? world_var_name(wrt.var) : "-");
+    con_puts("\" macro=");
+    for (i = 0; i < 4u; i++) {
+        if (i)
+            con_putc(',');
+        con_dec((int32_t)macro_pos(i));
+    }
+    con_f("band", (int32_t)arr.db);
+    con_f("bands", (int32_t)arr.et.n);
+    for (p = 0; p < NPART; p++)
+        for (i = 0; i < NVOICE; i++)
+            nv += trk[p].v[i].active != 0;
+    for (i = 0; i < NDRUM; i++)
+        nd += drums.v[i].active != 0;
+    con_f("voices", (int32_t)nv);
+    con_f("drums", (int32_t)nd);
+    con_f("cpu_pct", (int32_t)(song.cpu_q8 * 100u / 256u));
+    con_f("cpu_q8", (int32_t)song.cpu_q8);
+    con_f("est", (int32_t)gcpu.est);
+    con_f("load_pct", (int32_t)(gcpu.load * 100u / 256u));
+    con_f("ceil_pct", (int32_t)(wg.ceil * 100u / 256u));
+    con_f("guard", wg.hold);
+    con_f("max_us", (int32_t)felucca_dbg.max_us);
+    con_f("last_us", (int32_t)felucca_dbg.last_us);
+    con_f("late", (int32_t)felucca_dbg.late);
+    con_f("shed", (int32_t)shed_count);
+    con_puts("\r\n");
+}
+#endif
+
 static void con_dbg(void)
 {
     const uint32_t *w = (const uint32_t *)&felucca_dbg;
@@ -246,9 +305,17 @@ static void con_params(void)
 static void con_exec(const char *p)
 {
     if (con_word(&p, "help") || con_word(&p, "?"))
-        con_puts("status  dbg  crash  params  memr ADDR [LEN]  flr OFF [LEN]  uboot yes\r\n");
+        con_puts("status  dbg  crash  params  memr ADDR [LEN]  flr OFF [LEN]  "
+#if FELUCCA_WORLD
+                 "flow  "
+#endif
+                 "uboot yes\r\n");
     else if (con_word(&p, "status"))
         con_status();
+#if FELUCCA_WORLD
+    else if (con_word(&p, "flow"))
+        con_flow();
+#endif
     else if (con_word(&p, "dbg"))
         con_dbg();
     else if (con_word(&p, "crash"))
