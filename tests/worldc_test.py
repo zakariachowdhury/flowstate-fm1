@@ -14,13 +14,17 @@
   - gen_worlds.py: a valid header with no factory World, sorting, alignment;
   - GUARD sound combinations round trip, and their errors; the model of the macros and the guard (design 6.4):
     `check` passes the factory Worlds and refuses a mapping out of its range, past a hard limit, at the maximum at
-    100 % without "saturate", a Smart Keys range under an octave (the C engine against the model: tests/run_tests.sh).
+    100 % without "saturate", a Smart Keys range under an octave (the C engine against the model: tests/run_tests.sh);
+  - user Worlds (Phase 15): the decoder reads OVERRIDES on a USER blob only; `import` folds them into a source that
+    compiles (another engine, a parameter, a global, swing, the kit); `rename` rewrites the name, a user World's id
+    and the CRC.
 """
 import contextlib
 import copy
 import io
 import json
 import os
+import struct
 import subprocess
 import sys
 import tempfile
@@ -392,6 +396,81 @@ def test_decoder():
             check(e.code == code, f"decode error {e.code}, expected {code}")
 
 
+def with_overrides(blob, recs):
+    """a blob with an OVERRIDES section appended (what the device's world_encode writes, fwd1-format.md 14)"""
+    L, nsec = struct.unpack_from("<H", blob, 6)[0], blob[16]
+    pay = b"".join(struct.pack("<BBB", sc, i, v & 0xFF) for sc, i, v in recs)
+    out = bytearray(blob[:20 + 4 * nsec]) + struct.pack("<BBH", worldc.F["WF_S_OVERRIDES"], len(recs), len(pay))
+    out += blob[20 + 4 * nsec:L] + pay
+    out[16] = nsec + 1
+    struct.pack_into("<H", out, 6, len(out))
+    struct.pack_into("<I", out, worldc.F["WF_CRC_AT"], worldc.blob_crc(bytes(out), len(out)))
+    return bytes(out)
+
+
+def test_user_blobs():
+    F, PR = worldc.F, worldc.PR
+    w = load("minimal")
+    w["scenes"]["C"]["params"] = {"bass.level": 60, "pad.rev": 20}
+    w["scenes"]["C"]["fx"] = {"dfdbk": 10}
+    blob, d = compile_(w, user=True)
+    check(blob is not None, f"minimal compiles as a user World: {d.errors}")
+    recs = [(F["WF_OVR_SOUND"] | 0, PR.eng_id["DIGITAL"], 2), (1, PR.pid["level"], 90), (0, PR.pid["rev"], 33),
+            (F["WF_SCOPE_G"], PR.gid["dfdbk"], 33), (F["WF_SCOPE_G"], PR.gid["swing"], 20), (3, PR.P_E0, 2)]
+    ub = with_overrides(blob, recs)
+    ir = worldc.decode(ub)
+    check(ir["overrides"] == [(F["WF_OVR_SOUND"], PR.eng_id["DIGITAL"], 2)] + recs[1:], f"OVERRIDES decoded: {ir['overrides']}")
+    fb, _ = compile_(w)
+    try:
+        worldc.decode(with_overrides(fb, recs))
+        check(False, "a factory blob with OVERRIDES is refused")
+    except worldc.BlobError as e:
+        check(e.code == F["WE_SECTION"], f"OVERRIDES without USER: {e}")
+    try:
+        worldc.decode(with_overrides(blob, [(9, 0, 0)]))
+        check(False, "an override of scope 9 is refused")
+    except worldc.BlobError as e:
+        check(e.code == F["WE_PARAM"], f"scope 9: {e}")
+    src = worldc.import_user(ub)
+    t = src["tracks"]
+    check(t[0]["sound"]["engine"] == "DIGITAL" and t[0]["sound"]["preset"] == PR.engines[1]["presets"][2],
+          f"the sound override: {t[0]['sound']}")
+    check(t[1]["sound"]["params"]["level"] == 90 and t[0]["sound"]["params"]["rev"] == 33,
+          f"parameter overrides into the tracks: {t[0]['sound']}, {t[1]['sound']}")
+    check(src["fx"]["dfdbk"] == 33 and src["swing"] == 20 and t[3]["sound"]["kit"] == PR.kits[2],
+          f"globals, swing and the kit: {src.get('fx')}, {src.get('swing')}, {t[3]['sound']}")
+    sc = src["scenes"]["C"]
+    check("params" not in sc or ("bass.level" not in sc["params"] and "pad.rev" not in sc["params"]), f"scene values an "
+          f"override wins over are dropped: {sc}")
+    check("fx" not in sc and src["id"] == "minimal" and src["notes"].startswith("Imported"), f"{sc}, {src['id']}")
+    b2, d2 = compile_(src, user=True)
+    check(b2 is not None, f"the imported source compiles: {d2.errors}")
+    ir2 = worldc.decode(b2)
+    check(ir2["tracks"][0]["engine"] == PR.eng_id["DIGITAL"] and ir2["tracks"][0]["preset"] == 2 and
+          ir2["meta"]["swing"] == 20, "the imported source plays the overrides")
+    # rename: the name, a user World's id (FNV-1a of the name, as the device names them), the CRC
+    rb = worldc.rename_blob(ub, "MY BEST 2")
+    ir3 = worldc.decode(rb)
+    check(ir3["meta"]["name"] == "MY BEST 2" and ir3["id_hash"] == worldc.fnv1a("MY BEST 2") and
+          ir3["overrides"] == ir["overrides"], "rename: a user World's name and id")
+    fr = worldc.rename_blob(fb, "OTHER")
+    check(worldc.decode(fr)["meta"]["name"] == "OTHER" and worldc.decode(fr)["id_hash"] == worldc.decode(fb)["id_hash"],
+          "rename: a factory World keeps its id")
+    try:
+        worldc.rename_blob(fb, "lower case")
+        check(False, "rename refuses a name outside the charset")
+    except worldc.BlobError:
+        pass
+    with tempfile.TemporaryDirectory() as td:
+        bp, jp_ = Path(td) / "u.wblob", Path(td) / "u.json"
+        bp.write_bytes(ub)
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc1 = worldc.main(["import", str(bp), "-o", str(jp_)])
+            rc2 = worldc.main(["rename", str(bp), "NEW NAME"])
+        check(rc1 == 0 and json.loads(jp_.read_text())["tracks"][0]["sound"]["engine"] == "DIGITAL", "worldc import CLI")
+        check(rc2 == 0 and worldc.decode(bp.read_bytes())["meta"]["name"] == "NEW NAME", "worldc rename CLI")
+
+
 def test_gen_worlds():
     with tempfile.TemporaryDirectory() as td:
         empty = Path(td) / "empty"
@@ -487,7 +566,7 @@ def test_model():
 
 def main():
     for t in (test_params_fresh, test_schema_enums, test_roundtrip, test_transitions, test_variations, test_notation,
-              test_errors, test_limits, test_decoder, test_gen_worlds, test_guard, test_model):
+              test_errors, test_limits, test_decoder, test_user_blobs, test_gen_worlds, test_guard, test_model):
         n = len(FAILS)
         t()
         print(f"{t.__name__[5:]:<14} {'ok' if len(FAILS) == n else 'FAIL'}")

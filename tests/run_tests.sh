@@ -136,7 +136,9 @@ run "host renderer: example projects, 16 bars each, clean and deterministic (slo
 # time had no underrun, the same bytes as real time (nothing dropped or doubled). Then FLOWSTATE STUDIO, --fast:
 # a variation on the bar, a scene on its 2-bar line, another World chosen while one plays and switched on the bar
 # without a stop (Phase 11), a
-# mute and back, a level, a macro, STOP with no note left held or sounding, a SLOOP project; the Studio and
+# mute and back, a level, a macro, the knobs while FX / ENV are held turning the device's KNOB 1..4 (LIVE FX's FILTER,
+# home again on release; SOUND SHAPE's SHORT, kept; the macros untouched: Phase 15), STOP with no note left held or
+# sounding, a SLOOP project; the Studio and
 # ADVANCED drawn (--shot). Then sloop-render: every factory World clean (build/renders/worlds), and a scene
 # sequence whose changes land on the bars
 SIM_SCRIPT='0.95 expect world = NEON_RAIN; 1 play; 2.5 expect playing = 1; 2.5 expect scene = B; 2.5 expect rms > -35
@@ -152,7 +154,10 @@ STUDIO_SCRIPT='0.95 expect world = NEON_RAIN; 0.95 expect var = ORIGINAL; 1 play
     11.05 expect scene = B; 11.3 expect rms > -40
     11.3 mute 2; 11.4 expect mute2 = 1; 11.5 mute 2; 11.6 expect mute2 = 0
     11.7 level 1 90; 11.8 expect level1 = 90; 11.9 macro COLOR +10; 12.0 expect macro1 = 60
-    12.1 stop; 12.15 expect gated = 0; 14.4 expect voices = 0; 14.4 expect rms < -60
+    12.02 button FX down; 12.06 expect page = 1; 12.06 macro COLOR +20; 12.09 expect ctl13 = 70; 12.09 expect macro1 = 60
+    12.1 stop; 12.12 button FX up; 12.15 expect gated = 0; 12.16 expect page = 0; 12.16 expect ctl13 = 50
+    12.2 button ENV down; 12.24 macro MOTION +10; 12.28 expect page = 2; 12.28 expect ctl6 = 10; 12.3 button ENV up
+    12.34 expect ctl6 = 10; 12.34 expect macro2 = 50; 14.4 expect voices = 0; 14.4 expect rms < -60
     14.5 world GROOVE; 14.5 confirm; 14.6 expect world = GROOVE; 14.6 expect bpm = 120'
 sim_test() {
     sim=build/host-bin/flowstate-sim
@@ -178,12 +183,12 @@ sim_test() {
     $sim --demo --headless 15 --fast --script "$STUDIO_SCRIPT" --shot "$OUT/sim-studio.bmp" > "$OUT/sim-studio.txt" ||
         { cat "$OUT/sim-studio.txt"; return 1; }
     grep '^expect' "$OUT/sim-studio.txt"
-    [ "$(grep -c '^expect: .*: ok' "$OUT/sim-studio.txt")" -eq 24 ] || { echo "not every Studio expectation ran"; return 1; }
+    [ "$(grep -c '^expect: .*: ok' "$OUT/sim-studio.txt")" -eq 33 ] || { echo "not every Studio expectation ran"; return 1; }
     for f in sim-studio sim-advanced; do                  # 1000 x 872, 24 bits: drawn, not compared
         [ "$(wc -c < "$OUT/$f.bmp" | tr -d ' ')" -eq $((54 + 3000 * 872)) ] || { echo "$f.bmp: not drawn"; return 1; }
     done
-    echo "simulator: FLOWSTATE STUDIO: variation and scene on the bar, a World switched on the bar, no note left" \
-         "after STOP, a SLOOP project; $OUT/sim-studio.bmp, $OUT/sim-advanced.bmp"
+    echo "simulator: FLOWSTATE STUDIO: variation and scene on the bar, a World switched on the bar, the knobs on the" \
+         "FX / ENV pages while held, no note left after STOP, a SLOOP project; $OUT/sim-studio.bmp, $OUT/sim-advanced.bmp"
     mkdir -p build/renders/worlds
     for w in FROZEN_LAKE NEON_RAIN DUSTY_CAFE MIDNIGHT_DRIVE; do
         id=$(echo $w | tr 'A-Z' 'a-z')
@@ -524,5 +529,15 @@ run "ADVANCED edits and user Worlds: capture, scenes, SAVE AS / SAVE / RESET / D
 # jumps) reaching its item, from made-up output; ids, directories, --user, files that are not Worlds
 run "validate-world: the factory Worlds clean (quick sweep), every bad World failing exactly its item, the JSON schema" \
     python3 tests/validate_test.py
+
+# The World authoring tool (Phase 15: tools/world-author, tools/world_author.py, web/author.html; docs/authoring.md):
+# tests/author_test.py. The stable file layout (the guide's key order, variations in the author's order, idempotent);
+# the server on a free port (--no-browser) over a temp copy of worlds/: every API endpoint (files, the template, names,
+# check with JSON paths, compile, the model against worldc's Model, harmony and the 27 Smart Keys, patterns, a quick
+# validation of NEON RAIN as a background job, export, import of a user World blob, preview with no simulator and with
+# a stand-in spawned once), factory writes, path traversal and foreign hosts refused; the page parses, calls only APIs
+# that exist and names no URL; its pure helpers in node's vm against tools/worldc.py
+run "authoring tool: the API (files, check, model, harmony, patterns, validate, export, import, preview), the page" \
+    python3 tests/author_test.py
 
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }
