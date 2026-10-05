@@ -48,6 +48,10 @@
 #define FELUCCA_ARRANGER 1
 #include "arranger.c"
 #include "seq.c"
+#if FELUCCA_WORLD
+#include "harmony.c"         /* PLAY MODE, audio ISR group: the chord at the clock (needs SCALE_MASK, the clock) */
+#include "smartkeys.c"       /* Smart Keys: key maps, sk_note, MIDI, polyphony (needs seq.c's kb_*, input_off) */
+#endif
 #include "audio.c"
 #include "panel.c"
 #include "ui.c"

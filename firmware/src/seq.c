@@ -50,6 +50,17 @@ static uint8_t pen_n = 1, pen_note[4] = {60};   /* the last chord / note played:
 static uint8_t pen_lane;                       /* the last drum lane played: the SEQ layer's lane */
 static volatile uint8_t transport_req;   /* 1 start, 2 stop (from the UI) */
 static volatile uint8_t panic_req;       /* bit per track: release every sounding note (preset / engine change) */
+#if FELUCCA_WORLD
+/* PLAY MODE (harmony.c, smartkeys.c: included after this file). Each hook is inert while wrt.active == 0 */
+static void harm_block(void);                          /* H16: the chord at the clock */
+static int sk_on(void);                                /* Smart Keys play the keys */
+static int sk_active(const track_t *t);                /* .. on track t */
+static uint32_t sk_note(uint32_t k);                   /* H7: key k's note */
+static uint32_t sk_voicing(uint32_t k, uint32_t n, uint8_t *nt);
+static int sk_admit(void);                             /* H9: the keys track's polyphony cap */
+static int sk_midi_map(track_t *t, uint32_t *note, int on);   /* H8 */
+static uint32_t sk_pulse(const track_t *t, uint32_t *list);   /* H11 */
+#endif
 
 static uint32_t trk_index(const track_t *t) { return (uint32_t)(t - trk); }
 
@@ -658,6 +669,10 @@ static uint32_t arp_next(track_t *t)
                 list[j] = list[j - 1];
                 list[j - 1] = x;
             }
+#if FELUCCA_WORLD
+    if (cnt == 1u)
+        cnt = sk_pulse(t, list);                    /* H11 PULSE: one key held, it and the chord tones above */
+#endif
     for (o = 0; o < (uint32_t)t->p[P_AOCT]; o++)
         for (i = 0; i < cnt && len < 64u; i++)
             list[len++] = (uint32_t)clamp((int32_t)list[i] + 12 * (int32_t)o, 0, 127);
@@ -774,6 +789,10 @@ static void input_on(track_t *t, uint32_t note, uint32_t vel)
     }
     if (((song.rec >> trk_index(t)) & 1u) && song.playing)
         rec_note(t, note, vel, 0, 1);
+#if FELUCCA_WORLD
+    if (wrt.refcount && vlive[trk_index(t)][note & 127u] < 255u)
+        vlive[trk_index(t)][note & 127u]++;         /* H2: a note the input itself started (input_off ends it) */
+#endif
     trk_note_on(t, note, vel);
 }
 
@@ -788,6 +807,14 @@ static void input_off(track_t *t, uint32_t note)
         ft_note_off(note);
     rec_release(t, note);
     arp_remove(t, note);                            /* both: the note may have started in the */
+#if FELUCCA_WORLD
+    if (wrt.refcount) {                             /* H2, counted: only a note input_on started (the arp's */
+        uint8_t *c = &vlive[trk_index(t)][note & 127u];   /* notes end with the arp, the counts stay exact) */
+        if (!*c)
+            return;
+        (*c)--;
+    }
+#endif
     trk_note_off(t, note);                          /* other mode (ARP switched while held) */
 }
 
@@ -934,9 +961,39 @@ static uint32_t key_lvl(void)
     return (b & dyn_bit[0]) ? LV_GHOST : (b & dyn_bit[1]) ? LV_HARD : LV_NORM;
 }
 
+/* the track the keys play, key k's note on track t (KB_SILENT: none) and the notes it plays (nt[], <= 4): SLOOP's
+ * kb_map and chord mode, or Smart Keys while a World plays the keys (H7: its keys track, smartkeys.c) */
+static uint32_t key_track(void)
+{
+#if FELUCCA_WORLD
+    if (sk_on())
+        return wrt.keys_trk % NPART;
+#endif
+    return song.sel % NTRK;
+}
+static uint32_t key_note(const track_t *t, uint32_t k)
+{
+#if FELUCCA_WORLD
+    if (sk_active(t))
+        return sk_note(k);
+#endif
+    return kb_map(t, k);
+}
+static uint32_t key_chord(const track_t *t, uint32_t k, uint32_t n, uint8_t *nt)
+{
+#if FELUCCA_WORLD
+    if (sk_active(t))
+        return sk_voicing(k, n, nt);
+#endif
+    if (t->p[P_CHORD])
+        return chord_notes(t, n, nt);
+    nt[0] = (uint8_t)n;
+    return 1;
+}
+
 static void key_down(uint32_t k)
 {
-    uint32_t layer = layer_now(), sel = song.sel % NTRK, i, mc;
+    uint32_t layer = layer_now(), sel = key_track(), i, mc;
     track_t *t = &trk[sel];
     kb_kind[k] = KS_NONE;
     kb_trk[k] = (uint8_t)sel;
@@ -973,12 +1030,10 @@ static void key_down(uint32_t k)
             kb_n[k] = 1;
             er_lanes |= (uint16_t)(1u << kb_nt[k][0]);
         } else {
-            uint32_t n = kb_map(t, k);
+            uint32_t n = key_note(t, k);
             if (n == KB_SILENT)
                 return;
-            kb_n[k] = (uint8_t)(t->p[P_CHORD] ? chord_notes(t, n, kb_nt[k]) : 1u);
-            if (!t->p[P_CHORD])
-                kb_nt[k][0] = (uint8_t)n;
+            kb_n[k] = (uint8_t)key_chord(t, k, n, kb_nt[k]);
             for (i = 0; i < kb_n[k]; i++)
                 er_notes[(kb_nt[k][i] >> 5) & 3u] |= 1u << (kb_nt[k][i] & 31u);
         }
@@ -1003,7 +1058,7 @@ static void key_down(uint32_t k)
         return;
     }
     {
-        uint32_t n = kb_map(t, k);
+        uint32_t n = key_note(t, k);
         if (n == KB_SILENT)
             return;
         if (layer == LY_ROLL) {
@@ -1013,13 +1068,12 @@ static void key_down(uint32_t k)
             roll_start(k, t, n, LV_NORM);
             return;
         }
+#if FELUCCA_WORLD
+        if (sk_active(t) && !sk_admit())
+            return;                                   /* H9: over the keys track's polyphony: this key is silent */
+#endif
         kb_kind[k] = KS_NOTE;
-        if (t->p[P_CHORD]) {
-            kb_n[k] = (uint8_t)chord_notes(t, n, kb_nt[k]);
-        } else {
-            kb_nt[k][0] = (uint8_t)n;
-            kb_n[k] = 1;
-        }
+        kb_n[k] = (uint8_t)key_chord(t, k, n, kb_nt[k]);
         mc = trk_midi_ch(sel);
         for (i = 0; i < kb_n[k]; i++) {
             input_on(t, kb_nt[k][i], 100);
@@ -1330,6 +1384,11 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
         for (i = 0; i < t->seq_n; i++) {
             for (j = 0; j < s->n && s->note[j] != t->seq_notes[i]; j++)
                 ;
+#if FELUCCA_WORLD
+            if (wrt.refcount)
+                j = s->n;                           /* H2, counted: each old note ends its own count (one held
+                                                     * over keeps sounding on the new note-on's count) */
+#endif
             if (j == s->n)
                 trk_note_off(t, t->seq_notes[i]);
         }
@@ -1382,11 +1441,16 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
             if (h > t->rat_done[i] && h < hits) {
                 uint32_t j;
                 t->rat_done[i] = (uint8_t)h;
-                trk_note_off(t, s->note[i]);
-                trk_note_on(t, s->note[i], step_vel(s, i));
-                t->seq_off = slen / hits * (uint32_t)t->p[P_SGATE] / 128u;
                 for (j = 0; j < t->seq_n && t->seq_notes[j] != s->note[i]; j++)
                     ;
+#if FELUCCA_WORLD
+                /* H2, counted: a note this step did not start (live input plays it) is not the step's to end:
+                 * the note-on below retriggers the shared voice */
+                if (!wrt.refcount || j < t->seq_n)
+#endif
+                    trk_note_off(t, s->note[i]);
+                trk_note_on(t, s->note[i], step_vel(s, i));
+                t->seq_off = slen / hits * (uint32_t)t->p[P_SGATE] / 128u;
                 if (j == t->seq_n && t->seq_n < 4u)
                     t->seq_notes[t->seq_n++] = s->note[i];   /* (its gate ends it) */
             }
@@ -1514,6 +1578,15 @@ static void events_block(uint32_t n)
             t->nheld = 0;
             t->arp_phys = 0;
             t->arp_note = 0;
+#if FELUCCA_WORLD
+            if (wrt.refcount) {                       /* H2, counted: released with the rest (trk_all_off cleared */
+                uint32_t r;                           /* the counts): no late note-off for them */
+                t->seq_n = 0;
+                for (r = 0; r < NROLL; r++)
+                    if (roll[r].trk == i)
+                        roll[r].off = 0;
+            }
+#endif
         }
         if (i < NPART)
             engine_block(t);                          /* engine switch: fade, then switch (voice.c) */
@@ -1530,6 +1603,9 @@ static void events_block(uint32_t n)
         t->armp = t->p[P_AMODE];
         t->aholdp = t->p[P_AHOLD];
     }
+#if FELUCCA_WORLD
+    harm_block();                                     /* H16: the chord the keys of this block play over */
+#endif
     keyboard_block();
     while (mi_r != mi_w) {                            /* USB-MIDI (and TRS) in */
         uint32_t pkt = midi_in_q[mi_r % MQ], st = (pkt >> 8) & 0xF0u, ch = (pkt >> 8) & 0x0Fu;
@@ -1539,6 +1615,10 @@ static void events_block(uint32_t n)
         if (st != 0x90u && st != 0x80u)
             continue;
         t = midi_route(ch, d1, st == 0x90u && d2);
+#if FELUCCA_WORLD
+        if (wrt.active && !is_drum(t) && sk_midi_map(t, &d1, st == 0x90u && d2))
+            continue;                                 /* H8: the keys track's notes through Smart Keys */
+#endif
         if (is_drum(t)) {
             if (st == 0x90u && d2)
                 drum_input(lane_of_note(d1), vel_lvl(d2), 0, 1);

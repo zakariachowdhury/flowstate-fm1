@@ -47,3 +47,8 @@ static wpat_t wpool[WF_MAX_PAT];
 
 static void world_block(void);   /* seq.c events_block (H15): instead of live_block while a World is active */
 static void wsession_tick(void); /* project.c autosave_tick (H18): the PLAY session instead of SLOOP's autosave */
+
+/* H2, the pitch reference count (design 4.4), audio ISR only, while wrt.refcount: per synth part and pitch, how
+ * many holders sound it (voice.c trk_note_on / trk_note_off), and how many of them the live input started
+ * (seq.c input_on / input_off). trk_all_off clears both */
+static uint8_t vref[NPART][128], vlive[NPART][128];

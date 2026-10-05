@@ -315,7 +315,8 @@ static void mono_remove(track_t *t, uint32_t note)
     t->nmono = (uint8_t)k;
 }
 
-static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
+/* the voices of a note-on (trk_note_on, uncounted: also the replay of the notes queued over an engine switch) */
+static void trk_voice_on(track_t *t, uint32_t note, uint32_t vel)
 {
     uint32_t any = 0, i, mode = (uint32_t)t->p[P_VOICE];
     if (trk_silent(t))
@@ -342,6 +343,13 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
     }
     if (mode == V_POLY) {
         voice_t *v = voice_alloc(t, note);
+#if FELUCCA_WORLD
+        /* H2: a same-pitch retrigger (or a steal) may take this part's voice that is fading out for another part
+         * (stage 4, not counted in the budget): reviving it needs a voice of room first, as mono_play does. (SLOOP
+         * without a World keeps its behaviour; shared same-pitch voices make this frequent in a World) */
+        if (wrt.refcount && v->active && v->stage == 4u)
+            voice_room(t, 0);
+#endif
         t->nmono = 0;                                   /* no stale mono stack after a mode change */
         t->mono_note = 0;
         v->fine = 0;
@@ -364,11 +372,35 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
     }
 }
 
+/* Same-pitch notes (H2, design 4.4; the audit's R1): while a World is active (wrt.refcount) every holder of a
+ * pitch on a synth part counts (vref, world_rt.h): keys, MIDI, the sequencer, the arp, the rolls. A second
+ * holder retriggers the shared voice (voice_alloc reuses the voice of that note), and only the last note-off
+ * releases it. Counted before the silent return, so a muted note's note-off balances it. An off with nothing
+ * counted (after trk_all_off) releases, as SLOOP does. wrt.refcount == 0 (SLOOP): no count, SLOOP's behaviour */
+static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
+{
+#if FELUCCA_WORLD
+    if (wrt.refcount && !is_drum(t) && vref[(t - trk) % NPART][note & 127u] < 255u)
+        vref[(t - trk) % NPART][note & 127u]++;
+#endif
+    trk_voice_on(t, note, vel);
+}
+
 static void trk_note_off(track_t *t, uint32_t note)
 {
     uint32_t i, k = 0, mode = (uint32_t)t->p[P_VOICE];
     if (is_drum(t))
         return;                                         /* one-shots */
+#if FELUCCA_WORLD
+    if (wrt.refcount) {                                 /* H2: another holder keeps the pitch sounding */
+        uint8_t *c = &vref[(t - trk) % NPART][note & 127u];
+        if (*c > 1u) {
+            (*c)--;
+            return;
+        }
+        *c = 0;
+    }
+#endif
     for (i = 0; i < t->xp_n; i++)                       /* not sounding yet (engine switch): forget it */
         if (t->xp_note[i] != note) {
             t->xp_note[k] = t->xp_note[i];
@@ -410,6 +442,12 @@ static void trk_all_off(track_t *t)
     t->nmono = 0;
     t->mono_note = 0;
     t->xp_n = 0;
+#if FELUCCA_WORLD
+    if (!is_drum(t)) {                                  /* H2: nothing holds a pitch any more */
+        memset(vref[(t - trk) % NPART], 0, sizeof vref[0]);
+        memset(vlive[(t - trk) % NPART], 0, sizeof vlive[0]);
+    }
+#endif
 }
 
 /* engine switch, at each block start (events_block), before any note of the block. The UI writes
@@ -448,7 +486,7 @@ static void engine_block(track_t *t)
             uint32_t n = t->xp_n;
             t->xp_n = 0;
             for (i = 0; i < n; i++)
-                trk_note_on(t, t->xp_note[i], t->xp_vel[i]);
+                trk_voice_on(t, t->xp_note[i], t->xp_vel[i]);   /* (counted when they came) */
         }
     }
     for (i = 0; i < 8u; i++)                            /* the engine's own values, for a later fade */

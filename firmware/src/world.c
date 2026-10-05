@@ -593,6 +593,20 @@ static void ws_spairs(const uint8_t *q, uint32_t n, uint32_t scope, int16_t *dst
             dst[q[1]] = (int8_t)q[2];
 }
 
+/* the stage's harmony and Smart Keys (design 3, 4; harmony.c, smartkeys.c): progression prog of the World in its
+ * key, the KEYS section and the GUARD range, polyphony and avoid policy, built into their staged buffers; the
+ * commit flips them in with the rest */
+static void ws_keys(uint32_t prog)
+{
+    const uint8_t *meta = wctx.b + wctx.off[WF_S_META] + WF_NAME_LEN + WF_CAT_LEN + WF_BLURB_LEN;
+    const uint8_t *pg = wctx.b + wctx.off[WF_S_PROGS];
+    const uint8_t *gd = wctx.have >> WF_S_GUARD & 1u ? wctx.b + wctx.off[WF_S_GUARD] : 0;
+    while (prog--)
+        pg += WF_PROG_HDR + 2u * pg[0];
+    harm_stage(pg, meta[3], meta[4], gd ? gd[WF_G_AVOID] : WF_NONE);
+    sk_stage(wctx.b + wctx.off[WF_S_KEYS], gd);
+}
+
 /* scene + variation of the loaded World -> the stage (composition order: docs/design/fwd1-format.md, Staging) */
 static int world_stage(uint32_t scene, uint32_t var)
 {
@@ -704,6 +718,7 @@ static int world_stage(uint32_t scene, uint32_t var)
         uint32_t g = WB_GWHITE[i];
         wst.g[g] = (int16_t)clamp(wst.g[g], GP[g].min, GP[g].max);
     }
+    ws_keys(sc[12]);                                      /* the progression, the key maps (Phase 6) */
     wst.st = WST_READY;
     return WE_OK;
 }
@@ -743,6 +758,8 @@ static void world_commit(void)
     wrt.prog = wst.prog;
     wrt.energy = wst.energy;
     wrt.fill = wst.fill;
+    harm_commit();                                        /* the progression (from chord 0) and the key maps */
+    sk_commit(wst.sw);
     if (wst.sw) {                                         /* a World switch: a different instrument */
         song.g[G_BPM] = wst.bpm;
         panic_req = (uint8_t)((1u << NTRK) - 1u);
@@ -764,6 +781,12 @@ static int world_apply(uint32_t scene, uint32_t var)
         return rc;
     fm1_irq_off();
     world_commit();
+    if (!wrt.active) {                                    /* SLOOP -> a World: the pitch counts (H2) and Smart Keys */
+        memset(vref, 0, sizeof vref);
+        memset(vlive, 0, sizeof vlive);
+        wrt.refcount = 1;
+        wrt.keys_on = 1;                                  /* (PLAY. Phase 14's ADV_WORLD clears it: SLOOP's kb_map) */
+    }
     wrt.active = 1;
     fm1_irq_on();
     wst.st = WST_FREE;
@@ -782,6 +805,8 @@ static void world_unload(void)                         /* back to SLOOP's paths 
 {
     fm1_irq_off();
     wrt.active = 0;
+    wrt.refcount = 0;
+    wrt.keys_on = 0;
     fm1_irq_on();
 }
 
@@ -795,12 +820,13 @@ static int world_factory(uint32_t i, const uint8_t **b, uint32_t *n)   /* factor
 }
 
 /* ------------------------------------------------------------------ hooks --- */
+static void wreq_block(void);          /* (requests and accessors, at the end) */
 static void world_block(void)          /* seq.c events_block (H15), audio ISR, while playing */
 {
     if (!wrt.active)
         return;
-    /* Phase 11: commit a READY stage on its boundary (bar x transition), seq_reset_tracks(clk_pos) for a scene
-     * change. Until then world_apply commits only while stopped. */
+    wreq_block();                      /* a READY stage, or a World switch, on the next bar */
+    /* Phase 11: the scene's transition (2 and 4 bars), held-note continuity and tails */
 }
 
 static void wsession_tick(void)        /* project.c autosave_tick (H18), while a World is active */
@@ -820,4 +846,214 @@ static void world_boot(void)           /* main.c felucca_init after autosave_res
             wrt.factory_ok |= 1u << i;
 #endif
     /* Phase 5: SLOOP boots as it always did (wrt.active stays 0). Phase 9: the session decides, PLAY by default */
+}
+
+/* ======================================================= requests and accessors (Phase 6 part A) ======
+ * For the UIs (the simulator, the Phase 9 PLAY screens) and the host tools: what the loaded World is called and
+ * holds, read from the checked blob through wctx (never cast to a struct), and the requests that change it while
+ * it plays. Main loop, except wreq_block (the audio ISR, through world_block).
+ *
+ *   world_request(scene, var)  stopped: world_apply now. Playing: world_stage, and the ISR commits the READY stage
+ *                              on the next 4/4 bar, every track from its step 0 there (as SAVE + key's sections).
+ *                              A newer request replaces one not yet committed
+ *   world_switch(blob, n)      another World. Stopped (or from SLOOP): world_start now. Playing a World: on the
+ *                              next bar the transport stops, world_service loads the new World and starts it
+ *                              again: a restart on the bar, not a seamless change (Phase 11)
+ *   world_service()            main loop, every pass: frees an APPLIED stage, finishes a switch
+ *   world_pending(&s, &v)      a request waiting for its bar: 1 (s = WF_NONE: a World switch), else 0
+ *   world_hot_reload(blob, n)  the simulator's authoring (design 2.8): the same World's new data, at once
+ * The stage: the main loop writes it only when FREE (world_stage), the ISR commits READY -> APPLIED, the main loop
+ * sets FREE again (world_service, world_request). Through a scene or variation change the keys track keeps its
+ * loop and the held keys sound on (SLOOP's behaviour); the sequencer's own notes are released on the bar, so
+ * nothing hangs. Phase 11 refines transitions: their 2 and 4 bars, held-note continuity, tails. */
+static const char *const WF_ROLE_LABEL[WF_NROLES] = {"PAD", "CHORDS", "BASS", "LEAD", "KEYS", "TEXTURE", "DRUMS"};
+
+static struct {
+    uint32_t bar, beat;                /* clk_beat / 4 of the last bar the ISR saw; clk_beat then */
+    const uint8_t *sw_b;               /* the World to switch to (it stays valid, as any loaded blob) */
+    uint32_t sw_n;
+    volatile uint8_t sw;               /* 1: switch on the next bar (main -> ISR); 2: stopped for it (ISR -> main) */
+} wreq = {0xFFFFFFFFu, 0, 0, 0, 0};
+
+/* ---- what the loaded World holds (the strings are NUL-terminated in the blob: wb_check made sure) */
+static const char *world_meta_str(uint32_t at)
+{
+    return wrt.loaded ? (const char *)(wctx.b + wctx.off[WF_S_META] + at) : "";
+}
+static const char *world_name(void) { return world_meta_str(0); }
+static const char *world_category(void) { return world_meta_str(WF_NAME_LEN); }
+static const char *world_blurb(void) { return world_meta_str(WF_NAME_LEN + WF_CAT_LEN); }
+static uint32_t world_bpm(void)        /* the authored tempo (the player's nudge is song.g[G_BPM]) */
+{
+    return wrt.loaded ? wctx.b[wctx.off[WF_S_META] + WF_NAME_LEN + WF_CAT_LEN + WF_BLURB_LEN] : 0u;
+}
+static uint32_t world_nscenes(void) { return WF_NSCENE; }
+static const char *world_scene_name(uint32_t s)
+{
+    return wrt.loaded && s < WF_NSCENE ? (const char *)(wctx.b + wctx.scene[s]) : "";
+}
+static uint32_t world_nvar(void) { return wrt.loaded ? wctx.cnt[WF_S_VARS] : 0u; }
+static const char *world_var_name(uint32_t v)
+{
+    return wrt.loaded && v < wctx.cnt[WF_S_VARS] ? (const char *)(wctx.b + wctx.var[v]) : "";
+}
+static uint32_t world_track_role(uint32_t t) { return wrt.loaded && t < NTRK ? wctx.b[wctx.trk[t]] : WF_NONE; }
+static const char *world_role_label(uint32_t r) { return r < WF_NROLES ? WF_ROLE_LABEL[r] : "-"; }
+static uint32_t world_keys_track(void) { return wrt.keys_trk; }
+static uint32_t world_factory_count(void) { return WORLD_NFACTORY; }
+static int world_factory_find(uint32_t id)   /* the factory index of a World id (sorted by category), or -1 */
+{
+    uint32_t i;
+    for (i = 0; i < WORLD_NFACTORY; i++)
+        if (WORLD_INDEX[i].id == id)
+            return (int)i;
+    return -1;
+}
+/* a factory World's name, category and tempo without loading it (its META, through wb_check) */
+static int world_factory_info(uint32_t i, char *name, char *cat, uint32_t *bpm)
+{
+    const uint8_t *b, *m;
+    uint32_t n;
+    wb_ctx_t c;
+    int rc = world_factory(i, &b, &n);
+    if (rc || (rc = wb_check(b, n, &c)) != WE_OK)
+        return rc;
+    m = c.b + c.off[WF_S_META];
+    str_cpy(name, (const char *)m, WF_NAME_LEN);
+    str_cpy(cat, (const char *)m + WF_NAME_LEN, WF_CAT_LEN);
+    *bpm = m[WF_NAME_LEN + WF_CAT_LEN + WF_BLURB_LEN];
+    return WE_OK;
+}
+
+/* ---- requests */
+static int world_request(uint32_t scene, uint32_t var)
+{
+    if (!wrt.loaded || scene >= WF_NSCENE || var >= wctx.cnt[WF_S_VARS])
+        return WE_STATE;
+    if (wreq.sw)
+        return WE_BUSY;                /* (a World switch waits for its bar) */
+    if (wst.st == WST_APPLIED)
+        wst.st = WST_FREE;
+    if (!song.playing && !transport_req)
+        return world_apply(scene, var);
+    if (!wrt.active)
+        return WE_STATE;               /* (playing SLOOP: a World starts with world_switch) */
+    return world_stage(scene, var);    /* READY: wreq_block commits it on the next bar */
+}
+
+static int world_pending(uint32_t *scene, uint32_t *var)
+{
+    if (wreq.sw) {
+        *scene = *var = WF_NONE;
+        return 1;
+    }
+    if (wst.st == WST_READY) {
+        *scene = wst.scene;
+        *var = wst.var;
+        return 1;
+    }
+    return 0;
+}
+
+static int world_switch(const uint8_t *b, uint32_t n)
+{
+    wb_ctx_t c;
+    int rc;
+    if (wst.st == WST_APPLIED)
+        wst.st = WST_FREE;
+    if (!song.playing && !transport_req) {
+        fm1_irq_off();
+        if (wst.st == WST_READY)       /* (stopped: nothing waits for a bar) */
+            wst.st = WST_FREE;
+        fm1_irq_on();
+        wreq.sw = 0;
+        return world_start(b, n);
+    }
+    if ((rc = wb_check(b, n, &c)) != WE_OK)
+        return rc;                     /* (refused now rather than on the bar) */
+    fm1_irq_off();
+    if (wst.st == WST_READY)           /* a scene request of the old World: dropped */
+        wst.st = WST_FREE;
+    wreq.sw_b = b;
+    wreq.sw_n = n;
+    if (wrt.active) {
+        wreq.sw = 1;                   /* wreq_block stops the transport on the next bar */
+    } else {
+        wreq.sw = 2;                   /* playing SLOOP: stop now */
+        transport_req = 2;
+    }
+    fm1_irq_on();
+    return WE_OK;
+}
+
+static int world_service(void)         /* main loop: a switch's result (WE_*), or -1 when there was none */
+{
+    int rc = -1;
+    if (wst.st == WST_APPLIED)
+        wst.st = WST_FREE;
+    if (wreq.sw == 2u && !song.playing && !transport_req) {
+        wreq.sw = 0;
+        rc = world_start(wreq.sw_b, wreq.sw_n);
+        transport_req = 1;             /* on again: the new World (or the old one, when the new one failed) */
+    }
+    return rc;
+}
+
+static void wreq_block(void)           /* world_block: audio ISR, a World playing */
+{
+    uint32_t t;
+    if (clk_beat < wreq.beat)
+        wreq.bar = 0xFFFFFFFFu;        /* (the clock started again: its bar 0 is a new bar) */
+    wreq.beat = clk_beat;
+    if ((clk_beat & 3u) || (clk_beat >> 2) == wreq.bar)
+        return;
+    wreq.bar = clk_beat >> 2;          /* a new bar */
+    if (wreq.sw == 1u) {
+        wreq.sw = 2;                   /* stop here; world_service loads and starts the new World */
+        transport_req = 2;
+        return;
+    }
+    if (wst.st != WST_READY)
+        return;
+    for (t = 0; t < NTRK; t++)
+        seq_release(&trk[t]);          /* the sequencer's notes (not the held keys): nothing hangs */
+    world_commit();
+    seq_reset_tracks(clk_pos);         /* on the bar: every track from its step 0 */
+    wreq.bar = wreq.beat = 0;
+}
+
+#define WORLD_STALE 254                /* (a cur_pat that is no pool entry: the commit copies the new steps) */
+static int world_hot_reload(const uint8_t *b, uint32_t n)
+{
+    wb_ctx_t c;
+    uint32_t i, t, var;
+    int rc;
+    if (!wrt.loaded || wreq.sw)
+        return WE_STATE;
+    if ((rc = wb_check(b, n, &c)) != WE_OK)
+        return rc;                     /* (the old World plays on) */
+    fm1_irq_off();
+    wst.st = WST_FREE;                 /* (a request not yet committed: restaged below) */
+    wctx = c;
+    for (i = 0; i < c.cnt[WF_S_PATTERNS]; i++)
+        wb_pattern(c.b + c.pat[i], &wpool[i]);
+    if (c.keys != wrt.keys_trk)
+        wst.sw = 1;                    /* (another keys track: as a new World) */
+    wrt.keys_trk = c.keys;
+    wrt.id = wb_u32(b + 8);
+    for (t = 0; t < NTRK; t++)
+        if (t != wrt.keys_trk || wst.sw)
+            wrt.cur_pat[t] = WORLD_STALE;
+    fm1_irq_on();
+    var = wrt.var < c.cnt[WF_S_VARS] ? wrt.var : 0u;
+    if ((rc = world_stage(wrt.scene, var)) != WE_OK)
+        return rc;
+    fm1_irq_off();
+    for (t = 0; t < NTRK; t++)
+        seq_release(&trk[t]);
+    world_commit();
+    song.g[G_BPM] = wst.bpm;           /* (the authored tempo, as the file now says) */
+    fm1_irq_on();
+    wst.st = WST_FREE;
+    return WE_OK;
 }
