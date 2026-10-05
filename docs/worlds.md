@@ -405,7 +405,7 @@ SHORT, BODY, TAIL, DRIFT, WOBBLE, PULSE, ECHO, CRUSH, FREEZE) use only `max`. RA
 | `drums.level` | the same as `g.drlvl` | the global |
 
 Several mappings (and rules) on one target **add up** into one offset. A World has room for **48 targets** (a
-`*` mapping counts once per track); past 48 the rest are dropped (Phase 8's validator will refuse it).
+`*` mapping counts once per track); past 48 the rest are dropped, and `worldc check` refuses the World.
 
 **Mapping keys:**
 - `min` and `max`: −128..127 in the target's units.
@@ -418,7 +418,8 @@ Several mappings (and rules) on one target **add up** into one offset. A World h
   (250 ms), `stepped` (at once). Enum targets (WHEEL's ROTR) are always stepped. A target several mappings move
   takes the slowest of their classes; a target only a rule moves, medium. Every parameter glides to its new value
   (one pole at 1378 steps a second), so a knob turned fast never clicks.
-- `saturate`: for Phase 8's "100 % is never all-max" check.
+- `saturate`: `true` when the mapping is meant to reach its parameter's maximum at 100 % (`worldc check` refuses
+  one that does without it: "100 % is never all-max").
 
 **Limits** that no mapping passes, whatever it says (`firmware/src/guard_limits.h`):
 - every value stays inside its parameter's range;
@@ -427,7 +428,19 @@ Several mappings (and rules) on one target **add up** into one offset. A World h
 - `~bright` / `~shape` at most ±64 steps.
 
 A limit never changes what you authored: a base value above one stays, and the macros only cannot push it further.
-Phase 8 adds the `guard.sound` caps and ranges inside these.
+Inside these, the World's `guard.sound` caps, ranges and combinations apply ([§14](#14-guard),
+[guardrails.md](guardrails.md)).
+
+**`worldc check`** evaluates the macros as the firmware does (a Python model of `macro.c` and `guard.c`, checked
+against the C engine by `tests/run_tests.sh`) over every scene × variation and the 3⁴ grid of the four macros, and
+refuses a World where:
+- a mapping alone takes its parameter outside its range, or past a hard limit above (the firmware would clamp it:
+  make the mapping smaller);
+- a mapping reaches its parameter's maximum at 100 % without `"saturate": true`;
+- more than 48 targets move at once;
+- the Smart Keys range is under an octave.
+
+Mappings and rules that only together run past the top of a range or a limit are a warning: the firmware holds them there.
 
 **At most 40 mappings** in all, counting `controls`.
 
@@ -551,7 +564,8 @@ MIDI in on the keys track plays the same map, with MIDI note 60 as the C4 key.
 "guard": {
   "notes": {"keys": {"max_poly": 4, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["E1", "A3"]}},
   "record": {"quantize": 0.75, "max_notes": 3},
-  "sound": {"ranges": {"keys.RES": [0, 100], "g.dfdbk": [0, 90]}, "max_level": 116, "max_dfdbk": 90},
+  "sound": {"ranges": {"keys.RES": [0, 100], "g.dfdbk": [0, 90]}, "max_level": 116, "max_dfdbk": 90,
+            "combos": [{"when": {"g.rsize": 110, "g.dfdbk": 70}, "cap": {"g.dfdbk": 70}}]},
   "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 2},
   "cpu": {"max_unison": 4, "grain_dens": 90, "max_dist_tracks": 2, "ceiling": 0.85}
 }
@@ -560,7 +574,14 @@ MIDI in on the keys track plays the same map, with MIDI note 60 as the C4 key.
 Every field is optional. An unset field takes the firmware default (design §6.1). `guard.notes` is keyed by synth
 track. `max_poly`, `loop_follow` and `avoid` apply to the Smart Keys track only.
 
-`sound.ranges` keys are targets as in [§10](#10-macros-controls-curves). The other fields and their ranges:
+`sound.ranges` keys are targets as in [§10](#10-macros-controls-curves): the macros keep each one's effective value
+inside `[lo, hi]` (a base the World put outside stays). `sound.combos` are sound combinations: while every `when`
+target is above its value, the `cap` target stays at or under its value; the cap comes in over the 16 steps past
+the thresholds (at once for a condition on the capped target itself), and a per-track target is judged per track.
+Targets are parameters, `@roles` or globals. Absent, the firmware's six apply (a big room with a long echo, drive
+into resonance, a distorted part through DUST, reverb and echo sends in a huge room or a long echo: see
+[guardrails.md](guardrails.md)); `[]` turns them off; up to 8 of your own replace them. The other fields and their
+ranges:
 
 | Field | Range |
 | --- | --- |
@@ -576,7 +597,8 @@ track. `max_poly`, `loop_follow` and `avoid` apply to the Smart Keys track only.
 | `ceiling` | a fraction of the audio interrupt's time |
 
 The arrangement fields (`mute_change`, `density_change`, `fills_every`, `min_band_bars`) time the ENERGY bands
-([§12](#12-energy)); Phase 8 applies the rest of the guard.
+([§12](#12-energy)). What each of the others does, and what holds whatever a World says:
+[guardrails.md](guardrails.md).
 
 ---
 

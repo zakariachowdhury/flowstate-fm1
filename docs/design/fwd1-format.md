@@ -374,7 +374,7 @@ All masks are neutral when all ones. worldc requires the Smart Keys track in eve
 
 ### GUARD
 
-The fixed part is 32 bytes. Every byte is 255 when unset, and the firmware default then applies. The fixed part is followed by `{u8 target, u8 id, i8 lo, i8 hi}` × count, with `lo ≤ hi` and count ≤ 32.
+The fixed part is 32 bytes. Every byte is 255 when unset, and the firmware default then applies. The fixed part is followed by `{u8 target, u8 id, i8 lo, i8 hi}` × count, with `lo ≤ hi` and count ≤ 32, then by the sound combinations: `{u8 target, u8 id, i8 value}` × 3 (9 B) × the fixed byte 25 (0–8; 255 = none follow). The three are condition a (over a value), condition b (a one-condition combination repeats a) and the capped target with its cap. Their targets are of kind 0, 1 or 4 (§10). The section is `32 + 4 × count + 9 × combinations` bytes.
 
 | Offset | Field | Range | Default when 255 |
 | --- | --- | --- | --- |
@@ -398,9 +398,10 @@ The fixed part is 32 bytes. Every byte is 255 when unset, and the firmware defau
 | 22 | GRAIN DENS cap | 0–127 | 90 |
 | 23 | tracks with DIST > 0 | 0–3 | 2 |
 | 24 | cpu_q8 ceiling | 1–254 | 217 (85 %) |
-| 25–31 | reserved | 255 | |
+| 25 | sound combinations that follow the ranges | 0–8 | none follow: the firmware's six (`WF_COMBO_DEFAULT`) apply; 0: none apply |
+| 26–31 | reserved | 255 | |
 
-The ranges and defaults are `WF_GUARD_MIN`, `WF_GUARD_MAX` and `WF_GUARD_DEFAULT`. Sound *combos* (design §6.1) are not in version 1; Phase 8 adds them.
+The ranges and defaults are `WF_GUARD_MIN`, `WF_GUARD_MAX` and `WF_GUARD_DEFAULT`; the firmware's combinations are `WF_COMBO_DEFAULT`, in the record format above. Byte 25 was reserved (255) before Phase 8, so every older blob reads as "the firmware's combinations".
 
 ### KEYS (count 1, 8 B)
 
@@ -528,7 +529,7 @@ Globals outside the whitelist (`G_BPM`, `G_CLOCK`, `G_TUNE`, `G_ROLL`, `G_DRCH`,
 | 22 | CURVE | a LUT that does not run from 0 to 255 |
 | 23 | RULE | threshold, action count or target |
 | 24 | ENERGY | band count, order or flags |
-| 25 | GUARD | a fixed field or range record |
+| 25 | GUARD | a fixed field, a range or combination record |
 | 26 | KEYS | track, mode, melody mask, white/black, tonic |
 | 27 | DEFAULTS | scene, variation, position, PULSE or BEAT |
 | 28 | INDEX | a pattern, progression, energy or curve index out of range, or of the wrong kind |
