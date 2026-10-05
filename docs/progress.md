@@ -510,3 +510,62 @@ the update loader scans for update records. SLOOP's autosave stays fenced while 
 **Commits:** `6d22a20` to `6eeeddc`.
 
 **Next.** Phase 10: simple record and overdub.
+
+## Phase 10: Simple record / overdub (2026-10-05)
+
+**Done.** `firmware/src/play_rec.c` follows UI spec §7.
+
+**The flow.**
+- REC while playing starts a take; REC while stopped arms, and a key or PLAY starts it.
+- REC closes the take on the next bar. A REC just after a bar line closes on that line.
+- The take becomes a 1-, 2- or 4-bar loop, depending on how many bars were played.
+- REC then toggles overdub. REC held 1.5 s clears the loop.
+- Beginners never see bars, steps or quantise settings.
+
+**Gentle quantise.** Each note goes to its nearest step and keeps `(1 − quantize)` of its timing offset as micro-timing,
+stored in spare step bits and played back within one block. For example, FROZEN LAKE (quantize 0.5) keeps about half
+of a player's timing feel.
+
+**Record guard.** Every recorded note goes through it:
+- in key, recorded exactly as it sounded;
+- no duplicate notes;
+- a polyphony cap;
+- clamped note lengths, with no stuck ties.
+
+**Undo.** Four layers on EDIT: a tap is UNDO, EDIT + OCT+ is REDO. The layers are swapped rather than overwritten.
+
+**The loop:**
+- keeps its phase across scene changes and follows the harmony;
+- is saved with the session, at most 690 B;
+- is cleared when you switch World;
+- appears as normal steps in Advanced Mode.
+
+**Screens and LEDs.** The RECORDING screen (bar dots) and LOOP n screen (the loop's activity, PLAYING / PLAYING +
+REC, UNDO READY), and the REC/EDIT LEDs, follow the real state.
+
+**Verified.**
+- `./tests/run_tests.sh` passes all 37 groups. New: `play_rec_test`, 90 checks under ASan/UBSan, covering:
+  - timing at three quantize strengths;
+  - the guards;
+  - the late REC press;
+  - layers and undo;
+  - scene and chord changes;
+  - reboot and World switch;
+  - Advanced Mode;
+  - a fuzz.
+- `ui_play_test` now has 126 checks.
+- SLOOP's own REC and free take are unchanged, and both regression builds match the 83 goldens.
+
+**Sizes.**
+- Image 552,724 B (+3.96 KB). **28.8 KB** of the app slot is left.
+- RAM `.data` + `.bss` 70,480 B of 98,304 B.
+
+**Deviations** (design §9.1.1):
+- The loop length comes from the bars played.
+- REDO is EDIT + OCT+.
+- The loop is appended to the session record.
+
+**Commits:** see `git log` after `a412d15`.
+
+**Next.** Phase 11: the scene system polish. Seamless World switching while playing, held notes and tails across
+transitions, 2- and 4-bar transitions, and BEAT masks.
