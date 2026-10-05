@@ -1,0 +1,130 @@
+{
+  "notes": "Cinematic, B harmonic minor, 86 BPM. A colony on another world: a granular flute cloud pitched up an octave holding each chord's third and fifth (a high, glassy whistle in the air), a gliding FM bass in a lopsided 3+3+3+3+2+2 sixteenth grouping, the player's synthetic voice on the Smart Keys (TALKBOX: a vowel that turns on every note, glide, vibrato) through a fast triplet echo, and tribal drums: deep kick, congas and a cowbell ping. The Smart Keys play a five-note subset of the key, B C# D F# G (a hirajoshi colour), consonant over i, iv and VI; the augmented III+ (D F# A#) is the alien chord and always falls back to Bm by its leading tone. Scenes: A Bm and G over a B pedal; B the loop i VI iv III+ with the bass on the roots; C turns the loop around (iv VI III+ and the arrival on i) under a busier groove; D the augmented chord over the B pedal (the minor-major seventh) and home. ENERGY brings the bass, then the drums, then fills. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "off_world",
+  "name": "OFF-WORLD",
+  "category": "CINEMATIC",
+  "blurb": "A colony under two moons",
+  "tempo": {"bpm": 86, "min": 76, "max": 96},
+  "key": {"root": "B", "scale": "HARM"},
+  "tracks": [
+    {"name": "shimmer", "role": "texture", "register": "G3", "sound": {"engine": "GRAIN", "preset": "FLUTE DUST",
+      "params": {"level": 81, "atk": 70, "rel": 92, "PTCH": 12, "SPRD": 18, "TONE": 80, "chor": 50, "dly": 30, "rev": 86, "pan": -12}}},
+    {"name": "pulse", "role": "bass", "register": "E1", "sound": {"engine": "DIGITAL", "preset": "FM BASS",
+      "params": {"level": 90, "glide": 34, "IDX": 38, "rev": 12}}},
+    {"name": "voice", "role": "lead", "register": "C4", "sound": {"engine": "VOICE", "preset": "TALKBOX",
+      "params": {"level": 85, "glide": 50, "ld_pit": 2, "lfade": 56, "dly": 44, "rev": 58, "pan": 8}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "TRIBAL", "params": {"level": 96, "rev": 54}}}
+  ],
+  "fx": {"dtime": "16T", "dfdbk": 56, "dcolor": 54, "dmix": 84, "rsize": 112, "rdamp": 58, "crate": 22, "cdepth": 72},
+  "patterns": {
+    "sh_bar": {"track": "shimmer", "div": "1/4", "steps": "[c3 c5] - - -"},
+    "sh_long": {"track": "shimmer", "div": "1/4", "steps": "[c3 c5] - - - - - - -"},
+    "bs_pedal": {"track": "pulse", "steps": "1! - - 1 - - 5~ - - 1' - - 1 - 5 -"},
+    "bs_orbit": {"track": "pulse", "steps": "c1! - - c1 - - c5~ - - c1' - - c1 - c5 -"},
+    "dr_colony": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....|x.........x.....",
+      "rim":    "....s.......s...|....s.......s...",
+      "conga":  "..s..x..s...s.x.|..s..x..s..s..x.",
+      "bell":   "......g.........|..............g."}},
+    "dr_orbit": {"track": "drums", "lanes": {
+      "kick":   "x.....x...x.....|x.....x...x...s.",
+      "snare":  "....s.......x...|....s.......x...",
+      "conga":  "..s..x..s.s..x.x|..s..x..s.s..xs.",
+      "hat":    "s.g.s.g.s.g.s.g.|s.g.s.g.s.g.s.g.",
+      "bell":   "......g.........|......g.......g."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....",
+      "conga":  "..s..x..s.s.s.s.",
+      "tomhi":  "....g...g.......",
+      "tomlo":  "..........g.g.g."}}
+  },
+  "progressions": {
+    "arrival": ["i:8", "VI:8"],
+    "colony": ["i:4", "VI:4", "iv:4", "III+:4"],
+    "orbit": ["iv:4", "VI:4", "III+:4", "i:4"],
+    "void": ["III+:8", "i:8"]
+  },
+  "scenes": {
+    "A": {"name": "ARRIVAL", "role": "intro", "progression": "arrival", "energy": "e_arrival", "transition": 2,
+          "patterns": {"shimmer": "sh_long", "pulse": "bs_pedal", "drums": "dr_colony"}},
+    "B": {"name": "COLONY", "role": "main", "progression": "colony", "energy": "e_colony", "fill": "dr_fill",
+          "patterns": {"shimmer": "sh_bar", "pulse": "bs_orbit", "drums": "dr_colony"}},
+    "C": {"name": "ORBIT", "role": "lift", "progression": "orbit", "energy": "e_orbit", "fill": "dr_fill",
+          "params": {"shimmer.ed_flt": 12, "pulse.ed_flt": 10}, "fx": {"dfdbk": 60},
+          "patterns": {"shimmer": "sh_bar", "pulse": "bs_orbit", "drums": "dr_orbit"}},
+    "D": {"name": "DEEP SPACE", "role": "breakdown", "progression": "void", "energy": "e_void", "transition": 2,
+          "params": {"shimmer.rev": 100, "shimmer.rel": 100}, "fx": {"rsize": 118, "rdamp": 66},
+          "patterns": {"shimmer": "sh_long", "pulse": "bs_pedal", "drums": "dr_colony"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "BAZAAR": {"sounds": {"drums": "AFRO"}, "params": {"shimmer.TONE": 92, "pulse.IDX": 44}, "energy_bias": 0.1,
+               "macros": {"ENERGY": 0.56}},
+    "ZERO-G": {"params": {"shimmer.rev": 98, "pulse.glide": 52, "voice.dly": 58}, "fx": {"rsize": 118, "dfdbk": 60},
+               "energy_bias": -0.06, "macros": {"SPACE": 0.7}},
+    "ALIEN": {"params": {"shimmer.RAND": 44, "shimmer.SPRD": 46, "voice.RAND": 60, "pulse.FB": 20}, "fx": {"crate": 40, "cdepth": 92},
+              "macros": {"MOTION": 0.7}},
+    "ECLIPSE": {"sounds": {"shimmer": "LOFI CLOUD"}, "params": {"shimmer.level": 100, "shimmer.TONE": 66, "pulse.IDX": 28, "voice.BUZZ": 80},
+                "fx": {"dcolor": 34, "rdamp": 80}, "macros": {"COLOR": 0.38}}
+  },
+  "macros": {
+    "COLOR": [{"to": "shimmer.@BRIGHT", "min": -26, "max": 22},
+              {"to": "pulse.@BRIGHT", "min": -16, "max": 26},
+              {"to": "voice.@BRIGHT", "min": -26, "max": 14},
+              {"to": "g.dcolor", "min": -20, "max": 20}],
+    "MOTION": [{"to": "shimmer.@MOVE", "min": -10, "max": 44, "smooth": "slow"},
+               {"to": "shimmer.@DETUNE", "min": -10, "max": 28, "smooth": "slow"},
+               {"to": "pulse.glide", "min": -16, "max": 22},
+               {"to": "voice.ld_pit", "min": -2, "max": 2},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "shimmer+voice.rev", "min": -40, "max": 20, "curve": "s"},
+              {"to": "g.rsize", "min": -36, "max": 6},
+              {"to": "g.dfdbk", "min": -30, "max": 8},
+              {"to": "voice.dly", "min": -34, "max": 16},
+              {"to": "drums.rev", "min": -30, "max": 20},
+              {"to": "shimmer.rel", "min": -20, "max": 8, "smooth": "slow"}],
+    "ENERGY": [{"to": "shimmer.level", "min": 3, "max": -2},
+               {"to": "drums.level", "min": -14, "max": 8},
+               {"to": "pulse.@DRIVE", "min": -8, "max": 22},
+               {"to": "pulse.~bright", "min": 0, "max": 12}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "pulse.rev", "add": -10}, {"to": "g.drrev", "add": -26},
+                                                     {"to": "g.dfdbk", "add": -22}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "voice.@RESO", "add": -14}, {"to": "pulse.@BRIGHT", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "shimmer.@MOVE", "add": -20}, {"to": "pulse.glide", "add": -10},
+                                                      {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_arrival": {"bands": [
+      {"from": 0.00, "layers": ["shimmer", "voice"]},
+      {"from": 0.36, "layers": ["shimmer", "pulse", "voice"], "pulse": "x.........x....."},
+      {"from": 0.80, "layers": "all", "drums": ["kick", "conga"]}]},
+    "e_colony": {"bands": [
+      {"from": 0.00, "layers": ["shimmer", "voice"]},
+      {"from": 0.25, "layers": ["shimmer", "pulse", "voice"], "pulse": "x..x..x..x......"},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "rim", "conga", "bell"]},
+      {"from": 0.75, "layers": "all", "fills": true}]},
+    "e_orbit": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["shimmer", "pulse", "voice"]},
+      {"from": 0.28, "layers": "all", "drums": ["kick", "snare", "conga", "hat"], "density": "x...x...x...x..."},
+      {"from": 0.44, "layers": "all", "fills": true},
+      {"from": 0.85, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_void": {"bands": [
+      {"from": 0.00, "layers": ["shimmer", "voice"]},
+      {"from": 0.42, "layers": ["shimmer", "pulse", "voice"], "pulse": "x.........x....."},
+      {"from": 0.82, "layers": "all", "drums": ["kick", "conga"]}]}
+  },
+  "smart_keys": {"track": "voice", "mode": "melody", "melody_scale": [0, 2, 3, 7, 8], "white": "scale", "black": "chord",
+                 "tonic": "B3", "range": ["C#3", "G6"]},
+  "guard": {
+    "notes": {"voice": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "pulse": {"range": ["F#1", "G3"]},
+              "shimmer": {"range": ["C4", "C6"]}},
+    "record": {"quantize": 0.7},
+    "sound": {"ranges": {"voice.Q": [0, 90], "g.dfdbk": [0, 86]}, "max_level": 116, "max_dfdbk": 86, "max_rsize": 124},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4, "grain_dens": 90}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

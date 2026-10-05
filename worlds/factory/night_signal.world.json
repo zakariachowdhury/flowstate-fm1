@@ -1,0 +1,128 @@
+{
+  "notes": "Cinematic, E dorian, 120 BPM in a half-time feel. A lonely transmission: an FM bell beacon pinging a sparse three-pulse call (dot, dot, long) whose quarter-note echoes carry it into the dark, a nervous phase-distortion bass galloping in sixteenths under it, the player's theremin on the Smart Keys (a pure sine, mono, a long portamento and a wide vibrato; COLOR drives it into harmonics), radio static in the master (DUST), and an electro kit ticking like a clock: kick on 1, snare on 3. Dorian's major IV (A over E) is the colour of the night. Scenes: A one chord, Em, for four bars, over a heartbeat on E; B Em for two bars then IV and VII back home; C never touches the tonic (III IV v VII climbing, the suspense held); D the dorian plagal IV to i. ENERGY turns the heartbeat into the gallop, then brings the clock, then the alarm and fills. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "night_signal",
+  "name": "NIGHT SIGNAL",
+  "category": "CINEMATIC",
+  "blurb": "A beacon in the dark",
+  "tempo": {"bpm": 120, "min": 104, "max": 132},
+  "key": {"root": "E", "scale": "DOR"},
+  "tracks": [
+    {"name": "beacon", "role": "texture", "register": "C4", "sound": {"engine": "DIGITAL", "preset": "TRAP BELL",
+      "params": {"level": 100, "IDX": 76, "lrate": 18, "dly": 64, "rev": 70, "pan": -14}}},
+    {"name": "bass", "role": "bass", "register": "A1", "sound": {"engine": "PHASE", "preset": "CZ BASS",
+      "params": {"level": 112, "DCW": 30, "lrate": 30, "chor": 10, "rev": 8}}},
+    {"name": "theremin", "role": "lead", "register": "C4", "sound": {"engine": "ANALOG", "preset": "SUB BASS",
+      "params": {"level": 74, "trans": 0, "atk": 22, "rel": 64, "DRV": 10, "glide": 70, "ld_pit": 4, "lfade": 40, "lrate": 78,
+                 "dly": 48, "rev": 72, "pan": 10}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "ELECTRO", "params": {"level": 108, "rev": 40}}}
+  ],
+  "fx": {"dtime": "1/4", "dfdbk": 52, "dcolor": 50, "dmix": 88, "rsize": 114, "rdamp": 60, "crate": 20, "cdepth": 50, "dust": 5},
+  "patterns": {
+    "pg_call": {"track": "beacon", "steps": "c1' . . c1'_ . . c5' . . . . . . . . . | . . . . . . . . c9 . . . c3' . . ."},
+    "bs_heart": {"track": "bass", "steps": "1! . 1 1 1 . 1 1 1 . 1 1 5, . 1 1"},
+    "bs_gallop": {"track": "bass", "steps": "c1 . c1 c1 c1 . c1 c1 c1 . c1 c1 c5, . c1 c1"},
+    "dr_clock": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....|x.......x.....s.",
+      "snare":  "........x.......|........x.......",
+      "hat":    "x.g.s.g.x.g.s.g.|x.g.s.g.x.g.s.g.",
+      "rim":    "......s.......s.|...s..........s."}},
+    "dr_alarm": {"track": "drums", "lanes": {
+      "kick":   "x.....s.x.......|x.....s.x...s...",
+      "snare":  "........x.......|........x.....s.",
+      "hat":    "s.g.s.g.s.g.s.g.|s.g.s.g.s.g.s.g.",
+      "rim":    "...s..s......s..|...s..s......s..",
+      "open":   "..............s.|..............s."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....",
+      "snare":  "........s.s.x.2.",
+      "hat":    "s.g.s.g.........",
+      "tomhi":  "....g...........",
+      "tomlo":  "......g.....g..."}}
+  },
+  "progressions": {
+    "static": ["i:16"],
+    "transmit": ["i:8", "IV:4", "VII:4"],
+    "intercept": ["III:4", "IV:4", "v:4", "VII:4"],
+    "nosignal": ["IV:8", "i:8"]
+  },
+  "scenes": {
+    "A": {"name": "STATIC", "role": "intro", "progression": "static", "energy": "e_static", "transition": 2,
+          "patterns": {"beacon": "pg_call", "bass": "bs_heart", "drums": "dr_clock"}},
+    "B": {"name": "TRANSMIT", "role": "main", "progression": "transmit", "energy": "e_transmit", "fill": "dr_fill",
+          "patterns": {"beacon": "pg_call", "bass": "bs_gallop", "drums": "dr_clock"}},
+    "C": {"name": "INTERCEPT", "role": "lift", "progression": "intercept", "energy": "e_intercept", "fill": "dr_fill",
+          "params": {"bass.ed_flt": 14}, "fx": {"dfdbk": 56},
+          "patterns": {"beacon": "pg_call", "bass": "bs_gallop", "drums": "dr_alarm"}},
+    "D": {"name": "NO SIGNAL", "role": "breakdown", "progression": "nosignal", "energy": "e_nosignal", "transition": 2,
+          "params": {"beacon.rev": 90, "beacon.dly": 76}, "fx": {"rsize": 120, "rdamp": 70, "dust": 9},
+          "patterns": {"beacon": "pg_call", "bass": "bs_heart", "drums": "dr_clock"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "SHORTWAVE": {"params": {"beacon.IDX": 60, "theremin.DRV": 4, "bass.DCW": 22}, "fx": {"dust": 16, "dcolor": 34, "rdamp": 78},
+                  "macros": {"COLOR": 0.36}},
+    "ECHOES": {"params": {"beacon.dly": 80, "theremin.dly": 64, "beacon.rev": 84}, "fx": {"dfdbk": 58, "rsize": 118},
+               "energy_bias": -0.06, "macros": {"SPACE": 0.7}},
+    "PURSUIT": {"params": {"bass.DCW": 38}, "fx": {"duck": 22}, "energy_bias": 0.12, "macros": {"MOTION": 0.62}},
+    "GHOST": {"sounds": {"beacon": "MUSIC BOX"}, "params": {"beacon.level": 104, "theremin.ld_pit": 6, "theremin.lrate": 70},
+              "fx": {"crate": 12, "cdepth": 80}, "energy_bias": -0.04, "macros": {"MOTION": 0.64}}
+  },
+  "macros": {
+    "COLOR": [{"to": "beacon.@BRIGHT", "min": -30, "max": 20},
+              {"to": "theremin.@DRIVE", "min": -4, "max": 34, "curve": "exp"},
+              {"to": "g.dcolor", "min": -20, "max": 20},
+              {"to": "g.dust", "min": 6, "max": -4}],
+    "MOTION": [{"to": "theremin.ld_pit", "min": -2, "max": 2},
+               {"to": "theremin.lrate", "min": -10, "max": 10},
+               {"to": "beacon.ld_pit", "min": 0, "max": 3, "smooth": "slow"},
+               {"to": "bass.ld_flt", "min": 0, "max": 16, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "beacon+theremin.rev", "min": -40, "max": 20, "curve": "s"},
+              {"to": "g.rsize", "min": -36, "max": 6},
+              {"to": "g.dfdbk", "min": -30, "max": 8},
+              {"to": "beacon+theremin.dly", "min": -34, "max": 14},
+              {"to": "drums.rev", "min": -30, "max": 20}],
+    "ENERGY": [{"to": "beacon.level", "min": 0, "max": -3},
+               {"to": "drums.level", "min": -14, "max": 8},
+               {"to": "bass.~bright", "min": 0, "max": 14}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -26}, {"to": "g.dfdbk", "add": -22},
+                                                     {"to": "beacon.dly", "add": -20}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "theremin.@DRIVE", "add": -14}, {"to": "beacon.@BRIGHT", "add": -12}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "theremin.ld_pit", "add": -2}, {"to": "beacon.ld_pit", "add": -2},
+                                                      {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_static": {"bands": [
+      {"from": 0.00, "layers": ["beacon", "theremin"]},
+      {"from": 0.36, "layers": ["beacon", "bass", "theremin"], "bass": "x...x...x...x..."},
+      {"from": 0.80, "layers": "all", "drums": ["kick", "hat"], "bass": "x...x...x...x..."}]},
+    "e_transmit": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["beacon", "theremin"]},
+      {"from": 0.24, "layers": ["beacon", "bass", "theremin"], "bass": "x...x...x...x..."},
+      {"from": 0.40, "layers": "all", "drums": ["kick", "snare", "hat", "rim"], "density": "x...x...x...x..."},
+      {"from": 0.74, "layers": "all", "fills": true}]},
+    "e_intercept": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["beacon", "bass", "theremin"]},
+      {"from": 0.28, "layers": "all", "drums": ["kick", "snare", "hat"], "density": "x...x...x...x..."},
+      {"from": 0.44, "layers": "all", "fills": true},
+      {"from": 0.85, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_nosignal": {"bands": [
+      {"from": 0.00, "layers": ["beacon", "theremin"]},
+      {"from": 0.42, "layers": ["beacon", "bass", "theremin"], "bass": "x...x...x...x..."},
+      {"from": 0.82, "layers": "all", "drums": ["kick", "hat"], "bass": "x...x...x...x..."}]}
+  },
+  "smart_keys": {"track": "theremin", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord",
+                 "tonic": "E3", "range": ["G2", "E6"]},
+  "guard": {
+    "notes": {"theremin": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["F#1", "E3"]},
+              "beacon": {"range": ["C4", "C7"]}},
+    "record": {"quantize": 0.75},
+    "sound": {"ranges": {"g.dfdbk": [0, 86]}, "max_level": 116, "max_dfdbk": 86, "max_rsize": 124},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

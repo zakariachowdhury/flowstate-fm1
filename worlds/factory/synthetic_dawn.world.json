@@ -1,0 +1,131 @@
+{
+  "notes": "Cinematic, A mixolydian, 94 BPM. Sunrise over a machine city: a Berlin-school sequencer (a low resonant phase-distortion pluck rolling sixteenths on an A pedal: A, E and B, the open sus2 of the key), a synthetic choir that swells in on long attacks and breathes its vowel on a slow LFO, the player's bright sync lead on the Smart Keys (glide and a delayed vibrato), and a LinnDrum kit that arrives late: half-time with a big snare on 3, then straight and driving in the lift. Every chord is diatonic to the mixolydian and the major pentatonic is consonant over all of them. Scenes: A open sus2 voicings on I and VII; B the loop I v7 VII IV (the IV falls home to I); C the roots climb vi VII I to IV, the sequencer follows them and the choir's top voice rises; D strips to the choir on ii and IV. ENERGY opens the sequencer's filter and fills its sixteenths in, then brings the drums. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "synthetic_dawn",
+  "name": "SYNTHETIC DAWN",
+  "category": "CINEMATIC",
+  "blurb": "Sunrise over the machine",
+  "tempo": {"bpm": 94, "min": 84, "max": 104},
+  "key": {"root": "A", "scale": "MIX"},
+  "tracks": [
+    {"name": "choir", "role": "pad", "register": "C3", "sound": {"engine": "VOICE", "preset": "CHOIR AAH",
+      "params": {"level": 67, "atk": 92, "rel": 96, "lrate": 16, "ld_shp": 14, "chor": 60, "dly": 14, "rev": 82}}},
+    {"name": "seq", "role": "keys", "register": "C2", "sound": {"engine": "PHASE", "preset": "RESO PLUCK",
+      "params": {"level": 99, "DCW": 44, "sgate": 72, "lrate": 10, "ld_flt": 8, "chor": 20, "dly": 36, "rev": 34, "pan": -10}}},
+    {"name": "lead", "role": "lead", "register": "A3", "sound": {"engine": "TRIO", "preset": "SYNC LEAD",
+      "params": {"level": 87, "CUT": 80, "glide": 48, "ld_pit": 2, "lfade": 50, "lrate": 84, "dly": 46, "rev": 60, "pan": 8}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "80S", "params": {"level": 78, "rev": 48}}}
+  ],
+  "fx": {"dtime": "1/8", "dfdbk": 42, "dcolor": 58, "dmix": 84, "rsize": 108, "rdamp": 52, "crate": 30, "cdepth": 70},
+  "patterns": {
+    "ch_open": {"track": "choir", "div": "1/4", "steps": "[c1 c5 c9] - - - - - - -"},
+    "ch_bar": {"track": "choir", "div": "1/4", "steps": "[c1 c5 c3'] - - -"},
+    "sq_roll": {"track": "seq", "steps": "1! 1' 5 1' 2' 1' 5 1' 1 1' 5 1' 5' 1' 2' 1'"},
+    "sq_climb": {"track": "seq", "steps": "c1! c1' c5 c1' c3' c1' c5 c1' c1 c1' c5 c1' c5' c1' c3' c1'"},
+    "dr_rise": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....|x.........x...s.",
+      "snare":  "........x.......|........x.......",
+      "hat":    "s.s.s.s.s.s.s.s.|s.s.s.s.s.s.s.s.",
+      "open":   "................|..............s."}},
+    "dr_day": {"track": "drums", "lanes": {
+      "kick":   "x.....x...x.....|x.....x...x...x.",
+      "snare":  "....x.......x...|....x.......x...",
+      "hat":    "s.x.s.x.s.x.s.x.|s.x.s.x.s.x.sgx.",
+      "open":   "......s.........|......s.......s."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.......x.......",
+      "snare":  "........s.....x.",
+      "hat":    "s.s.s.s.s.s.....",
+      "tomhi":  "....s.s.........",
+      "tomlo":  "..........s.s.s."}}
+  },
+  "progressions": {
+    "pre": ["Isus2:8", "VII:8"],
+    "rise": ["I:4", "v7:4", "VII:4", "IV:4"],
+    "day": ["vi7:4", "VII:4", "I:4", "IV:4"],
+    "wind": ["ii:8", "IV:8"]
+  },
+  "scenes": {
+    "A": {"name": "PRE-DAWN", "role": "intro", "progression": "pre", "energy": "e_pre", "transition": 2,
+          "patterns": {"choir": "ch_open", "seq": "sq_roll", "drums": "dr_rise"}},
+    "B": {"name": "SUNRISE", "role": "main", "progression": "rise", "energy": "e_rise", "fill": "dr_fill",
+          "patterns": {"choir": "ch_bar", "seq": "sq_roll", "drums": "dr_rise"}},
+    "C": {"name": "DAYBREAK", "role": "lift", "progression": "day", "energy": "e_day", "fill": "dr_fill",
+          "params": {"seq.ed_flt": 14}, "fx": {"dfdbk": 46},
+          "patterns": {"choir": "ch_bar", "seq": "sq_climb", "drums": "dr_day"}},
+    "D": {"name": "SOLAR WIND", "role": "breakdown", "progression": "wind", "energy": "e_wind", "transition": 2,
+          "params": {"choir.rel": 94, "choir.rev": 92}, "fx": {"rsize": 116, "rdamp": 60},
+          "patterns": {"choir": "ch_open", "seq": "sq_roll", "drums": "dr_rise"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "GOLDEN": {"sounds": {"choir": "SOUL OOH"}, "params": {"choir.level": 72, "seq.DCW": 36, "lead.CUT": 72},
+               "fx": {"dcolor": 44, "rdamp": 66}, "macros": {"COLOR": 0.4}},
+    "CHROME": {"sounds": {"lead": "HOOVER"}, "params": {"seq.DCW": 54, "choir.BUZZ": 56},
+               "fx": {"dcolor": 72}, "macros": {"COLOR": 0.64}},
+    "HAZY": {"params": {"choir.rev": 98, "seq.dly": 50, "lead.dly": 58}, "fx": {"rsize": 116, "dfdbk": 48, "dmix": 92},
+             "energy_bias": -0.06, "macros": {"SPACE": 0.7}},
+    "DRIVING": {"fx": {"duck": 24}, "energy_bias": 0.1, "macros": {"MOTION": 0.62}}
+  },
+  "macros": {
+    "COLOR": [{"to": "choir.@BRIGHT", "min": -24, "max": 26},
+              {"to": "lead.~bright", "min": -30, "max": 20, "curve": "s"},
+              {"to": "g.dcolor", "min": -20, "max": 22}],
+    "MOTION": [{"to": "choir.ld_shp", "min": -14, "max": 30, "smooth": "slow"},
+               {"to": "choir.lrate", "min": -8, "max": 12, "smooth": "slow"},
+               {"to": "seq.ld_flt", "min": -8, "max": 18, "smooth": "slow"},
+               {"to": "seq.sgate", "min": -24, "max": 24},
+               {"to": "lead.ld_pit", "min": -2, "max": 2},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "choir+lead.rev", "min": -40, "max": 20, "curve": "s"},
+              {"to": "g.rsize", "min": -36, "max": 6},
+              {"to": "g.dfdbk", "min": -28, "max": 10},
+              {"to": "seq+lead.dly", "min": -30, "max": 16},
+              {"to": "drums.rev", "min": -30, "max": 20},
+              {"to": "choir.rel", "min": -20, "max": 10, "smooth": "slow"}],
+    "ENERGY": [{"to": "choir.level", "min": 3, "max": -2},
+               {"to": "seq.~bright", "min": -10, "max": 16},
+               {"to": "drums.level", "min": -14, "max": 8}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -24}, {"to": "g.dfdbk", "add": -22},
+                                                     {"to": "seq.dly", "add": -20}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "lead.@RESO", "add": -10}, {"to": "choir.@RESO", "add": -10},
+                                                     {"to": "seq.~bright", "add": -8}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "choir.ld_shp", "add": -14}, {"to": "seq.ld_flt", "add": -10},
+                                                      {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_pre": {"bands": [
+      {"from": 0.00, "layers": ["choir", "lead"]},
+      {"from": 0.30, "layers": ["choir", "seq", "lead"], "seq": "x...x...x...x..."},
+      {"from": 0.62, "layers": ["choir", "seq", "lead"], "seq": "x.x.x.x.x.x.x.x."},
+      {"from": 0.84, "layers": "all", "drums": ["kick", "hat"], "seq": "x.x.x.x.x.x.x.x."}]},
+    "e_rise": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["choir", "lead"]},
+      {"from": 0.22, "layers": ["choir", "seq", "lead"], "seq": "x.x.x.x.x.x.x.x."},
+      {"from": 0.40, "layers": "all", "drums": ["kick", "snare", "hat"], "density": "x...x...x...x..."},
+      {"from": 0.72, "layers": "all", "fills": true}]},
+    "e_day": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["choir", "seq", "lead"], "seq": "x.x.x.x.x.x.x.x."},
+      {"from": 0.25, "layers": "all", "drums": ["kick", "snare", "hat"], "density": "x...x...x...x..."},
+      {"from": 0.42, "layers": "all", "fills": true},
+      {"from": 0.85, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_wind": {"bands": [
+      {"from": 0.00, "layers": ["choir", "lead"]},
+      {"from": 0.42, "layers": ["choir", "seq", "lead"], "seq": "x...x...x...x..."},
+      {"from": 0.82, "layers": "all", "drums": ["kick", "hat"], "seq": "x.x.x.x.x.x.x.x."}]}
+  },
+  "smart_keys": {"track": "lead", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord+9",
+                 "tonic": "A3", "range": ["B2", "A6"]},
+  "guard": {
+    "notes": {"lead": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "seq": {"range": ["E2", "E5"]},
+              "choir": {"range": ["E3", "E6"]}},
+    "record": {"quantize": 0.7},
+    "sound": {"ranges": {"lead.RES": [0, 60], "choir.Q": [0, 80], "g.dfdbk": [0, 86]}, "max_level": 116,
+              "max_dfdbk": 86, "max_rsize": 124},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

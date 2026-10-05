@@ -1,0 +1,132 @@
+{
+  "notes": "Cinematic, Eb lydian, 80 BPM, a lilting triplet feel. A soft phase-distortion electric piano turning a broken chord over in eighth-note triplets like a home-movie loop (a slow tape wow on its pitch), a dusty granular cloud holding each chord's third and seventh, the player's breathy flute on the Smart Keys (mono, glide, delayed vibrato, triplet echoes), and a CR-78 rhythm box ticking quarter notes like the archive's clock. The lydian II (F over Eb) floats every cadence home. Scenes: A a remembered fragment over Imaj7 and II; B the loop on I vi I II; C the bass rises through vi I to a II(sus4) that resolves; D the fragment again, II back to I, in a bigger, darker room. COLOR is the tape's age (dark: dust and dull tone; bright: a vivid recall), MOTION the wow and the grain drift, SPACE the room and the echoes, ENERGY brings in the piano, then the clock, then the snare and fills. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "memory_archive",
+  "name": "MEMORY ARCHIVE",
+  "category": "CINEMATIC",
+  "blurb": "Home movies on old tape",
+  "tempo": {"bpm": 80, "min": 70, "max": 90},
+  "key": {"root": "Eb", "scale": "LYD"},
+  "tracks": [
+    {"name": "piano", "role": "keys", "register": "C3", "sound": {"engine": "PHASE", "preset": "SOFT KEYS",
+      "params": {"level": 90, "rel": 64, "lrate": 22, "ld_pit": 1, "chor": 40, "dly": 20, "rev": 60, "pan": -8}}},
+    {"name": "haze", "role": "texture", "register": "C4", "sound": {"engine": "GRAIN", "preset": "LOFI CLOUD",
+      "params": {"level": 94, "atk": 84, "rel": 96, "TONE": 70, "DENS": 72, "SPRD": 30, "chor": 40, "dly": 26, "rev": 90, "pan": 10}}},
+    {"name": "flute", "role": "lead", "register": "C4", "sound": {"engine": "SAMPLE", "preset": "LOFI FLUTE",
+      "params": {"level": 86, "glide": 26, "dly": 44, "rev": 66, "pan": 4}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "VINTAGE", "params": {"level": 118, "rev": 50}}}
+  ],
+  "fx": {"dtime": "8T", "dfdbk": 50, "dcolor": 46, "dmix": 90, "rsize": 112, "rdamp": 62, "crate": 28, "cdepth": 62, "dust": 6},
+  "patterns": {
+    "pn_loop": {"track": "piano", "div": "8T", "steps":
+      "c1 . c5 c3' . c5 c7' . c5 c3' . c5 | c1 . c5 c3' . c5 c9' . c5 c3' . ."},
+    "pn_frag": {"track": "piano", "div": "8T", "steps":
+      "c1 . c5 c3' . . . . . . . . | . . . c9' . . c7' . . c5 . ."},
+    "hz_bar": {"track": "haze", "div": "1/4", "steps": "[c3 c7] - - -"},
+    "hz_long": {"track": "haze", "div": "1/4", "steps": "[c3 c7] - - - - - - -"},
+    "dr_clock": {"track": "drums", "lanes": {
+      "kick":   "x.......s.......|x...........s...",
+      "rim":    "....x.......x...|....x.......x...",
+      "shaker": "x...s...x...s...|x...s...x...s..."}},
+    "dr_recall": {"track": "drums", "lanes": {
+      "kick":   "x.......x.......|x.......x...s...",
+      "snare":  "....s.......x...|....s.......x...",
+      "rim":    "........g.......|........g.......",
+      "shaker": "s...s...s...s...|s...s...s...s...",
+      "open":   "................|............g..."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x...............",
+      "shaker": "s...s...s...s...",
+      "tomhi":  "....s...s.......",
+      "tomlo":  "............s..."}}
+  },
+  "progressions": {
+    "rewind": ["Imaj7:8", "II:8"],
+    "play": ["Imaj7:4", "vi7:4", "Imaj7:4", "II:4"],
+    "recall": ["vi9:4", "Imaj7:4", "IIsus4:2", "II:2", "Imaj7:4"],
+    "fade": ["II:8", "Imaj7:8"]
+  },
+  "scenes": {
+    "A": {"name": "REWIND", "role": "intro", "progression": "rewind", "energy": "e_rewind", "transition": 2,
+          "patterns": {"piano": "pn_frag", "haze": "hz_long", "drums": "dr_clock"}},
+    "B": {"name": "PLAYBACK", "role": "main", "progression": "play", "energy": "e_play", "fill": "dr_fill",
+          "patterns": {"piano": "pn_loop", "haze": "hz_bar", "drums": "dr_clock"}},
+    "C": {"name": "RECALL", "role": "lift", "progression": "recall", "energy": "e_recall", "fill": "dr_fill", "transition": 2,
+          "params": {"piano.ed_shp": 10}, "fx": {"dfdbk": 54},
+          "patterns": {"piano": "pn_loop", "haze": "hz_bar", "drums": "dr_recall"}},
+    "D": {"name": "FADE OUT", "role": "breakdown", "progression": "fade", "energy": "e_fade", "transition": 2,
+          "params": {"piano.rel": 80, "haze.rev": 100}, "fx": {"rsize": 118, "rdamp": 72},
+          "patterns": {"piano": "pn_frag", "haze": "hz_long", "drums": "dr_clock"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "DREAMY": {"sounds": {"piano": "CZ STRING", "haze": "FLUTE DUST"}, "params": {"piano.level": 88, "haze.level": 82, "piano.rev": 76, "flute.dly": 58},
+               "fx": {"rsize": 118, "dfdbk": 54}, "energy_bias": -0.04, "macros": {"SPACE": 0.68}},
+    "FADED": {"params": {"piano.DCW": 26, "haze.TONE": 52, "flute.CUT": 82}, "fx": {"dust": 16, "dcolor": 30, "rdamp": 82},
+              "macros": {"COLOR": 0.32}},
+    "WARPED": {"params": {"piano.ld_pit": 3, "piano.lrate": 30, "haze.RAND": 40, "haze.SPRD": 52, "flute.ld_pit": 2},
+               "fx": {"crate": 14, "cdepth": 92}, "macros": {"MOTION": 0.7}},
+    "SUNLIT": {"sounds": {"piano": "RESO PLUCK"}, "params": {"piano.level": 106, "piano.DCW": 50, "haze.TONE": 84},
+               "fx": {"dust": 4, "dcolor": 60}, "energy_bias": 0.06, "macros": {"COLOR": 0.64}}
+  },
+  "macros": {
+    "COLOR": [{"to": "piano.~bright", "min": 24, "max": -24, "curve": "s"},
+              {"to": "haze.@BRIGHT", "min": -28, "max": 22},
+              {"to": "flute.@BRIGHT", "min": -34, "max": 18, "curve": "s"},
+              {"to": "g.dust", "min": 8, "max": -4},
+              {"to": "g.dcolor", "min": -18, "max": 20}],
+    "MOTION": [{"to": "piano.ld_pit", "min": -1, "max": 2, "smooth": "slow"},
+               {"to": "piano.lrate", "min": -10, "max": 14, "smooth": "slow"},
+               {"to": "haze.@MOVE", "min": -20, "max": 40, "smooth": "slow"},
+               {"to": "flute.ld_pit", "min": -1, "max": 2},
+               {"to": "g.cdepth", "min": -30, "max": 26}],
+    "SPACE": [{"to": "piano+flute.rev", "min": -40, "max": 20, "curve": "s"},
+              {"to": "haze.rev", "min": -36, "max": 14, "curve": "s"},
+              {"to": "g.rsize", "min": -36, "max": 4},
+              {"to": "g.dfdbk", "min": -30, "max": 8},
+              {"to": "flute.dly", "min": -36, "max": 14},
+              {"to": "drums.rev", "min": -30, "max": 20},
+              {"to": "piano.rel", "min": -20, "max": 14, "smooth": "slow"}],
+    "ENERGY": [{"to": "piano.level", "min": 3, "max": -1},
+               {"to": "haze.level", "min": 3, "max": -2},
+               {"to": "drums.level", "min": -14, "max": 8},
+               {"to": "piano.~bright", "min": 0, "max": -12}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -24}, {"to": "g.dfdbk", "add": -20},
+                                                     {"to": "haze.rev", "add": -14}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "haze.@BRIGHT", "add": -10}, {"to": "flute.@BRIGHT", "add": -8}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "haze.@MOVE", "add": -20}, {"to": "piano.ld_pit", "add": -1},
+                                                      {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_rewind": {"bands": [
+      {"from": 0.00, "layers": ["haze", "flute"]},
+      {"from": 0.35, "layers": ["piano", "haze", "flute"]},
+      {"from": 0.80, "layers": "all", "drums": ["kick", "shaker"]}]},
+    "e_play": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["haze", "flute"]},
+      {"from": 0.25, "layers": ["piano", "haze", "flute"]},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "rim", "shaker"], "density": "x.......x......."},
+      {"from": 0.75, "layers": "all", "fills": true}]},
+    "e_recall": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["piano", "haze", "flute"]},
+      {"from": 0.30, "layers": "all", "drums": ["kick", "rim", "shaker"], "density": "x.......x......."},
+      {"from": 0.44, "layers": "all", "fills": true}]},
+    "e_fade": {"bands": [
+      {"from": 0.00, "layers": ["haze", "flute"]},
+      {"from": 0.40, "layers": ["piano", "haze", "flute"]},
+      {"from": 0.82, "layers": "all", "drums": ["kick", "rim"]}]}
+  },
+  "smart_keys": {"track": "flute", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord+9",
+                 "tonic": "Eb4", "range": ["F3", "C7"]},
+  "guard": {
+    "notes": {"flute": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "piano": {"range": ["Ab2", "C6"]},
+              "haze": {"range": ["C4", "C6"]}},
+    "record": {"quantize": 0.6},
+    "sound": {"ranges": {"g.dfdbk": [0, 88]}, "max_level": 116, "max_dfdbk": 88, "max_rsize": 124},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4, "grain_dens": 90}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}
