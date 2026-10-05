@@ -603,6 +603,10 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         if (v->vel > 110)                               /* accent opens the filter with the env */
             m.cutoff += (m.envq15 * 24) >> 7;
         m.shape = (64 << 8) + ((lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7);
+#if FELUCCA_WORLD
+        m.cutoff += wvm_cut[(t - trk) % NPART];         /* H3: the macros' ~bright / ~shape (macro.c), 0 in SLOOP */
+        m.shape += wvm_shape[(t - trk) % NPART];
+#endif
         e->render(t, v, out, n, &m);
         nr++;
     }

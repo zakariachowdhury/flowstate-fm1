@@ -556,6 +556,14 @@ static void wb_pattern(const uint8_t *r, wpat_t *w)
     }
 }
 
+/* the loaded World's MAPS, CURVES, RULES and DEFAULTS to the macros (keep: the player's positions stay) */
+static void wb_macros(int keep)
+{
+#define WB_SEC(t) (wctx.have >> (t) & 1u ? wctx.b + wctx.off[t] : 0), (wctx.have >> (t) & 1u ? wctx.cnt[t] : 0u)
+    macro_load(WB_SEC(WF_S_MAPS), WB_SEC(WF_S_CURVES), WB_SEC(WF_S_RULES), wctx.b + wctx.off[WF_S_DEFAULTS], keep);
+#undef WB_SEC
+}
+
 /* check blob b and make it the loaded World: its patterns into the pool. The next commit switches World.
  * Not while a World plays (Phase 11 switches on the bar) or a stage is pending. */
 static int world_load(const uint8_t *b, uint32_t n)
@@ -578,6 +586,7 @@ static int world_load(const uint8_t *b, uint32_t n)
     wrt.id = wb_u32(b + 8);
     wrt.loaded = 1;
     wst.sw = 1;
+    wb_macros(0);                                         /* its mappings and default positions (macro.c) */
     return WE_OK;
 }
 
@@ -719,6 +728,19 @@ static int world_stage(uint32_t scene, uint32_t var)
         wst.g[g] = (int16_t)clamp(wst.g[g], GP[g].min, GP[g].max);
     }
     ws_keys(sc[12]);                                      /* the progression, the key maps (Phase 6) */
+    {   /* the scene's ENERGY table, the variation's bias, GUARD's arrangement timing (arrange.c, Phase 7) */
+        const uint8_t *e = 0, *pg = wctx.b + wctx.off[WF_S_PROGS];
+        uint32_t k, beats = 0;
+        if (sc[13] != WF_NONE)
+            for (e = wctx.b + wctx.off[WF_S_ENERGY], k = 0; k < sc[13]; k++)
+                e += WF_ENERGY_HDR + WF_BAND_LEN * e[2];
+        for (k = 0; k < sc[12]; k++)
+            pg += WF_PROG_HDR + 2u * pg[0];
+        for (k = 0; k < pg[0]; k++)
+            beats += pg[2u + 2u * k];
+        arr_stage(&wst.et, e, wctx.have >> WF_S_GUARD & 1u ? wctx.b + wctx.off[WF_S_GUARD] : 0, beats, sc[15],
+                  (int8_t)vr[-1]);
+    }
     wst.st = WST_READY;
     return WE_OK;
 }
@@ -728,9 +750,11 @@ static int world_stage(uint32_t scene, uint32_t var)
  * Held keys and the keys loop stay (except at a World switch); an engine change fades (voice.c engine_block). */
 static void world_commit(void)
 {
-    uint32_t t, i;
+    uint32_t t, i, ovin = ov_in;
     if (wst.st != WST_READY)
         return;
+    if (ovin)
+        ov_restore();                                     /* (inside a block: the bases back, then the new ones) */
     for (t = 0; t < NTRK; t++) {
         track_t *k = &trk[t];
         uint32_t np = wst.pat[t], cp = wrt.cur_pat[t];
@@ -760,12 +784,15 @@ static void world_commit(void)
     wrt.fill = wst.fill;
     harm_commit();                                        /* the progression (from chord 0) and the key maps */
     sk_commit(wst.sw);
+    arr_commit(&wst.et);                                  /* its ENERGY table, the band at the position (Phase 7) */
     if (wst.sw) {                                         /* a World switch: a different instrument */
         song.g[G_BPM] = wst.bpm;
         panic_req = (uint8_t)((1u << NTRK) - 1u);
         song.sel = wrt.keys_trk;
         wst.sw = 0;
     }
+    if (ovin)
+        ov_apply(0);                                      /* the macros on the new bases (macro.c) */
     wst.st = WST_APPLIED;
 }
 
@@ -780,6 +807,8 @@ static int world_apply(uint32_t scene, uint32_t var)
     if (rc)
         return rc;
     fm1_irq_off();
+    if (wst.sw || !wrt.active)
+        ov_reset();                                       /* another World: the old one's overlay goes (macro.c) */
     world_commit();
     if (!wrt.active) {                                    /* SLOOP -> a World: the pitch counts (H2) and Smart Keys */
         memset(vref, 0, sizeof vref);
@@ -790,6 +819,7 @@ static int world_apply(uint32_t scene, uint32_t var)
     wrt.active = 1;
     fm1_irq_on();
     wst.st = WST_FREE;
+    macro_eval();                                         /* the macros' table now (a World: at its targets) */
     return WE_OK;
 }
 
@@ -807,6 +837,8 @@ static void world_unload(void)                         /* back to SLOOP's paths 
     wrt.active = 0;
     wrt.refcount = 0;
     wrt.keys_on = 0;
+    wrt.mute = 0;                                         /* (H1: no track left out by an ENERGY band) */
+    ov_reset();                                           /* (no macro overlay, no vmod offset: SLOOP's sound) */
     fm1_irq_on();
 }
 
@@ -1044,6 +1076,7 @@ static int world_hot_reload(const uint8_t *b, uint32_t n)
     for (t = 0; t < NTRK; t++)
         if (t != wrt.keys_trk || wst.sw)
             wrt.cur_pat[t] = WORLD_STALE;
+    wb_macros(1);                                         /* (its mappings may have changed; the positions stay) */
     fm1_irq_on();
     var = wrt.var < c.cnt[WF_S_VARS] ? wrt.var : 0u;
     if ((rc = world_stage(wrt.scene, var)) != WE_OK)

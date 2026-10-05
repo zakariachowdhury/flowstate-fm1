@@ -377,6 +377,9 @@ static void mix_block(int32_t *out, uint32_t n)
     int32_t m0, m1;
     for (i = 0; i < n; i++)
         send_c[i] = send_d[i] = send_r[i] = mix_l[i] = mix_r[i] = 0;
+#if FELUCCA_WORLD
+    world_fx_pre();                                     /* H4: the macros' effective values in (macro.c): the */
+#endif                                                  /* sequencer's gate and glide see them too */
     events_block(n);
     duck_block(n * (uint32_t)song.g[G_BPM]);
     for (i = 0; i < NPART; i++)
@@ -392,6 +395,9 @@ static void mix_block(int32_t *out, uint32_t n)
     dust_process(mix_l, mix_r, n);
     punch_process(mix_l, mix_r, n);
     djf_process(mix_l, mix_r, n);
+#if FELUCCA_WORLD
+    world_fx_post();                                    /* H5: the base values back: the UI never sees an offset */
+#endif
     m1 = (int32_t)song.master_q12;
     m0 = master_cur < 0 ? m1 : master_cur;
     master_cur = m1;

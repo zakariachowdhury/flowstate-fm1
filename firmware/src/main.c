@@ -225,6 +225,9 @@ static void fm1_main(void)
         ui_draw();
         felucca_dbg.stage = 8;
         autosave_tick();                                /* the working project into flash, when quiet */
+#if FELUCCA_WORLD
+        macro_service();                                /* the macros' target table, when a control moved */
+#endif
 #if FELUCCA_ARRANGER
         sections_flush();                               /* live sections / the recorded song, when quiet */
 #endif

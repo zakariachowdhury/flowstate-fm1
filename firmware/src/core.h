@@ -269,17 +269,21 @@ static uint32_t div_samples(uint32_t div)
 #define TSEL (&trk[song.sel])    /* the selected track */
 #define TDRUM (&trk[TRK_DRUM])
 static int is_drum(const track_t *t) { return t == TDRUM; }
-/* silent: MUTE, or another track is soloed */
+#if FELUCCA_WORLD
+#include "world_rt.h"            /* the state the Musical World code shares with the audio ISR */
+#endif
+/* silent: MUTE, or another track is soloed (or, in a World, the ENERGY band leaves it out: H1) */
 static int trk_silent(const track_t *t)
 {
     uint32_t i = (uint32_t)(t - trk);
-    return t->p[P_MUTE] || (song.solo && !((song.solo >> i) & 1u));
+    return t->p[P_MUTE] || (song.solo && !((song.solo >> i) & 1u))
+#if FELUCCA_WORLD
+           || ((wrt.mute >> i) & 1u)
+#endif
+        ;
 }
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")   /* slot store before the index update */
 static volatile uint32_t fm1_ms;  /* milliseconds since boot (TIMER4-based, TIMER5 ISR in main.c) */
 /* Two early failed boots -> USB recovery; recovery reset -> mask-ROM UBOOT. */
 #include "bootguard.h"
 bootguard_t bootguard __attribute__((section(".noinit")));
-#if FELUCCA_WORLD
-#include "world_rt.h"            /* the state the Musical World code shares with the audio ISR */
-#endif

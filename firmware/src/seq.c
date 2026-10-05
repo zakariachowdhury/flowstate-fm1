@@ -1416,6 +1416,12 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
     if (is_drum(t)) {
         const dstep_t *s = &t->dstep[t->seq_idx % NSTEP];
         uint32_t m = dstep_mask(s) & ~roll_lanes(t);
+#if FELUCCA_WORLD
+        if (wrt.active) {                               /* H13: as drum_step played it; ratchets if the band allows */
+            s = arr_dstep(s, t->seq_idx % NSTEP);
+            m = arr.ratchets ? dstep_mask(s) & ~roll_lanes(t) & ~arr_dskip(t->seq_idx % NSTEP) : 0u;
+        }
+#endif
         for (i = 0; m; i++, m >>= 1) {
             uint32_t hits = 1u + dstep_rat(s, i), h, done;
             if (!(m & 1u) || hits == 1u)
@@ -1433,6 +1439,10 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
         const step_t *s = &t->step[t->seq_idx % NSTEP];
         if (s->time != ST_NOTE || !s->rat)
             return;
+#if FELUCCA_WORLD
+        if (wrt.active && !arr_plays(trk_index(t), t->seq_idx % NSTEP))
+            return;                                     /* H14: a NOTE the band rests */
+#endif
         for (i = 0; i < s->n; i++) {
             uint32_t hits = 1u + ((s->rat >> (2u * i)) & 3u), h;
             if (hits == 1u || roll_has(t, s->note[i]))
@@ -1482,8 +1492,15 @@ static void seq_tick(track_t *t, uint32_t adv)
             erase_step(t, idx);                      /* EDIT + key held: gone as it passes */
         if (is_drum(t)) {
             uint32_t skip = t->rskip_abs == abs ? t->rskip_lanes : 0u;
+            const dstep_t *ds = &t->dstep[idx];
             t->rskip_lanes = 0;
-            drum_step(t, &t->dstep[idx], skip);
+#if FELUCCA_WORLD
+            if (wrt.active) {                        /* H13 / H14: the ENERGY band's lanes and density, the fill */
+                ds = arr_dstep(ds, idx);
+                skip |= arr_dskip(idx);
+            }
+#endif
+            drum_step(t, ds, skip);
         } else {
             const step_t *s = &t->step[idx];
             uint32_t skip = 0, i, k;
@@ -1494,6 +1511,12 @@ static void seq_tick(track_t *t, uint32_t adv)
                         if (s->note[i] == t->rskip[k])
                             skip |= 1u << i;
             t->rskip_n = 0;
+#if FELUCCA_WORLD
+            if (wrt.active && s->time == ST_NOTE && !arr_plays(trk_index(t), idx)) {
+                static const step_t rest = {{0, 0, 0, 0}, 0, ST_REST, 0, 0, 0, 0};
+                s = &rest;                           /* H14: the ENERGY band's play mask: this NOTE rests */
+            }
+#endif
             seq_step(t, s, slen, skip);
         }
     }
@@ -1605,6 +1628,7 @@ static void events_block(uint32_t n)
     }
 #if FELUCCA_WORLD
     harm_block();                                     /* H16: the chord the keys of this block play over */
+    arr_block();                                      /* .. and the ENERGY band the steps play with (arrange.c) */
 #endif
     keyboard_block();
     while (mi_r != mi_w) {                            /* USB-MIDI (and TRS) in */
