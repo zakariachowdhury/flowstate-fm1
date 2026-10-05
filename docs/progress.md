@@ -378,3 +378,64 @@ ENERGY makes the music fuller, not louder. Both regression builds match the 83 g
 **Next.** Phase 8: the Musical Guardrail Engine. `guard.c` with soft caps, sound ranges and combinations, the note
 guard moved there, read-site clamps, a CPU guard, and exhaustive macro sweeps checking clipping, runaway feedback,
 silence, CPU and invalid parameters.
+
+## Phase 8: Musical Guardrail Engine (2026-10-05)
+
+**Done.**
+
+**`firmware/src/guard.c`** has three areas.
+- **Notes.** The note guard (range fold and polyphony cap) moved here from Smart Keys. Loop follow: an avoid note in
+  the keys loop plays the nearest chord tone. The record-guard entry points that Phase 10 will call are implemented.
+- **Sound.**
+  - The World's GUARD soft caps and ranges apply inside each macro slot.
+  - A limit on how many tracks may distort at once.
+  - Six default sound combinations (for example, a big room with a long echo caps the echo), or the World's own,
+    now carried in the format.
+- **CPU.** UNISON and GRAIN density caps. Above the ceiling, the costly slots glide back to their base.
+
+**Read-site clamps (H6).** The bus globals, DUST, DIST and every engine EDIT value are clamped against the hard limits
+and descriptors at the point where they are read. They protect SLOOP mode too, and are no-ops for in-range values.
+
+**`tools/worldc.py`** gains an integer-exact Python model of the macros and guard (`worldc model`). `worldc check` now
+refuses:
+- out-of-range or over-limit mappings;
+- saturation at 100 % without an explicit `saturate`;
+- more than 48 slots;
+- Smart Keys ranges under an octave.
+
+**World data fixes.** The dark variations of NEON RAIN, MIDNIGHT DRIVE and FROZEN LAKE went nearly silent at COLOR 0;
+their cutoffs and levels are raised. FROZEN LAKE's echo tail is shorter. The ORIGINAL variations and defaults are
+unchanged.
+
+**Verified.**
+- `./tests/run_tests.sh` passes all 35 groups. New: `guard_test`, `guard_sweep` (quick mode), `guard_mutants` (28
+  injected bugs, all caught), and the Python model checked byte-identical to the C engine (13,020 slot tables).
+- **Full sweep** (`SWEEP=full`): 14,800 points over every World × scene × the 4-D macro space. All clean:
+
+  | Check | Result |
+  | --- | --- |
+  | Worst peak | −2.5 dBFS |
+  | Tails 6 s after STOP | every one below −60 dBFS |
+  | Silence while a layer plays | none |
+  | Loudness jumps with a player | at most 7.6 LU |
+  | CPU | at most 2,072 host instructions/sample; the guard never needed to engage |
+
+- Both regression builds match the 83 goldens.
+
+**Sizes.** Image 521,396 B (+1 KB).
+
+**Deviations** (design §6.5):
+- Sound combinations use the reserved GUARD byte 25, so existing Worlds get the six defaults.
+- The H6 clamps cover more parameters than the design named.
+
+**Left for later.**
+- The PLAY REC record guard (Phase 10).
+- LIVE ECHO's feedback limit (Phase 13).
+- The `validate-world` wrapper (Phase 16).
+- Calibrating the CPU budget against the device (Phase 17).
+- Two Worlds pass the tail check by less than 1 dB, so a DSP change that lengthens tails will flag them.
+
+**Commits:** `16cb839` to `d0785fd`.
+
+**Next.** Phase 9: the PLAY MODE UI on the device: home, World browser, scenes, variations, macro overlay, record and
+live FX screens; key LEDs; long-hold EDIT for Advanced Mode; first boot into NEON RAIN.
