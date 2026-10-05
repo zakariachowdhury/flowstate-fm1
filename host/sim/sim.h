@@ -98,7 +98,7 @@ typedef struct {
     int nvar, var, var_next;             /* variations (0: none), the one asked for (-1 none) */
     char var_name[8][12];
     int macro[4];                        /* COLOR MOTION SPACE ENERGY, 0..100 */
-    int macro_live;                      /* 0: stand-ins that turn SLOOP's KNOB 1..4 (until Phase 7) */
+    int macro_live;                      /* 1: a World's macros (macro.c); 0: a SLOOP project's KNOB 1..4 */
     char role[HOST_NTRK][8], sound[HOST_NTRK][16];   /* "PAD", "WARM PAD" */
     int mute[HOST_NTRK], level[HOST_NTRK], sel;      /* level 0..127; sel: the track the keys play */
     int keys_track, keys_smart;          /* the World's keys track; 1: Smart Keys map the keys (Phase 6) */
@@ -127,6 +127,9 @@ typedef struct {
     double cpu_max_all, cpu_sum_all;     /* since boot (avg = sum / windows) */
 } sim_fw_stats_t;
 #define SIM_PARAMS 64
+#define SIM_SLOTS 48                     /* the macro overlay (the inspector) */
+#define SIM_MAPS 64
+#define SIM_RULES 8
 typedef struct {
     uint64_t frames;                     /* rendered since power-on */
     uint32_t passes;
@@ -138,6 +141,11 @@ typedef struct {
     studio_t studio;
     int nparams;                         /* the selected track's raw parameters (the inspector) */
     host_param_t params[SIM_PARAMS];
+    int nslots, nmaps, nrules;           /* a World's macros as the overlay plays them (the inspector) */
+    host_slot_t slots[SIM_SLOTS];
+    host_mapping_t maps[SIM_MAPS];
+    host_rule_t rules[SIM_RULES];
+    host_energy_t energy;
     sim_fw_stats_t fw;
 } sim_snap_t;
 
@@ -248,7 +256,8 @@ void panel_draw(canvas_t *c, const sim_snap_t *s, const char *status1, const cha
 /* ---- studio_view.c: FLOWSTATE STUDIO (UI spec §12) */
 void studio_view_mouse(const void *sdl_event, const sim_snap_t *s);
 void studio_view_draw(canvas_t *c, const sim_snap_t *s, const char *status1, const char *status2);
-void inspector_draw(canvas_t *c, const sim_snap_t *s);   /* the developer's pane (raw parameters) */
+void inspector_draw(canvas_t *c, const sim_snap_t *s);   /* the developer's pane: a World's hidden macro mappings with
+                                                          * their live values, else the raw parameters */
 
 /* ---- main.c: the tabs both views share */
 #define TAB_X 776

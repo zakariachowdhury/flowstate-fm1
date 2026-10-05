@@ -126,6 +126,61 @@ void host_world_service(void);               /* the main loop's part: call it ev
 void host_world(host_world_t *w);
 const char *host_world_error(int code);      /* "BUSY", "CRC", ... (code: WE_*, or its negative) */
 
+/* ---- the performance macros (Phase 7, firmware/src/macro.c, arrange.c) while a World is active: COLOR MOTION SPACE
+ * ENERGY at 0..1000, home 500 (where they change nothing: the World as authored). The World's DEFAULTS set them when it
+ * loads; what each one moves (its mappings, curves, rules, gain compensation) is the World's. The audio interrupt
+ * smooths each parameter toward its target and puts the authored value back after every block, so host_state and
+ * host_track_params always show the authored values. ENERGY also arranges: its band of the scene's ENERGY table picks
+ * the tracks, drum lanes and density (layers on the next bar, the rest on the next beat). Controls 4..15 (SOUND
+ * SHAPE, MOVEMENT, LIVE FX) take positions too; their built-in mappings come with Phase 13 */
+enum { HOST_C_COLOR, HOST_C_MOTION, HOST_C_SPACE, HOST_C_ENERGY, HOST_NCTL = 16 };
+int host_macro_set(uint32_t ctl, int32_t pos);   /* clamped to 0..1000; the position set, or -1 (no World active) */
+/* the positions' table at once, every parameter at its target without the smoothing ramp (a renderer's start). The
+ * table the World load published must have been taken: render a block between the load and this. 0 = done */
+int host_macro_snap(void);
+int host_macro(uint32_t ctl);                    /* the position, or -1 (no World active) */
+const char *host_macro_name(uint32_t ctl);       /* "COLOR" .. "FREEZE" */
+/* the developer's view (the beginner UI never shows it): each parameter the macros move now is a slot of the overlay
+ * (a target at home has none: it costs the audio interrupt nothing) */
+typedef struct {
+    char name[32];                           /* "pad.cutoff", "lead.brightness" (~bright), "fx.delay_feedback" */
+    uint32_t ctls;                           /* the controls whose mappings move it, bit per control; bit 16: a rule */
+    int base, effective, lo, hi;             /* the parameter's steps (~bright / ~shape: base 0, effective = offset) */
+    double offset, target;                   /* steps: the smoothed offset now, and where it is going */
+    double norm;                             /* the effective value on the parameter's range, 0..1 (~bright / ~shape:
+                                              * 0.5 is the authored sound) */
+    char smooth[8];                          /* fast medium slow stepped */
+} host_slot_t;
+int host_macro_slots(host_slot_t *s, int max);   /* the overlay's slots now (at most 48); 0 without a World */
+typedef struct {
+    int ctl;                                 /* 0..15 */
+    char target[32];                         /* as host_slot_t.name: a mapping on several tracks gives one per track */
+    int min, max;                            /* its offsets at the control's ends, in the parameter's steps */
+    char curve[8];                           /* lin exp log s late lut */
+    double offset;                           /* its share now (steps) */
+    int slot;                                /* its slot in host_macro_slots; -1: none now (the target is at home, or the
+                                              * track's engine lacks the role: then role is 0) */
+    int role;                                /* 1: the target exists on the track's engine */
+    int effective;                           /* the parameter's value now (the slot's, else its base) */
+    double norm;                             /* .. on its range, 0..1 (~bright / ~shape: 0.5 is the authored sound) */
+} host_mapping_t;
+int host_macro_mappings(host_mapping_t *m, int max);
+typedef struct {
+    int a, b;                                /* the two controls (one condition: a = b) */
+    double ta, tb, strength;                 /* thresholds 0..1; 0 at or below them .. 1 with both at 100 % */
+    int nact;
+    char act[4][40];                         /* "bass.reverb -6" */
+} host_rule_t;
+int host_macro_rules(host_rule_t *r, int max);
+typedef struct {
+    int nbands, band, sel;                   /* the scene's bands (0: no table), the one the layers play, the one at pos */
+    int pos;                                 /* ENERGY with the variation's bias, 0..1000 */
+    int layers;                              /* bit per track heard */
+    int fill;                                /* this bar plays the scene's fill */
+    uint32_t lanes, density;                 /* the drum lanes allowed; the density steps */
+} host_energy_t;
+void host_energy(host_energy_t *e);
+
 /* ---- names, colours and the firmware's font, for a host's own drawing. Constant data only: any thread */
 const char *host_version(void);              /* "SLOOP 2.1" */
 const char *host_button_name(uint32_t label);    /* "FX" .. "OCT+" (panel.c) */

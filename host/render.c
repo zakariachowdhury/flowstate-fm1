@@ -28,8 +28,11 @@
  *   --scene A..D, --var NAME|N   the World's scene and variation (NAME as the World calls it, N from 1)
  *   --world-sequence  scenes A, B, C, D, --bars each (default 4), changed while playing on the bar, as a
  *                  player asks for them (world_request: the commit lands on the next bar)
- * The same input always gives the same bytes. Any format SLOOP reads works (FUN1..3 are converted). Macros
- * (--ctl) come with Phase 7. */
+ *   --ctl LIST     the World's macros (macro.c): COLOR=0.2,ENERGY=0.9 (0..1, or 0..100 above 1; home 0.5); any
+ *                  of COLOR MOTION SPACE ENERGY and the later controls (SOFT .. FREEZE). Set before PLAY, at once
+ *   --sweep CTL    CTL from 0 to 1 over the bars played (as a hand would turn it: smoothed), the others as --ctl
+ *                  or the World's defaults
+ * The same input always gives the same bytes. Any format SLOOP reads works (FUN1..3 are converted). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,7 +45,8 @@ static void usage(void)
     fprintf(stderr, "usage: sloop-render [--bars N | --seconds S] [--tail S] [--analyze | --check] [--dump]\n"
                     "                    [--screen OUT.ppm] INPUT.fun4 OUT.wav\n"
                     "       sloop-render [options] --song A.fun4,B.fun4,.. [--order A:4,B:8,..] [INPUT.fun4] OUT.wav\n"
-                    "       sloop-render [options] --world NAME|FILE [--scene A..D] [--var NAME] [--world-sequence] OUT.wav\n");
+                    "       sloop-render [options] --world NAME|FILE [--scene A..D] [--var NAME] [--world-sequence]\n"
+                    "                    [--ctl COLOR=0.2,ENERGY=0.9] [--sweep CTL] OUT.wav\n");
     exit(2);
 }
 
@@ -191,9 +195,40 @@ static uint32_t natural_bars(const host_state_t *s)
     return b > 0 ? (uint32_t)ceil(b - 1e-9) : 4u;
 }
 
+/* ---- --ctl / --sweep: the World's controls by name; 0 = ok */
+static double ctl_pos[HOST_NCTL] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};   /* < 0: default */
+static int ctl_index(const char *name, size_t n)
+{
+    int c;
+    for (c = 0; c < HOST_NCTL; c++)
+        if (strlen(host_macro_name((uint32_t)c)) == n && !strncasecmp(host_macro_name((uint32_t)c), name, n))
+            return c;
+    return -1;
+}
+static int ctl_parse(const char *list)
+{
+    const char *s = list;
+    while (*s) {
+        const char *eq = strchr(s, '='), *end = strchr(s, ',');
+        char *num_end;
+        double x;
+        int c;
+        if (!end)
+            end = s + strlen(s);
+        if (!eq || eq > end || (c = ctl_index(s, (size_t)(eq - s))) < 0)
+            return -1;
+        x = strtod(eq + 1, &num_end);
+        if (num_end != end || x < 0 || x > 100)
+            return -1;
+        ctl_pos[c] = x > 1 ? x / 100.0 : x;
+        s = *end ? end + 1 : end;
+    }
+    return 0;
+}
+
 /* ---- --world: a Musical World through world.c (the World's own tempo, scenes and variations) */
 static int render_world(const char *world, const char *wscene, const char *wvar, int seq, double bars, double seconds,
-                        double tail, int do_analyze, int do_check, int do_dump, const char *out)
+                        double tail, int do_analyze, int do_check, int do_dump, int sweep, const char *out)
 {
     host_world_t w;
     host_state_t st;
@@ -250,12 +285,29 @@ static int render_world(const char *world, const char *wscene, const char *wvar,
     bar = 4.0 * 60.0 * HOST_FS / st.bpm;
     bars = bars ? bars : seq ? 4 : seconds ? 0 : 8;
     play_blocks = seconds ? blocks_of(seconds * HOST_FS) : blocks_of((seq ? 4 : 1) * bars * bar);
+    for (i = 0; i < HOST_NCTL; i++)              /* --ctl, and --sweep's start */
+        if (ctl_pos[i] >= 0 || i == sweep) {
+            host_macro_set((uint32_t)i, i == sweep ? 0 : (int32_t)(ctl_pos[i] * 1000 + 0.5));
+            do_dump |= 2;                        /* (the positions are printed) */
+        }
     {
         int16_t pre[2 * HOST_BLOCK];
-        host_audio(pre, HOST_BLOCK);
+        host_audio(pre, HOST_BLOCK);             /* (the World's table taken) */
+        if (host_macro_snap() < 0) {
+            fprintf(stderr, "sloop-render: the macros did not take their positions\n");
+            return 1;
+        }
+    }
+    if (do_dump) {
+        printf("macros  ");
+        for (i = 0; i < 4; i++)
+            printf(" %s %.2f%s", host_macro_name((uint32_t)i), host_macro((uint32_t)i) / 1000.0, i == sweep ? " (sweep 0..1)" : "");
+        printf("\n");
     }
     host_play();
     for (b = 0; b < play_blocks; b++) {
+        if (sweep >= 0)                          /* 0 .. 1 over the bars played */
+            host_macro_set((uint32_t)sweep, (int32_t)((uint64_t)1000u * b / (play_blocks > 1 ? play_blocks - 1 : 1)));
         render(HOST_BLOCK);
         if (!seq)
             continue;
@@ -287,7 +339,7 @@ static int render_world(const char *world, const char *wscene, const char *wvar,
 int main(int argc, char **argv)
 {
     const char *pos[2] = {0, 0}, *song = 0, *order = 0, *screen = 0, *world = 0, *wscene = 0, *wvar = 0;
-    int wseq = 0;
+    int wseq = 0, sweep = -1, ctl = 0;
     char *files[4] = {0, 0, 0, 0}, *list = 0;
     double bars = 0, seconds = 0, tail = 4;
     int do_analyze = 0, do_check = 0, do_dump = 0, npos = 0, nfiles = 0, i, fmt;
@@ -322,6 +374,21 @@ int main(int argc, char **argv)
             wvar = argv[++i];
         else if (!strcmp(a, "--world-sequence"))
             wseq = 1;
+        else if (!strcmp(a, "--ctl") && i + 1 < argc) {
+            if (ctl_parse(argv[++i])) {
+                fprintf(stderr, "sloop-render: --ctl %s: NAME=X,.. with NAME one of COLOR MOTION SPACE ENERGY (or "
+                        "SOFT .. FREEZE) and X 0..1 or 0..100\n", argv[i]);
+                return 2;
+            }
+            ctl = 1;
+        } else if (!strcmp(a, "--sweep") && i + 1 < argc) {
+            if ((sweep = ctl_index(argv[i + 1], strlen(argv[i + 1]))) < 0) {
+                fprintf(stderr, "sloop-render: --sweep %s: one of COLOR MOTION SPACE ENERGY (or SOFT .. FREEZE)\n",
+                        argv[i + 1]);
+                return 2;
+            }
+            i++;
+        }
         else if (a[0] == '-' && a[1])
             usage();
         else if (npos < 2)
@@ -335,7 +402,11 @@ int main(int argc, char **argv)
         if (host_boot(NULL))
             return 1;
         host_master_volume(4096);
-        return render_world(world, wscene, wvar, wseq, bars, seconds, tail, do_analyze, do_check, do_dump, pos[0]);
+        return render_world(world, wscene, wvar, wseq, bars, seconds, tail, do_analyze, do_check, do_dump, sweep, pos[0]);
+    }
+    if (ctl || sweep >= 0) {
+        fprintf(stderr, "sloop-render: --ctl and --sweep move a World's macros: with --world\n");
+        return 2;
     }
     if (bars < 0 || seconds < 0 || tail < 0 || (bars && seconds) || (song ? npos < 1 : npos != 2) || (order && !song))
         usage();

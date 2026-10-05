@@ -40,6 +40,8 @@
 #if FELUCCA_WORLD                    /* the harmony and Smart Keys runtime, as felucca.c */
 #include "harmony.c"
 #include "smartkeys.c"
+#include "macro.c"
+#include "arrange.c"
 #endif
 #include "audio.c"
 #include "panel.c"
@@ -776,6 +778,7 @@ void host_world_unload(void) { world_unload(); }
 void host_world_service(void)
 {
     world_service();
+    macro_service();                             /* (main.c's loop: the macros' table when a control moved) */
     host_blob_gc();
 }
 void host_world(host_world_t *w)
@@ -810,6 +813,274 @@ void host_world(host_world_t *w)
     w->keys_on = wrt.keys_on;
     harm_chord_name(w->chord);                   /* harmony.c: the chord at the clock ("" with none) */
 }
+/* ------------------------------------------------ the macros (macro.c, arrange.c) --- */
+static const char *const HOST_CTL_NAME[WF_NCTL] = {"COLOR", "MOTION", "SPACE", "ENERGY", "SOFT", "SHORT", "BODY", "TAIL",
+                                                   "DRIFT", "WOBBLE", "PULSE", "RATE", "FILTER", "ECHO", "CRUSH", "FREEZE"};
+static const char *const HOST_CURVE[WF_NBUILTIN_CURVES] = {"lin", "exp", "log", "s", "late"};
+static const char *const HOST_CLASS[4] = {"fast", "medium", "slow", "stepped"};
+int host_macro_set(uint32_t ctl, int32_t pos)
+{
+    if (!wrt.active || ctl >= WF_NCTL)
+        return -1;
+    macro_set(ctl, pos);
+    return (int)macro_pos(ctl);
+}
+int host_macro(uint32_t ctl) { return wrt.active && ctl < WF_NCTL ? (int)macro_pos(ctl) : -1; }
+int host_macro_snap(void)
+{
+    if (!wrt.active)
+        return -1;
+    mac.snap = mac.dirty = 1;
+    return macro_eval() ? -2 : 0;                /* (-2: the last table is not taken yet) */
+}
+const char *host_macro_name(uint32_t ctl) { return ctl < WF_NCTL ? HOST_CTL_NAME[ctl] : "?"; }
+
+/* names for the inspector: the track by its role, the parameter by what it does */
+static void host_lower(char *d, const char *s, size_t n)
+{
+    size_t k;
+    for (k = 0; s[k] && k + 1 < n; k++)
+        d[k] = (char)tolower((unsigned char)s[k]);
+    d[k] = 0;
+}
+static void host_track_name(uint32_t t, char *d, size_t n)
+{
+    uint32_t r = world_track_role(t), k, twice = 0;
+    for (k = 0; k < NTRK; k++)
+        twice += k != t && world_track_role(k) == r;
+    host_lower(d, world_role_label(r), n);
+    if (twice)
+        snprintf(d + strlen(d), n - strlen(d), "%u", t + 1);
+}
+static void host_param_name(uint32_t kind, uint32_t t, uint32_t id, char *d, size_t n)
+{
+    static const struct { uint8_t id; const char *name; } TPN[] = {
+        {P_LEVEL, "level"}, {P_ATK, "attack"}, {P_DEC, "decay"}, {P_SUS, "sustain"}, {P_REL, "release"},
+        {P_ED_FLT, "env_filter"}, {P_ED_PIT, "env_pitch"}, {P_ED_SHP, "env_shape"}, {P_LRATE, "lfo_rate"},
+        {P_LPHASE, "lfo_phase"}, {P_LFADE, "lfo_fade"}, {P_LD_PIT, "lfo_pitch"}, {P_LD_FLT, "lfo_filter"},
+        {P_LD_SHP, "lfo_shape"}, {P_LD_AMP, "lfo_amp"}, {P_SGATE, "gate"}, {P_DIST, "drive"}, {P_CHOR, "chorus"},
+        {P_DLY, "delay"}, {P_REV, "reverb"}, {P_GLIDE, "glide"}, {P_PAN, "pan"}, {P_DETUNE, "detune"},
+        {P_SLDEPTH, "slicer_depth"}};
+    static const struct { uint8_t id; const char *name; } GPN[] = {
+        {G_DFDBK, "fx.delay_feedback"}, {G_DCOLOR, "fx.delay_color"}, {G_DMIX, "fx.delay_mix"},
+        {G_RSIZE, "fx.reverb_size"}, {G_RDAMP, "fx.reverb_damp"}, {G_CRATE, "fx.chorus_rate"},
+        {G_CDEPTH, "fx.chorus_depth"}, {G_DRLVL, "drums.level"}, {G_DRREV, "drums.reverb"}, {G_DUST, "fx.dust"},
+        {G_DUCK, "fx.duck"}, {G_FILT, "fx.filter"}, {G_SWING, "fx.swing"}, {G_DTIME, "fx.delay_time"}};
+    static const struct { const char *label, *name; } EPN[] = {
+        {"CUT", "cutoff"}, {"RES", "resonance"}, {"DRV", "drive"}, {"IDX", "fm_index"}, {"FB", "fm_feedback"},
+        {"DTN", "detune"}, {"NOIS", "noise"}, {"Q", "resonance"}, {"BRTH", "breath"}, {"VOWL", "vowel"},
+        {"SPRD", "spread"}, {"RAND", "random"}, {"DENS", "density"}, {"CRSH", "crush"}, {"VIB", "vibrato"}};
+    char tn[16], pn[24];
+    uint32_t k;
+    if (kind == OV_G) {
+        for (k = 0; k < sizeof GPN / sizeof GPN[0] && GPN[k].id != id; k++)
+            ;
+        if (k < sizeof GPN / sizeof GPN[0])
+            snprintf(d, n, "%s", GPN[k].name);
+        else
+            host_lower(pn, GP[id].label, sizeof pn), snprintf(d, n, "fx.%s", pn);
+        return;
+    }
+    host_track_name(t, tn, sizeof tn);
+    if (kind == OV_VCUT || kind == OV_VSHP) {
+        snprintf(d, n, "%s.%s", tn, kind == OV_VCUT ? "brightness" : "timbre");
+        return;
+    }
+    if (id >= P_E0 && t < NPART) {
+        const char *l = ENGINES[trk[t].eng_req % NENGINES]->edit[id - P_E0].label;
+        for (k = 0; k < sizeof EPN / sizeof EPN[0] && strcmp(EPN[k].label, l); k++)
+            ;
+        if (k < sizeof EPN / sizeof EPN[0])
+            snprintf(pn, sizeof pn, "%s", EPN[k].name);
+        else
+            host_lower(pn, l, sizeof pn);
+    } else {
+        for (k = 0; k < sizeof TPN / sizeof TPN[0] && TPN[k].id != id; k++)
+            ;
+        if (k < sizeof TPN / sizeof TPN[0])
+            snprintf(pn, sizeof pn, "%s", TPN[k].name);
+        else
+            host_lower(pn, TP[id].label, sizeof pn);
+    }
+    snprintf(d, n, "%s.%s", tn, pn);
+}
+static void host_slot_id(const ov_slot_t *s, uint32_t *t, uint32_t *id)   /* a slot's track (or part) and parameter */
+{
+    *t = s->part;
+    *id = s->kind == OV_P ? (uint32_t)(s->ptr - trk[s->part % NTRK].p) : s->kind == OV_G ? (uint32_t)(s->ptr - song.g) : 0u;
+}
+/* the slot of the live table that a (kind, track, id) target resolves to, -1 none */
+static int host_slot_of(uint32_t kind, uint32_t t, uint32_t id)
+{
+    const ov_tab_t *tb = &ovb[ov_live];
+    int16_t *ptr = kind == OV_P ? &trk[t].p[id] : kind == OV_G ? &song.g[id] : 0;
+    uint32_t i;
+    for (i = 0; i < tb->n; i++)
+        if (tb->s[i].kind == kind && (ptr ? tb->s[i].ptr == ptr : tb->s[i].part == t))
+            return (int)i;
+    return -1;
+}
+/* the targets of a MAPS / RULES target byte, as macro.c resolves them: up to 4 (kind, track, id) */
+static int host_targets(uint32_t tg, uint32_t id, uint32_t kind[4], uint32_t trkn[4], uint32_t pid[4])
+{
+    uint32_t k = tg >> 5, m = tg & WF_TMASK, t, n = 0, e;
+    if (k == WF_K_GLOBAL) {
+        kind[0] = OV_G, trkn[0] = WF_NONE, pid[0] = id;
+        return 1;
+    }
+    for (t = 0; t < NTRK; t++) {
+        if (!(m >> t & 1u))
+            continue;
+        if (k == WF_K_PARAM) {
+            kind[n] = OV_P, trkn[n] = t, pid[n++] = id;
+        } else if (t < NPART && k == WF_K_ROLE) {
+            e = trk[t].eng_req % NENGINES;
+            kind[n] = OV_P, trkn[n] = t;
+            pid[n++] = e < MC_NROLE && id < WF_NEROLES && MC_ROLE[e][id] != WF_NONE ? P_E0 + MC_ROLE[e][id] : P_COUNT;
+        } else if (t < NPART) {
+            kind[n] = k == WF_K_BRIGHT ? OV_VCUT : OV_VSHP, trkn[n] = t, pid[n++] = 0;
+        }
+    }
+    return (int)n;
+}
+int host_macro_slots(host_slot_t *out, int max)
+{
+    const ov_tab_t *tb = &ovb[ov_live];
+    const uint8_t *p;
+    uint32_t i, k, j, t, id, kd[4], tr[4], pd[4];
+    int n = 0;
+    if (!wrt.active)
+        return 0;
+    for (i = 0; i < tb->n && n < max; i++) {
+        const ov_slot_t *s = &tb->s[i];
+        host_slot_t *o = &out[n++];
+        int32_t c = ov_cur[ov_live][i];
+        memset(o, 0, sizeof *o);
+        host_slot_id(s, &t, &id);
+        host_param_name(s->kind, t, id, o->name, sizeof o->name);
+        o->offset = c / 256.0;
+        o->target = s->tgt / 256.0;
+        snprintf(o->smooth, sizeof o->smooth, "%s", HOST_CLASS[s->cls & 3u]);
+        o->lo = s->lo;
+        o->hi = s->hi;
+        if (s->kind >= OV_VCUT) {
+            o->effective = (c + 128) >> 8;
+            o->norm = 0.5 + c / (512.0 * GL_VMOD_MAX);
+        } else {
+            const param_desc_t *d = s->kind == OV_G ? &GP[id] : t == TRK_DRUM || id < P_E0 ? &TP[id] :
+                                    &ENGINES[trk[t].eng_req % NENGINES]->edit[id - P_E0];
+            o->base = *s->ptr;                   /* (between blocks: the authored value) */
+            o->effective = ov_effective(s, o->base, c);
+            o->norm = d->max > d->min ? (double)(o->effective - d->min) / (d->max - d->min) : 0;
+        }
+        for (k = 0, p = mac.maps; k < mac.nmaps; k++, p += WF_MAP_LEN)   /* who moves it */
+            for (j = 0; j < (uint32_t)host_targets(p[1], p[2], kd, tr, pd); j++)
+                if (host_slot_of(kd[j], tr[j], pd[j]) == (int)i)
+                    o->ctls |= 1u << (p[0] % WF_NCTL);
+        for (k = 0, p = mac.rules; k < mac.nrules; k++, p += WF_RULE_HDR + WF_ACT_LEN * p[3])
+            for (j = 0; j < p[3]; j++) {
+                const uint8_t *a = p + WF_RULE_HDR + WF_ACT_LEN * j;
+                uint32_t q, nt = (uint32_t)host_targets(a[0], a[1], kd, tr, pd);
+                for (q = 0; q < nt; q++)
+                    if (host_slot_of(kd[q], tr[q], pd[q]) == (int)i)
+                        o->ctls |= 1u << 16;
+            }
+    }
+    return n;
+}
+int host_macro_mappings(host_mapping_t *out, int max)
+{
+    const uint8_t *p;
+    uint32_t k, j, kd[4], tr[4], pd[4];
+    int n = 0;
+    if (!wrt.active)
+        return 0;
+    for (k = 0, p = mac.maps; k < mac.nmaps; k++, p += WF_MAP_LEN) {
+        uint32_t nt = (uint32_t)host_targets(p[1], p[2], kd, tr, pd), cv = p[3] & WF_CURVE_MASK;
+        for (j = 0; j < nt && n < max; j++) {
+            host_mapping_t *o = &out[n++];
+            memset(o, 0, sizeof *o);
+            o->ctl = p[0] % WF_NCTL;
+            o->min = (int8_t)p[4];
+            o->max = (int8_t)p[5];
+            snprintf(o->curve, sizeof o->curve, "%s", cv < WF_NBUILTIN_CURVES ? HOST_CURVE[cv] : "lut");
+            o->offset = mc_offset(p) / 256.0;
+            o->slot = -1;
+            if (pd[j] >= P_COUNT) {              /* (a role this engine lacks) */
+                char tn[16];
+                host_track_name(tr[j], tn, sizeof tn);
+                snprintf(o->target, sizeof o->target, "%s.(no role)", tn);
+                continue;
+            }
+            o->role = 1;
+            host_param_name(kd[j], tr[j], pd[j], o->target, sizeof o->target);
+            o->slot = host_slot_of(kd[j], tr[j], pd[j]);
+            if (kd[j] >= OV_VCUT) {              /* the value now: the slot's, else the base (at home) */
+                int32_t c = o->slot >= 0 ? ov_cur[ov_live][o->slot] : 0;
+                o->effective = (c + 128) >> 8;
+                o->norm = 0.5 + c / (512.0 * GL_VMOD_MAX);
+            } else {
+                int16_t *ptr = kd[j] == OV_G ? &song.g[pd[j]] : &trk[tr[j]].p[pd[j]];
+                const param_desc_t *d = kd[j] == OV_G ? &GP[pd[j]] : tr[j] == TRK_DRUM || pd[j] < P_E0 ? &TP[pd[j]] :
+                                        &ENGINES[trk[tr[j]].eng_req % NENGINES]->edit[pd[j] - P_E0];
+                o->effective = o->slot >= 0 ? ov_effective(&ovb[ov_live].s[o->slot], *ptr, ov_cur[ov_live][o->slot]) : *ptr;
+                o->norm = d->max > d->min ? (double)(o->effective - d->min) / (d->max - d->min) : 0;
+            }
+        }
+    }
+    return n;
+}
+int host_macro_rules(host_rule_t *out, int max)
+{
+    const uint8_t *p;
+    uint32_t k, j, kd[4], tr[4], pd[4];
+    int n = 0;
+    if (!wrt.active)
+        return 0;
+    for (k = 0, p = mac.rules; k < mac.nrules && n < max; k++, p += WF_RULE_HDR + WF_ACT_LEN * p[3]) {
+        host_rule_t *o = &out[n++];
+        memset(o, 0, sizeof *o);
+        o->a = p[0] >> 4;
+        o->b = p[0] & 15;
+        o->ta = p[1] / 250.0;
+        o->tb = p[2] / 250.0;
+        o->strength = mc_strength(p) / 4096.0;
+        for (j = 0; j < p[3] && j < 4u; j++) {
+            const uint8_t *a = p + WF_RULE_HDR + WF_ACT_LEN * j;
+            uint32_t nt = (uint32_t)host_targets(a[0], a[1], kd, tr, pd);
+            char nm[32] = "-", one[32];
+            uint32_t q;
+            if (nt > 1 && kd[0] == OV_P && pd[0] < P_COUNT) {   /* several tracks: "pad+bass+lead.level" */
+                nm[0] = 0;
+                for (q = 0; q < nt; q++) {
+                    host_track_name(tr[q], one, sizeof one);
+                    snprintf(nm + strlen(nm), sizeof nm - strlen(nm), "%s%s", q ? "+" : "", one);
+                }
+                host_param_name(OV_P, tr[0], pd[0], one, sizeof one);
+                snprintf(nm + strlen(nm), sizeof nm - strlen(nm), "%s", strchr(one, '.') ? strchr(one, '.') : "");
+            } else if (nt && pd[0] < P_COUNT) {
+                host_param_name(kd[0], tr[0], pd[0], nm, sizeof nm);
+            }
+            snprintf(o->act[o->nact++], sizeof o->act[0], "%s %+d", nm, (int8_t)a[2]);
+        }
+    }
+    return n;
+}
+void host_energy(host_energy_t *e)
+{
+    memset(e, 0, sizeof *e);
+    if (!wrt.active)
+        return;
+    e->nbands = arr.et.n;
+    e->band = arr.mb;
+    e->sel = arr.sel;
+    e->pos = (int)arr_pos();
+    e->layers = 15 & ~wrt.mute;
+    e->fill = arr.fill_now;
+    e->lanes = arr.lanes;
+    e->density = arr.dens;
+}
+
 const char *host_world_error(int code)
 {
     static char b[16];

@@ -6,8 +6,8 @@
  *                on), LOAD confirms (on the next bar while playing), CANCEL forgets; the device's screen
  *   middle       scenes A B C D (the one playing filled, the one asked for marked: it changes on the next bar)
  *                and the variation selector (greyed until variations exist: Phase 12)
- *   controls     COLOR MOTION SPACE ENERGY, 0..100 with the spec's end words; until the macros (Phase 7) they
- *                turn SLOOP's KNOB 1..4, which the line under them says
+ *   controls     COLOR MOTION SPACE ENERGY, 0..100 with the spec's end words: a World's macros (what they move is
+ *                the World's: the inspector shows it), a SLOOP project's KNOB 1..4; the line under them says which
  *   performance  PLAY REC PULSE BEAT FX: the FM-1's PLAY REC ARP SEQ FX buttons with their LEDs, held while
  *                the mouse is down (right-click latches)
  *   tracks       by role: mute, level, the sound; a click on the sound gives the keys that track
@@ -124,8 +124,6 @@ static void draw_static(int w, int h)
         c_text(&layer, cx - 84, MY + 108, MACRO_LO[k], DIM);
         c_text_r(&layer, cx + 84, MY + 108, MACRO_HI[k], DIM);
     }
-    c_text_c(&layer, 500, MY + MH + 8, "until the macros exist (Phase 7) these turn SLOOP's KNOB 1-4: the device "
-             "screen shows what they change", FAINT);
     card(&layer, 24, PY, 442, PH);
     card(&layer, TX, PY, 498, PH);
     label(&layer, 36, PY + 8, "PERFORMANCE");
@@ -230,6 +228,28 @@ static void draw_macros(canvas_t *c, const studio_t *m, double now)
         snprintf(b, sizeof b, "%d", v);
         c_text_l(c, cx - c_text_lw(b) / 2, cy - 16, b, TEXT);
     }
+}
+
+static void draw_macro_line(canvas_t *c, const sim_snap_t *s)   /* under the knobs: what they are */
+{
+    const studio_t *m = &s->studio;
+    const host_energy_t *e = &s->energy;
+    char b[160], lay[48] = "";
+    int k;
+    if (!m->macro_live) {
+        c_text_c(c, 500, MY + MH + 8, "a SLOOP project: these turn SLOOP's KNOB 1-4 (the device screen shows what they "
+                 "change)", FAINT);
+        return;
+    }
+    for (k = 0; k < HOST_NTRK; k++)
+        if (e->layers >> k & 1)
+            snprintf(lay + strlen(lay), sizeof lay - strlen(lay), "%s%s", lay[0] ? " " : "", m->role[k]);
+    if (e->nbands)
+        snprintf(b, sizeof b, "%s's own mappings (Option+I shows them)  \xB7  ENERGY band %d/%d: %s%s", m->title,
+                 e->band + 1, e->nbands, lay, e->sel != e->band ? "  (changing)" : "");
+    else
+        snprintf(b, sizeof b, "%s's own mappings (Option+I shows them)", m->title);
+    c_text_c(c, 500, MY + MH + 8, b, FAINT);
 }
 
 static void draw_perf(canvas_t *c, const sim_snap_t *s)
@@ -347,6 +367,7 @@ void studio_view_draw(canvas_t *c, const sim_snap_t *s, const char *status1, con
     c_lcd(c, LX + 3, LY + 3, 1, s->lcd);
     draw_scenes(c, m);
     draw_macros(c, m, now);
+    draw_macro_line(c, s);
     draw_perf(c, s);
     draw_tracks(c, m);
     draw_keys_line(c, m);
@@ -358,25 +379,102 @@ void studio_view_draw(canvas_t *c, const sim_snap_t *s, const char *status1, con
 }
 
 /* ------------------------------------------------ the inspector (developer only) --- */
+static void meter_bar(canvas_t *c, int x, int y, int w, double v, uint32_t col)   /* 0..1 */
+{
+    int f = (int)(w * (v < 0 ? 0 : v > 1 ? 1 : v) + 0.5);
+    c_rect(c, x, y + 7, w, 3, RGBX(40, 42, 52));
+    c_rect(c, x, y + 7, f, 3, col);
+}
+/* a World: each macro's hidden mappings with their parameter's effective value now (normalised to its range: "pad.cutoff
+ * 0.64"), the rules and how strongly they act, the ENERGY band; else the selected track's raw parameters */
 void inspector_draw(canvas_t *c, const sim_snap_t *s)
 {
     const studio_t *m = &s->studio;
-    int x0 = 560, y0 = 56, w = 416, h = 756, i;
-    char b[64];
+    int x0 = 560, y0 = 56, w = 416, h = 756, i, k, y;
+    char b[96];
     c_frame(c, x0, y0, w, h, 10.0f, 2.0f, ACCENT, RGBX(9, 9, 12));
     label(c, x0 + 16, y0 + 14, "INSPECTOR");
     c_text_r(c, x0 + w - 16, y0 + 14, "OPTION+I CLOSES", FAINT);
-    snprintf(b, sizeof b, "TRACK %d  %s  %s", m->sel + 1, m->role[m->sel], m->sound[m->sel]);
+    if (!m->macro_live) {
+        snprintf(b, sizeof b, "TRACK %d  %s  %s", m->sel + 1, m->role[m->sel], m->sound[m->sel]);
+        c_text(c, x0 + 16, y0 + 40, b, LAV);
+        c_text(c, x0 + 16, y0 + 60, "raw SLOOP parameters (no World: no macros)", FAINT);
+        for (i = 0; i < s->nparams; i++) {
+            const host_param_t *p = &s->params[i];
+            int col = i / 31, row = i % 31, x = x0 + 16 + col * 200, yy = y0 + 90 + row * 21;
+            int span = p->max - p->min;
+            c_text(c, x, yy, p->label, DIM);
+            c_text_r(c, x + 128, yy, p->text, TEXT);
+            meter_bar(c, x + 136, yy, 48, span > 0 ? (double)(p->value - p->min) / span : 0, ACCENT);
+        }
+        return;
+    }
+    snprintf(b, sizeof b, "MACROS  \xB7  %s", m->title);
     c_text(c, x0 + 16, y0 + 40, b, LAV);
-    c_text(c, x0 + 16, y0 + 60, "raw SLOOP parameters (Phase 7: the macros)", FAINT);
-    for (i = 0; i < s->nparams; i++) {
-        const host_param_t *p = &s->params[i];
-        int col = i / 31, row = i % 31, x = x0 + 16 + col * 200, y = y0 + 90 + row * 21;
-        int span = p->max - p->min, fill = span > 0 ? 48 * (p->value - p->min) / span : 0;
-        c_text(c, x, y, p->label, DIM);
-        c_text_r(c, x + 128, y, p->text, TEXT);
-        c_rect(c, x + 136, y + 7, 48, 3, RGBX(40, 42, 52));
-        c_rect(c, x + 136, y + 7, fill, 3, ACCENT);
+    c_text(c, x0 + 16, y0 + 58, "the hidden mappings, live (PLAY never shows them)", FAINT);
+    y = y0 + 84;
+    for (k = 0; k < 4; k++) {
+        uint32_t col = 0xFF000000u | host_knob_rgb((uint32_t)k);
+        c_ring(c, (float)x0 + 21.0f, (float)y + 8.0f, 0.0f, 4.0f, col);
+        snprintf(b, sizeof b, "%s  %d", MACRO_NAME[k], m->macro[k]);
+        c_text(c, x0 + 32, y, b, TEXT);
+        c_text_r(c, x0 + w - 16, y, "range   now", FAINT);
+        y += 19;
+        for (i = 0; i < s->nmaps && y < y0 + h - 150; i++) {
+            const host_mapping_t *p = &s->maps[i];
+            if (p->ctl != k)
+                continue;
+            c_text(c, x0 + 32, y, p->target, p->role ? DIM : FAINT);
+            snprintf(b, sizeof b, "%+d..%+d %s", p->min, p->max, p->curve);
+            c_text_r(c, x0 + 296, y, b, FAINT);
+            if (p->role) {                       /* the parameter now (moved by this mapping, or others, or at home) */
+                snprintf(b, sizeof b, "%.2f", p->norm);
+                c_text_r(c, x0 + 342, y, b, p->offset != 0 ? TEXT : DIM);
+                meter_bar(c, x0 + 350, y, 50, p->norm, p->offset != 0 ? col : c_mix(CARD, col, 120));
+            }
+            y += 18;
+        }
+        y += 6;
+    }
+    label(c, x0 + 16, y, "RULES");
+    y += 20;
+    for (i = 0; i < s->nrules && y < y0 + h - 70; i++) {
+        const host_rule_t *r = &s->rules[i];
+        char acts[160] = "";
+        if (r->a == r->b)
+            snprintf(b, sizeof b, "%s > %.2f", host_macro_name((uint32_t)r->a), r->ta);
+        else
+            snprintf(b, sizeof b, "%s > %.2f & %s > %.2f", host_macro_name((uint32_t)r->a), r->ta,
+                     host_macro_name((uint32_t)r->b), r->tb);
+        c_text(c, x0 + 32, y, b, r->strength > 0 ? TEXT : DIM);
+        snprintf(b, sizeof b, "%.2f", r->strength);
+        c_text_r(c, x0 + 342, y, b, r->strength > 0 ? TEXT : DIM);
+        meter_bar(c, x0 + 350, y, 50, r->strength, ACCENT);
+        for (k = 0; k < r->nact; k++)
+            snprintf(acts + strlen(acts), sizeof acts - strlen(acts), "%s%s", k ? ", " : "", r->act[k]);
+        snprintf(b, sizeof b, "%.44s", acts);
+        c_text(c, x0 + 40, y + 17, b, FAINT);
+        y += 38;
+    }
+    {
+        const host_energy_t *e = &s->energy;
+        char lay[48] = "";
+        for (k = 0; k < HOST_NTRK; k++)
+            if (e->layers >> k & 1)
+                snprintf(lay + strlen(lay), sizeof lay - strlen(lay), "%s%s", lay[0] ? " " : "", m->role[k]);
+        label(c, x0 + 16, y, "ENERGY ARRANGEMENT");
+        y += 20;
+        if (e->nbands)
+            snprintf(b, sizeof b, "band %d/%d at %.2f%s%s", e->band + 1, e->nbands, e->pos / 1000.0,
+                     e->sel != e->band ? " (next: " : "", e->sel != e->band ? "on the bar)" : "");
+        else
+            snprintf(b, sizeof b, "no ENERGY table in this scene: all play");
+        c_text(c, x0 + 32, y, b, TEXT);
+        c_text(c, x0 + 32, y + 18, lay, DIM);
+        if (e->fill)
+            c_text_r(c, x0 + w - 16, y + 18, "FILL", LAV);
+        snprintf(b, sizeof b, "%d of 48 slots moving", s->nslots);
+        c_text_r(c, x0 + w - 16, y, b, FAINT);
     }
 }
 

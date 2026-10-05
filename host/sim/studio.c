@@ -14,8 +14,8 @@
  * change on the next bar while playing (world.c world_request). Choosing another entry highlights it while the
  * current one plays on; confirming loads it, at once while stopped, on the next bar while playing (design D10):
  * a World through world_switch (on the bar the transport stops and the new World starts again), a project here.
- * The macros are positions that turn SLOOP's KNOB 1..4 until Phase 7; the keys are SLOOP's until Smart Keys
- * (Phase 6: wrt.keys_on). */
+ * With a World the four knobs are its macros (macro.c: host_macro_set, 0..100 here for 0..1000 there; a World
+ * loads with its own default positions); with a SLOOP project they turn SLOOP's KNOB 1..4. */
 #include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
@@ -349,10 +349,16 @@ void studio_exec(const sim_cmd_t *c)
     switch (c->op) {
     case OP_MACRO:
         if (c->a < 4) {
-            int v = c->rel ? S.macro[c->a] + c->v : c->v;
+            int cur = host_macro(c->a), v;
+            if (cur >= 0) {                      /* a World: its macro */
+                v = c->rel ? (cur + 5) / 10 + c->v : c->v;
+                host_macro_set(c->a, 10 * (v < 0 ? 0 : v > 100 ? 100 : v));
+                break;
+            }
+            v = c->rel ? S.macro[c->a] + c->v : c->v;
             v = v < 0 ? 0 : v > 100 ? 100 : v;
             if (v != S.macro[c->a])
-                host_turn(HOST_EN_K1 + c->a, v - S.macro[c->a]);   /* (until Phase 7: KNOB 1..4) */
+                host_turn(HOST_EN_K1 + c->a, v - S.macro[c->a]);   /* (a SLOOP project: KNOB 1..4) */
             S.macro[c->a] = v;
         }
         break;
@@ -416,7 +422,11 @@ const char *studio_name_field(int f)
     }
     return e >= 0 && e < S.n ? S.w[e].name : "-";
 }
-int studio_macro(int k) { return S.macro[k & 3]; }
+int studio_macro(int k)
+{
+    int v = host_macro((uint32_t)(k & 3));       /* a World's macro, 0..100 */
+    return v >= 0 ? (v + 5) / 10 : S.macro[k & 3];
+}
 
 void studio_fill(studio_t *m)
 {
@@ -472,8 +482,9 @@ void studio_fill(studio_t *m)
         m->scenes = st.sections;
     }
     snprintf(m->key, sizeof m->key, "%s %s", st.t[0].root, st.t[0].scale);
-    memcpy(m->macro, S.macro, sizeof m->macro);
-    m->macro_live = 0;                           /* (Phase 7) */
+    for (k = 0; k < 4; k++)
+        m->macro[k] = studio_macro(k);
+    m->macro_live = w.active;
     for (k = 0; k < HOST_NTRK; k++) {
         snprintf(m->sound[k], sizeof m->sound[k], "%s", st.t[k].sound ? st.t[k].sound : "");
         m->mute[k] = st.t[k].mute;

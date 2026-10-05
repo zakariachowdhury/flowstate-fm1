@@ -359,6 +359,10 @@ static void publish(void)
         host_state(&s->st);
         studio_fill(&s->studio);
         s->nparams = host_track_params((uint32_t)s->st.sel, s->params, SIM_PARAMS);
+        s->nslots = host_macro_slots(s->slots, SIM_SLOTS);
+        s->nmaps = host_macro_mappings(s->maps, SIM_MAPS);
+        s->nrules = host_macro_rules(s->rules, SIM_RULES);
+        host_energy(&s->energy);
     }
     s->fw = E.fw;
     seq_write_end(&snap[k].lock);
