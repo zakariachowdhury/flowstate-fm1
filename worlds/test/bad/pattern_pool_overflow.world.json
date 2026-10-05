@@ -1,0 +1,199 @@
+{
+  "notes": "Validation fixture for tools/validate-world: 17 patterns are in use (12 in scenes, 5 swap targets); the RAM pool holds 16. Expected: only RAM budget fails.",
+  "format": "flowstate-world/1",
+  "id": "bad_pattern_pool_overflo",
+  "name": "BAD PATTER",
+  "category": "TEST",
+  "tempo": {
+    "bpm": 100
+  },
+  "key": {
+    "root": "C",
+    "scale": "MAJ"
+  },
+  "tracks": [
+    {
+      "name": "pad",
+      "role": "pad",
+      "sound": {
+        "engine": "ANALOG",
+        "preset": "WARM PAD"
+      }
+    },
+    {
+      "name": "bass",
+      "role": "bass",
+      "sound": {
+        "engine": "ANALOG",
+        "preset": "SUB BASS"
+      }
+    },
+    {
+      "name": "keys",
+      "role": "lead",
+      "sound": {
+        "engine": "DIGITAL",
+        "preset": "RHODES"
+      }
+    },
+    {
+      "name": "drums",
+      "role": "drums",
+      "sound": {
+        "kit": "808"
+      }
+    }
+  ],
+  "progressions": {
+    "home": [
+      "I:4"
+    ]
+  },
+  "scenes": {
+    "A": {
+      "name": "INTRO",
+      "role": "intro",
+      "progression": "home",
+      "patterns": {
+        "pad": "pad_a",
+        "bass": "bass_a",
+        "drums": "dr_a"
+      }
+    },
+    "B": {
+      "name": "MAIN",
+      "role": "main",
+      "progression": "home",
+      "patterns": {
+        "pad": "pad_b",
+        "bass": "bass_b",
+        "drums": "dr_b"
+      }
+    },
+    "C": {
+      "name": "LIFT",
+      "role": "lift",
+      "progression": "home",
+      "patterns": {
+        "pad": "pad_c",
+        "bass": "bass_c",
+        "drums": "dr_c"
+      }
+    },
+    "D": {
+      "name": "BREAKDOWN",
+      "role": "breakdown",
+      "progression": "home",
+      "patterns": {
+        "pad": "pad_d",
+        "bass": "bass_d",
+        "drums": "dr_d"
+      }
+    }
+  },
+  "smart_keys": {
+    "track": "keys"
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "V1": {
+      "swap": {
+        "pad_a": "pad_a_v",
+        "bass_a": "bass_a_v"
+      }
+    },
+    "V2": {
+      "swap": {
+        "pad_b": "pad_b_v",
+        "bass_b": "bass_b_v"
+      }
+    },
+    "V3": {
+      "swap": {
+        "pad_c": "pad_c_v"
+      }
+    }
+  },
+  "patterns": {
+    "pad_a": {
+      "track": "pad",
+      "steps": "1' 1 5 5 1' 1 2 5 5 3 . 2 1 1' 5 3"
+    },
+    "bass_a": {
+      "track": "bass",
+      "steps": ". . 2 3 . . 1 3 1' 2 1 5 5 1 1 2"
+    },
+    "dr_a": {
+      "track": "drums",
+      "lanes": {
+        "kick": ".xx.x..xx.xxxxx.",
+        "hat": ".s.xsxx..ss.x.s."
+      }
+    },
+    "pad_b": {
+      "track": "pad",
+      "steps": "5 1' 5 5 1' 1' 2 2 1' 5 . 1' 2 1 5 3"
+    },
+    "bass_b": {
+      "track": "bass",
+      "steps": "2 5 . 5 . 3 5 2 5 1' 2 1' 1' 2 1 1"
+    },
+    "dr_b": {
+      "track": "drums",
+      "lanes": {
+        "kick": "x.x.xxxxxxxxxxx.",
+        "hat": ".sx.xxxssxxsss.x"
+      }
+    },
+    "pad_c": {
+      "track": "pad",
+      "steps": "5 3 . 1' . 3 2 5 1 3 5 3 . 5 . 1'"
+    },
+    "bass_c": {
+      "track": "bass",
+      "steps": "2 2 1 1' 5 2 . 1 . . 3 1 2 3 1 3"
+    },
+    "dr_c": {
+      "track": "drums",
+      "lanes": {
+        "kick": "xxx.x.xxx..x..xx",
+        "hat": ".xs.xsxsxsxx.x.x"
+      }
+    },
+    "pad_d": {
+      "track": "pad",
+      "steps": "3 3 . . 2 . 2 . 2 2 . . 2 2 1 1'"
+    },
+    "bass_d": {
+      "track": "bass",
+      "steps": "3 1 1 1' 3 5 5 1' 3 2 . 2 3 5 1 2"
+    },
+    "dr_d": {
+      "track": "drums",
+      "lanes": {
+        "kick": "xx..x....x....x.",
+        "hat": "ss..xxxssxx.sx.s"
+      }
+    },
+    "pad_a_v": {
+      "track": "pad",
+      "steps": "5 . 1' 1' 3 . 5 5 . 2 3 2 1' 5 1 5"
+    },
+    "bass_a_v": {
+      "track": "bass",
+      "steps": "1 . . 3 1 5 1' 3 2 5 1 1 3 2 1' 3"
+    },
+    "pad_b_v": {
+      "track": "pad",
+      "steps": "2 1' 1 3 . 2 . 1' 1 2 1' 1' . 1' 3 1'"
+    },
+    "bass_b_v": {
+      "track": "bass",
+      "steps": "3 2 1 1' 1 3 1' 3 . . 3 . 3 5 1 1'"
+    },
+    "pad_c_v": {
+      "track": "pad",
+      "steps": ". 1' 1' . 3 1 . 1 . 2 5 5 2 3 5 1'"
+    }
+  }
+}

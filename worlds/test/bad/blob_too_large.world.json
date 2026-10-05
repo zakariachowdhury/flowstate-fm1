@@ -1,0 +1,167 @@
+{
+  "notes": "Validation fixture for tools/validate-world: the patterns compile to a blob above the 3,072 B a factory World may take. Expected: only flash budget fails.",
+  "format": "flowstate-world/1",
+  "id": "bad_blob_too_large",
+  "name": "BAD BLOB T",
+  "category": "TEST",
+  "tempo": {
+    "bpm": 100
+  },
+  "key": {
+    "root": "C",
+    "scale": "MAJ"
+  },
+  "tracks": [
+    {
+      "name": "pad",
+      "role": "pad",
+      "sound": {
+        "engine": "ANALOG",
+        "preset": "WARM PAD"
+      }
+    },
+    {
+      "name": "bass",
+      "role": "bass",
+      "sound": {
+        "engine": "ANALOG",
+        "preset": "SUB BASS"
+      }
+    },
+    {
+      "name": "keys",
+      "role": "lead",
+      "sound": {
+        "engine": "DIGITAL",
+        "preset": "RHODES"
+      }
+    },
+    {
+      "name": "drums",
+      "role": "drums",
+      "sound": {
+        "kit": "808"
+      }
+    }
+  ],
+  "progressions": {
+    "home": [
+      "I:4"
+    ]
+  },
+  "scenes": {
+    "A": {
+      "name": "INTRO",
+      "role": "intro",
+      "progression": "home",
+      "patterns": {
+        "pad": "pad_a",
+        "bass": "bass_a",
+        "drums": "dr_a"
+      }
+    },
+    "B": {
+      "name": "MAIN",
+      "role": "main",
+      "progression": "home",
+      "patterns": {
+        "pad": "pad_b",
+        "bass": "bass_b",
+        "drums": "dr_b"
+      }
+    },
+    "C": {
+      "name": "LIFT",
+      "role": "lift",
+      "progression": "home",
+      "patterns": {
+        "pad": "pad_c",
+        "bass": "bass_c",
+        "drums": "dr_c"
+      }
+    },
+    "D": {
+      "name": "BREAKDOWN",
+      "role": "breakdown",
+      "progression": "home",
+      "patterns": {
+        "pad": "pad_d",
+        "bass": "bass_d",
+        "drums": "dr_d"
+      }
+    }
+  },
+  "smart_keys": {
+    "track": "keys"
+  },
+  "patterns": {
+    "pad_a": {
+      "track": "pad",
+      "steps": "[E5 C2 D4]*2 [G2 D5]~ [G2 F2]*2 [G2 F2]! [E4 F3]*2 [A3 D3]_ [D2 G5]*2 [B5 C#4 A3]! [D4 C#4]~ [D2 F3 B3]~ [C2 B4 B5]*2 [D2 A5 D2]_ [A5 B2 C#4]! [C#2 G4]! [F5 C#2]! [F4 E5 A5]_ [G3 D3 E3]! [C#3 A4] [F4 B3]*2 [C#5 F5]~ [C#5 C3] [C#3 D4]*2 [D2 E2]_ [D3 F3]_ [B5 D2 C#5]~ [A2 E2 B4]~ [C3 B3]*2 [A2 A4]! [G4 G3 G5]! [C#4 C2]_ [A3 B5 B4] [D3 C#3]_ [C#2 C#4] [F3 C#3]~ [D5 C#5 D3]! [C3 C#3]*2 [B3 E2 C2]*2 [F3 G2]_ [A3 B4]*2 [E2 B5 F3]*2 [C5 E2]! [E5 D2]_ [D2 G3 A2] [C2 C#4 G4]~ [G4 G5 E5] [C#4 D3 F2]! [D3 B3 A3]~ [D5 C#3]! [F5 B5]! [B2 B2 B5]~ [F4 A2] [D2 A4] [A3 F4]~ [C#4 D4] [F2 A2] [D3 D4 D5] [F4 E2 G2]! [C3 G4 A3]_ [E4 B2 A2] [G5 G5] [C#5 A3 G4]! [F4 C3] [A5 E2] [A3 A2 C#3]!",
+      "div": "1/16"
+    },
+    "bass_a": {
+      "track": "bass",
+      "steps": "[C#2 A4 B4]! [A3 B3] [F2 C#4 G3]*2 [D4 D3]~ [F2 A4]! [E5 B5]! [E2 F3 C3] [C3 B2]~ [C2 G5 A2]~ [D2 C#4] [G3 G5 C#5] [A2 G2 E4]_ [E2 C#2 C#4] [C#4 A5]~ [D3 A2 C#2]_ [D5 A5 G3] [E4 B3]*2 [D4 G5 C#5] [C5 C#5]_ [F4 F4] [C4 B5 D3] [A4 D5 F2]_ [A2 A2 C4]! [A5 B3]_ [C5 G2 C5]~ [A5 C3]! [F4 A4 A4]~ [A5 F2]! [D3 C#3]~ [C#5 E3 G2]! [D4 G4 A3] [F5 G5 A4] [A4 E3 D4]! [F5 F4 C3] [C#5 C2 F5]~ [D3 E3]*2 [C#2 C2]! [C4 E4]*2 [D2 D4 G5]_ [C2 A5]_ [G5 G3 C5]_ [C3 C#5] [G5 B3 C#2]_ [B5 G2 A2]! [G4 G3 C#3]_ [D5 E3 C#5] [F2 G2]*2 [F2 C3]~ [B2 D3 B3]! [C4 F4 B5]! [C2 A2]_ [D3 F4 A5] [C#3 B5]! [B5 C5 G5] [C5 D2 A3] [B4 B2 A4]_ [C2 C3 D5]~ [A5 C#3 C#3] [E3 B4 C#4]*2 [G5 E3]~ [C5 B3]~ [D4 D3] [C#5 E3 E5]~ [D4 A4]*2",
+      "div": "1/16"
+    },
+    "dr_a": {
+      "track": "drums",
+      "lanes": {
+        "kick": ".2..g4gsggs.g2X3.ggX4xXx4g42x.gXxggX2s4.xX2gx22sxg.xgx232s.Xgx44",
+        "hat": "X3X3sXs3.3..3x.233x2g33gx3s3XX324ssxxs3X2ss2.ssXX34g.sx42x3Xsg3g"
+      }
+    },
+    "pad_b": {
+      "track": "pad",
+      "steps": "[E3 C5 E5]_ [E3 G2]*2 [B2 F5]*2 [F4 G5 F4]~ [E2 C5 C#3]~ [E5 F2 D3]_ [B2 C#2 C3] [D2 F3 C2]*2 [G3 C#4]! [D4 A3]_ [C#3 A5 G4]*2 [B4 C3]! [E4 B5 E4] [B5 D4]*2 [B4 F4 E4]_ [C#3 E2]_ [A4 C2 G3]_ [F4 C3 C#3]*2 [C2 C4]_ [B3 F4]*2 [G4 C#3]! [G3 C#2] [A5 A2] [C#5 G3 C2] [F3 G3] [C3 E5]! [E4 D4 C5]*2 [F5 C#2]~ [G2 A3] [B4 C4]*2 [A4 G2 C3]_ [G3 B3]~ [G5 C#5 C2]~ [A3 F2]*2 [E2 C2] [B3 C2] [C2 C2]*2 [G2 F2 G3]! [C2 D4]~ [E2 G4]_ [F4 C4 A4] [B5 A2 F2]~ [B5 C3] [E5 C3 A2] [C#2 C#3 C#4]*2 [E4 G3 C#3] [C#2 B4] [F2 F2 B3]_ [F3 F3 C#3]*2 [B4 E5]*2 [E5 C#4 G3]_ [G3 A4 E3]! [B3 G4 G4] [D3 F3]! [A5 A3 D2]_ [F5 C2]~ [G4 C#2 E4]*2 [C3 F5 G3]! [C#5 B4] [G5 E4 F5]~ [F3 B2]~ [D2 A3 E3]*2 [D5 G5 C4]*2 [F5 G3 F2]*2",
+      "div": "1/16"
+    },
+    "bass_b": {
+      "track": "bass",
+      "steps": "[C4 A5 F2] [F5 B4] [A5 G5]~ [E3 D3]~ [E4 F5]_ [C#4 G4]~ [F3 C#2 A4]! [B5 C#5 D4]! [F2 D4 E4]*2 [C3 D4]_ [E3 E5]_ [G5 E2]*2 [G5 G2 C#2]*2 [A5 G3]~ [C5 C#3 C#3]~ [C3 B5]*2 [A5 B5 F2]! [C2 C4 D5]~ [C3 F3]_ [B4 C#3]_ [B5 A2 A4]_ [F4 A4 G5] [G4 A3 D2]~ [C5 A2 C2]! [C5 E2 G2]~ [D3 C5] [B3 A4]_ [F2 B2]~ [C#2 D5]*2 [C#2 C5 E5]~ [D5 G3] [C2 D2 G2]! [C4 G5 E2]_ [D4 C#5]_ [C2 C2]*2 [F4 A3]~ [B4 C#5]! [D4 E5]~ [C#4 B4 A2]*2 [C3 A5 G5]~ [G5 A2 B4]_ [E2 A3 E4]*2 [B2 C#5 G3]_ [F5 G4]*2 [F5 D4] [F4 B5]*2 [G3 G2]! [B4 F3 G2]~ [D4 C#2 E4]*2 [B4 C2] [C#3 A4]~ [C#3 A2]_ [E5 D2] [B5 C#2]*2 [D2 A4 G2]*2 [E5 E4 G3]! [A4 C2] [C#2 D3 B2]! [C#2 C#4 B4]~ [B5 F3]~ [E2 C#3] [G2 B3]~ [F2 D5]_ [G5 D4 E4]!",
+      "div": "1/16"
+    },
+    "dr_b": {
+      "track": "drums",
+      "lanes": {
+        "kick": "xs4s4s.33gsx..2s.4X244Xsxg4.X.g23.ggX3.3sx.sx42s4x.s23x3g.sssgsg",
+        "hat": "XX4.sgsg.gxX3x22.4Xx34s.gs2xs2x24XX2g23x.X44xsxgXgssX..xxXg.x4g4"
+      }
+    },
+    "pad_c": {
+      "track": "pad",
+      "steps": "[B2 E2]_ [C#5 A2] [F3 G3]! [F3 C5 F2]~ [B4 F3]_ [B5 C4 E4]! [C4 D3 D4]~ [C3 E5]~ [C2 C4 A2]*2 [A2 C5]! [A2 A4]! [C4 D5]*2 [C#2 E4]~ [A3 D4 C#3]~ [B5 A5]~ [C3 B3 G5]*2 [C4 E3 B4]~ [A3 A2 C3]*2 [B5 C5]~ [D3 E5 B4]! [A2 C#4]! [D2 F2 C#5]*2 [F4 D5]~ [A4 A4 F5]_ [C#5 C#4]! [E5 F3 D4]_ [B3 F2] [A5 A4]*2 [F5 C#4 C4]~ [D3 D5]_ [E3 F5 F5]*2 [D3 B4 B2]_ [D4 B5]! [G3 F3 C2]_ [F2 C4]*2 [A5 D2] [E5 A3]*2 [F2 E3]*2 [C2 D3]*2 [C#5 C2 B3]! [A3 C4 D2]_ [C#5 C2]! [C5 C3 G3] [E4 C5]_ [A5 D3 F3]~ [F5 C3 D3]! [F3 C4 F4] [F4 F2 D5]_ [F3 C#4]_ [F2 A2]_ [G3 D3]_ [C#5 G3]_ [G5 F3 A5]*2 [G5 E4]*2 [B3 F3 E2]*2 [A5 C3]_ [F2 E3]_ [D2 B4]! [A2 G4]! [A4 F5 E4]! [B4 F2]~ [F4 D3]_ [A3 C5] [F3 A3]~",
+      "div": "1/16"
+    },
+    "bass_c": {
+      "track": "bass",
+      "steps": "[A3 G5]*2 [F4 C2 A2]*2 [G2 C4]! [D5 F3 A2]_ [C#4 C#2 G5]*2 [C#3 C4]! [G4 G2]! [B5 D3 A3]! [C#3 G2 C#3]_ [E3 G4 D5]! [C#5 G2]_ [B5 G2] [A3 D4 C#2]! [C#5 B4 E2] [C#5 D4]*2 [D5 F5 G4] [D4 A3 D3] [F3 A4]! [D4 B5]! [B3 B3 B4]! [C2 F2]! [F5 E4 D3]! [E5 F2] [C#3 G4 C2]*2 [E4 D2 F4] [C3 E5 A2]~ [G5 D4 C#5]*2 [F2 C4]*2 [F4 C#3 A4]*2 [G3 C#2]! [F4 G5 F4] [E3 D3]_ [G4 C#3]*2 [G2 D5 D5]! [D5 F3]! [D3 B2 F3] [C2 G5 A2]! [D3 D4 E4]_ [A2 G4]*2 [C#2 B2 B4]*2 [C3 A4]! [C5 D2 C#2] [E3 A5 E4]*2 [C#2 C4 E5]*2 [C2 D3 F5]! [F3 D4 B3]_ [C3 E4]~ [C#5 B4 C4]*2 [B3 C3 C#2]! [A5 A2]*2 [B3 C2 G5]*2 [B4 G3] [B4 G4 F4] [B5 B3 G4]! [G2 C#5]~ [A3 D3 A4]_ [D3 D3 A4]~ [F2 C#4 E4]_ [E4 G2]! [F5 G4]*2 [G3 C3]*2 [D2 B3] [A2 B2]! [B2 C#5 B3]",
+      "div": "1/16"
+    },
+    "dr_c": {
+      "track": "drums",
+      "lanes": {
+        "kick": "3xX243.4xx22x32sXxsgsX2232s2g.4x.4.2.s.x4X2sg3XxsXxgs.2sssx2g44g",
+        "hat": "234g2xXxX32xg333gx.x.3gg2g23..4gs4.s..X2x4gs24gxg2x4s3s.xXsxs.s2"
+      }
+    },
+    "pad_d": {
+      "track": "pad",
+      "steps": "[E5 F2]~ [F4 C3 G2] [G5 D2] [D2 D5 E5] [G3 D4]~ [B3 G2]_ [C4 A2] [C5 B4] [C5 A4 F4]~ [B5 F3 F5]~ [C3 A5]! [D2 C2]~ [C#4 C#2 C#5]*2 [F3 F4 D5]*2 [B2 G4 A5]_ [G3 D4 G3]_ [E3 C#3] [F4 F2 F3]_ [D4 B4 C#2]_ [A5 D5 C#3]*2 [C3 B5]*2 [B4 F4] [C4 C3]_ [B4 G4 C#2]*2 [D3 E5 A4] [F4 C4 F5]*2 [B3 F3 G4] [B2 D5]~ [F5 C2 C#5]~ [C#3 D5 F5]! [G3 F2]_ [F5 D2 G2]*2 [D5 D3]*2 [C3 B5 C5]*2 [F2 E4]_ [C3 A4] [F4 A5 F2]_ [G5 F4 A3]! [G4 C#5]*2 [B4 G5]*2 [B2 D5]*2 [C4 G5 A3]! [F5 G3 C3]~ [C3 D5]! [E5 G4]! [E3 D5] [D2 F3]_ [F3 C3 C3]~ [G4 E4 A4]*2 [E3 F2]_ [E4 G2 G5]! [F4 F2] [D3 D4 C#4] [D3 C#4 A2]! [C#4 G4] [C4 G3]_ [E4 B5]~ [B4 E2]_ [C#2 D3]*2 [C#2 C2 D5]! [B2 B3 B3] [C5 A3 A2] [D3 C#4]*2 [B5 G3]*2",
+      "div": "1/16"
+    },
+    "bass_d": {
+      "track": "bass",
+      "steps": "[A4 G4]~ [E3 G2] [C5 G3] [E4 C5]~ [A2 D3]! [C3 D4] [G3 A4] [E2 B5 F2] [E3 E4]! [G3 B2] [C5 B2 D3] [F2 B3 C#5]! [A2 C#3 F5]*2 [D2 A3 G3]*2 [G5 C5 F4]~ [D3 B5 A2]_ [C2 C#5 F4]~ [B3 D4]~ [C4 B2 A3]~ [G2 G2 F3]~ [B3 B3 G4]*2 [A5 B3 E5]*2 [C3 D3]~ [B2 F3 A5] [C#4 A4 A5]*2 [C#5 B2] [F5 A3]*2 [C4 C#3 C4]! [C5 E4]! [C5 F2 F5]_ [B3 C#2 B3]! [E4 E4] [F4 E4 A5]! [C#5 D4 B5]_ [C#4 D3 C#5]! [C3 A5 F2]_ [B5 A2 A5] [A4 B4]! [D5 D4]! [D5 F4]~ [C#4 B3 E5]_ [G4 D5] [G5 F3]*2 [E3 G3 D4] [A3 F4 D4]*2 [G4 D4]*2 [B2 D2]_ [C5 E5]_ [C#2 C5] [G4 B4 G3]*2 [A2 G3] [F4 D4 D2]~ [F3 C4 B4] [E5 C#5 G4]*2 [D5 E4]! [C5 G3]_ [A2 C2]_ [F2 A4]! [B4 D2 E4]~ [C#2 B2]! [C#5 D4 B5]! [A5 G4]_ [G4 F5]! [E3 C2 G5]",
+      "div": "1/16"
+    },
+    "dr_d": {
+      "track": "drums",
+      "lanes": {
+        "kick": "xX4xgX2244gxgg23XXsg444Xx4s3g44sX43Xggx3gxgXgxx4x3ggx3.xs4x4XXss",
+        "hat": "s2X3xXxXXx.43xgxs4gXg3XX2XXgXX2....s42gxXXxXg343gXxxxs3xs.4.s..2"
+      }
+    }
+  }
+}

@@ -516,4 +516,13 @@ userworld_test() {
 run "ADVANCED edits and user Worlds: capture, scenes, SAVE AS / SAVE / RESET / DELETE, slots, reboot, LEAVE (ASan/UBSan)" \
     userworld_test
 
+# validate-world (Phase 16: tools/validate-world, tools/validate_world.py; design 12.3; docs/validation.md): tests/validate_test.py.
+# The four factory Worlds validate clean from the command line (the checklist of 17 items; the quick sweep of
+# tests/guard_sweep.c, built into build/host/validate on first use, plays each); every World of worlds/test/bad is broken
+# in one way and fails exactly its item (worldc's and the model's messages reaching the right item; a feedback tail that
+# only a render catches); the JSON report's schema and the exit status; guard_sweep's every failure keyword (and its volume
+# jumps) reaching its item, from made-up output; ids, directories, --user, files that are not Worlds
+run "validate-world: the factory Worlds clean (quick sweep), every bad World failing exactly its item, the JSON schema" \
+    python3 tests/validate_test.py
+
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }

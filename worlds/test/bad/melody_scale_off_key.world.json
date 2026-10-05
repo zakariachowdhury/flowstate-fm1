@@ -1,0 +1,78 @@
+{
+  "notes": "Validation fixture for tools/validate-world: the Smart Keys melody scale (BLUES) is not inside the World scale (C MAJ). Expected: only scale fails.",
+  "format": "flowstate-world/1",
+  "id": "bad_melody_scale_off_key",
+  "name": "BAD MELODY",
+  "category": "TEST",
+  "tempo": {
+    "bpm": 100
+  },
+  "key": {
+    "root": "C",
+    "scale": "MAJ"
+  },
+  "tracks": [
+    {
+      "name": "pad",
+      "role": "pad",
+      "sound": {
+        "engine": "ANALOG",
+        "preset": "WARM PAD"
+      }
+    },
+    {
+      "name": "bass",
+      "role": "bass",
+      "sound": {
+        "engine": "ANALOG",
+        "preset": "SUB BASS"
+      }
+    },
+    {
+      "name": "keys",
+      "role": "lead",
+      "sound": {
+        "engine": "DIGITAL",
+        "preset": "RHODES"
+      }
+    },
+    {
+      "name": "drums",
+      "role": "drums",
+      "sound": {
+        "kit": "808"
+      }
+    }
+  ],
+  "progressions": {
+    "home": [
+      "I:4"
+    ]
+  },
+  "scenes": {
+    "A": {
+      "name": "INTRO",
+      "role": "intro",
+      "progression": "home"
+    },
+    "B": {
+      "name": "MAIN",
+      "role": "main",
+      "progression": "home"
+    },
+    "C": {
+      "name": "LIFT",
+      "role": "lift",
+      "progression": "home"
+    },
+    "D": {
+      "name": "BREAKDOWN",
+      "role": "breakdown",
+      "progression": "home"
+    }
+  },
+  "smart_keys": {
+    "track": "keys",
+    "melody_scale": "BLUES"
+  }
+}

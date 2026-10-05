@@ -1,0 +1,4 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+# validate-world: see tools/validate_world.py and docs/validation.md
+exec python3 "$(dirname "$0")/validate_world.py" "$@"

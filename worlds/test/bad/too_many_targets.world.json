@@ -1,0 +1,161 @@
+{
+  "notes": "Validation fixture for tools/validate-world: 19 mappings each move one parameter on all 3 synth tracks: 57 targets at once; the overlay holds 48. Expected: only RAM budget fails.",
+  "format": "flowstate-world/1",
+  "id": "bad_too_many_targets",
+  "name": "BAD TOO MA",
+  "category": "TEST",
+  "tempo": {
+    "bpm": 100
+  },
+  "key": {
+    "root": "C",
+    "scale": "MAJ"
+  },
+  "tracks": [
+    {
+      "name": "pad",
+      "role": "pad",
+      "sound": {
+        "engine": "ANALOG",
+        "preset": "WARM PAD"
+      }
+    },
+    {
+      "name": "bass",
+      "role": "bass",
+      "sound": {
+        "engine": "ANALOG",
+        "preset": "SUB BASS"
+      }
+    },
+    {
+      "name": "keys",
+      "role": "lead",
+      "sound": {
+        "engine": "DIGITAL",
+        "preset": "RHODES"
+      }
+    },
+    {
+      "name": "drums",
+      "role": "drums",
+      "sound": {
+        "kit": "808"
+      }
+    }
+  ],
+  "progressions": {
+    "home": [
+      "I:4"
+    ]
+  },
+  "scenes": {
+    "A": {
+      "name": "INTRO",
+      "role": "intro",
+      "progression": "home"
+    },
+    "B": {
+      "name": "MAIN",
+      "role": "main",
+      "progression": "home"
+    },
+    "C": {
+      "name": "LIFT",
+      "role": "lift",
+      "progression": "home"
+    },
+    "D": {
+      "name": "BREAKDOWN",
+      "role": "breakdown",
+      "progression": "home"
+    }
+  },
+  "smart_keys": {
+    "track": "keys"
+  },
+  "macros": {
+    "COLOR": [
+      {
+        "to": "*.atk",
+        "max": 1
+      },
+      {
+        "to": "*.dec",
+        "max": 1
+      },
+      {
+        "to": "*.sus",
+        "max": 1
+      },
+      {
+        "to": "*.rel",
+        "max": 1
+      },
+      {
+        "to": "*.ed_flt",
+        "max": 1
+      },
+      {
+        "to": "*.ed_pit",
+        "max": 1
+      },
+      {
+        "to": "*.ed_shp",
+        "max": 1
+      }
+    ],
+    "MOTION": [
+      {
+        "to": "*.lrate",
+        "max": 1
+      },
+      {
+        "to": "*.lphase",
+        "max": 1
+      },
+      {
+        "to": "*.lfade",
+        "max": 1
+      },
+      {
+        "to": "*.ld_pit",
+        "max": 1
+      },
+      {
+        "to": "*.ld_flt",
+        "max": 1
+      },
+      {
+        "to": "*.ld_shp",
+        "max": 1
+      },
+      {
+        "to": "*.ld_amp",
+        "max": 1
+      }
+    ],
+    "SPACE": [
+      {
+        "to": "*.dist",
+        "max": 1
+      },
+      {
+        "to": "*.chor",
+        "max": 1
+      },
+      {
+        "to": "*.dly",
+        "max": 1
+      },
+      {
+        "to": "*.rev",
+        "max": 1
+      },
+      {
+        "to": "*.pan",
+        "max": 1
+      }
+    ]
+  }
+}
