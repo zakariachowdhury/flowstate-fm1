@@ -1137,6 +1137,29 @@ These controls persist in the playstate. They are overlay controls 4–11, appli
 
 The movement styles share the track's single LFO; the authored `lwave` sets its shape. Offsets add up in shared slots (DRIFT + WOBBLE on `ld_flt`).
 
+### 9.5 As built (Phase 13)
+
+`firmware/src/macro.c` (built-in mappings, `live_freeze`), `guard.c` (`guard_live`, the CPU estimate), `guard_limits.h`
+(the Smart Keys windows), `world_fmt.h` (`WF_CTL_BUILTIN`, `WF_COMBO_LIVE`), `ui_play.c` (homing) and `punch.c` (one
+fix) follow §9.3–9.4, with these differences. The bounds and measurements: [guardrails.md §2.7](../guardrails.md#27-live-fx-sound-shape-and-movement-phase-13).
+
+| Here | As built | Why |
+| --- | --- | --- |
+| built-in mappings as `const` tables | MAPS records in `world_fmt.h` (`WF_CTL_BUILTIN`, 22 records), evaluated after the World's own, before the rules; `tools/worldc.py`'s model reads the same macro, and the slot dump stays byte-identical | one table for the firmware and the model |
+| applied to `controls.<page>.tracks` (default: the keys track) | the Smart Keys track (target mask `WF_TMASK_KEYS`, built-in records only); the format has no `tracks` field: a World that wants other tracks names the control in `controls` (all of its built-in records then stand aside) | no format change; Phase 5's `controls` already replace per control |
+| ECHO `g.dmix` +60, `*.dly` +70, `g.dfdbk` +40, class fast; `dfdbk ≤ 96` | +40, +60, +30, class medium; while ECHO is up `WF_COMBO_LIVE` holds the feedback at ≤ `GL_ECHO_DFDBK` (96) and, in a big room (`g.rsize` > 104), at ≤ 72, whatever the World's GUARD; `max_dfdbk` (default 96) still applies | at 66–72 BPM a 1/4 echo with feedback 0.6 still sounded at −36 dBFS 6 s after STOP; now under −60 dBFS within 8 s, and the release ramps |
+| FILTER, CRUSH class fast; "about 30 ms to dry" | class medium: home 276–320 ms after FX is let go, at most 2 steps a block | the owner's 100–300 ms; fast sounded like a snap on ECHO's mix |
+| CRUSH `g.dust` +90 | also every synth track's `level` −5 and the drums' −5 (2.5 dB), data like §5.6; while CRUSH is up a part distorted past 80 keeps DUST ≤ 64 (`WF_COMBO_LIVE`) | the cuts balance DUST's drive: +0.65 to +0.96 LU on three Worlds, −1.37 LU on DUSTY CAFE (its `max_dust` 40 keeps CRUSH mild): within 1.4 LU of dry |
+| FREEZE: the main loop writes `punch.req` | `macro.c live_freeze` in `macro_service`: only while FX is held in PLAY (`punch.hold`), from 25 % (1 beat, ½ from 50 %, ¼ from 75 %); a held white key (`punch.keybit`) wins, FREEZE comes back after it; only its own request is ever withdrawn (FX let go, under 25 %, ADVANCED, SLOOP, no World) | no stuck loop, and SLOOP's punch FX untouched |
+| SHORT `dec` −50; BODY `sus` +50; TAIL `rel` +60 | −40; +40; +56, and the Smart Keys windows (`GL_K*`): attack ≤ 0.59 s, decay ≥ 58 ms, release 25 ms–1.9 s, whatever moves them | no click-short or endless envelope |
+| DRIFT `ld_pit` +3; RATE `lrate` −40..+40 | +2 on the `late` curve; ±24, and windows on the keys LFO: pitch ±4 (±0.75 st, the most NEON RAIN's MOTION reaches), filter ±48, tremolo ≤ 80, rate 0.12–9.6 Hz | MOTION + MOVEMENT summed stay musical (NEON RAIN's MOTION also moves the lead's pitch LFO) |
+| RATE tempo-friendly | `lrate` in SLOOP's LFO_HZ steps, not synced | SLOOP's LFO has no tempo sync |
+| classes | SOUND SHAPE medium, MOVEMENT slow; a built-in control at home adds no class to a slot (it is invisible: a World's MOTION on the lead's `ld_pit` keeps its medium until DRIFT is turned) | depth and rate changes glide; the authored sound and its smoothing unchanged while the pages are untouched |
+| the session saves the controls | all 16 are saved; a restored session sets 0..11 and leaves LIVE FX home; `pl_ui_reset` (every mode change) sends LIVE FX home | LIVE FX is momentary |
+| — | `punch.c`: a fade-out that ended inside a block let the gain climb back for the rest of it, so the next effect started up to half wet (a click); the target is now 0 while nothing plays | FREEZE's 1,000-event test found it; SLOOP's punch FX get the fix (no golden changes) |
+| — | the CPU estimate counts the DJ filter (66), a punch effect (96) and DUST the overlay moves | measured 56–60 and 88 instructions a sample |
+| at most 48 slots | the built-ins add up to 22 targets; past 48, a World's own come first | — |
+
 ---
 
 ## 10. Advanced Mode, user worlds and persistence

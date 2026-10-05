@@ -728,3 +728,112 @@ DARK pad 78, texture 84). Every variation now sits within 2.5 LU of ORIGINAL in 
   defaults with the clean checks.
 
 **Next.** Phase 13.
+
+## Phase 13: LIVE FX, SOUND SHAPE and MOVEMENT (2026-10-05)
+
+**Done.** The twelve controls behind FX, ENV and LFO now do something, with beginner names on the pages and their
+bounds in the guard. As built: design §9.5. Bounds and measurements:
+[guardrails.md §2.7](guardrails.md#27-live-fx-sound-shape-and-movement-phase-13).
+
+**Built-in mappings** (`world_fmt.h` `WF_CTL_BUILTIN`, 22 MAPS records evaluated by `macro.c` after the World's own).
+A World's `controls` that name a control replace all of its built-in records (the format already had `controls`).
+`tools/worldc.py`'s model reads the same table, so the slot dump stays byte-identical.
+
+| Control | Moves | At 100 % | Class |
+| --- | --- | --- | --- |
+| SOFT | keys `atk` | +70 (exp) | medium |
+| SHORT | keys `dec` / `rel` / `sus` | −40 / −50 / −60 | medium |
+| BODY | keys `sus` / `dec` / `@BODY` | +40 / +30 / +30 | medium |
+| TAIL | keys `rel` / `rev` | +56 / +35 (s) | medium |
+| DRIFT | keys `ld_pit` / `ld_flt` / `@DETUNE` | +2 (late) / +10 / +15 | slow |
+| WOBBLE | keys `ld_flt` | +45 | slow |
+| PULSE | keys `ld_amp` | +70 | slow |
+| RATE (home 50 %) | keys `lrate` | ±24 | slow |
+| FILTER (home 50 %) | `g.filt`: left low-pass, right high-pass (SLOOP's DJ filter, resonance fixed) | −64 / +63 | medium |
+| ECHO | `g.dmix` / `*.dly` / `g.dfdbk` (the World's tempo-synced time) | +40 / +60 / +30 | medium |
+| CRUSH | `g.dust`, with `*.level` and the drums −5 (gain compensation) | +90 | medium |
+| FREEZE | the punch engine's loop: off under 25 %, then 1 beat, ½, ¼ | — | 64-sample fade |
+
+"keys" is the Smart Keys track. SOUND SHAPE and MOVEMENT keep their positions in the session; LIVE FX is momentary.
+
+**Safety.**
+- **ECHO.** While it is up, `guard.c guard_live` holds two combinations whatever the World's GUARD says
+  (`WF_COMBO_LIVE`): feedback ≤ `GL_ECHO_DFDBK` (96, 0.67 a repeat), and ≤ 72 in a big room (`g.rsize` > 104). The
+  World's `max_dfdbk` applies too. The factory Worlds land at 72–80.
+- **CRUSH.** DUST stays under `max_dust`; on a part distorted past 80 it stays ≤ 64.
+- **The Smart Keys windows** (`guard_limits.h` `GL_K*`, on every slot of that track):
+  - attack ≤ 0.59 s, decay ≥ 58 ms, release 25 ms–1.9 s;
+  - LFO pitch ±4 (±0.75 st, the most NEON RAIN's MOTION reaches), filter ±48, tremolo ≤ 80, rate 0.12–9.6 Hz.
+
+  So MOTION and MOVEMENT together stay musical. A base the World put outside a window stays.
+- **FREEZE** (`macro.c live_freeze`, main loop). It plays only while FX is held in PLAY MODE. A held white key's punch
+  FX wins, and FREEZE comes back after it. FX let go, the knob under 25 %, ADVANCED, SLOOP or no World withdraw it. It
+  only ever withdraws its own request, so SLOOP's punch FX are untouched. The loop reads the punch ring: no new buffer.
+- **Release.** FX let go (`ui_play.c`), any mode change (`pl_ui_reset`) or a restored session sends the four home. The
+  overlay ramps them (medium): home in 276–320 ms, at most 2 steps a block.
+- **CPU.** The guard's estimate now counts the DJ filter (66), a punch effect (96) and DUST the overlay moves.
+- **Untouched pages are invisible.** A built-in control at home adds no slot and no smoothing class, so every World
+  sounds and glides exactly as before while the pages are untouched (NEON RAIN's MOTION on the lead's pitch LFO keeps
+  its medium class until DRIFT is turned).
+
+**A punch engine fix** (`punch.c`, one line). When a fade-out ended inside a block, the wet gain climbed back for the
+rest of it, so the next effect started up to half wet: a click on every later punch FX, in SLOOP too. The target is
+now 0 while nothing plays. The FREEZE stress test found it; no golden changed.
+
+**Pages.** The screens were already there (Phase 9). [play-livefx.png](images/play-livefx.png),
+[play-shape.png](images/play-shape.png) and [play-movement.png](images/play-movement.png) are now taken from the real
+state at the UI spec's values.
+
+**Verified.**
+- `./tests/run_tests.sh` passes all 39 groups.
+- New `livefx_test` (35 checks, ASan/UBSan, on world_render's harness):
+  - every control 4..15 at 0 / 0.5 / 1 on every factory World and full.world: inside descriptors, ranges and windows;
+    home exactly the default table; the ECHO caps, CRUSH's compensation and DUST cap, FILTER's sides; a World's
+    `controls` replacing the built-in ones;
+  - FREEZE and the white keys; ADVANCED, SLOOP, a mode change, an unloaded World;
+  - a FILTER sweep while playing: peak −4.5 dBFS, no wrap, the filter's state bounded;
+  - FREEZE engaged and let go 1,038 times at random while playing, keys over it: never stuck, the right loop, keys
+    untouched, dry within 3 blocks; afterwards the output equals the render without it, bit for bit;
+  - FX let go with all four at 100 %: no click (0.07–0.70× the dry render's largest step);
+  - renders with a player:
+
+    | World | ECHO + SPACE: tail 10 s after STOP | CRUSH against dry |
+    | --- | --- | --- |
+    | NEON RAIN | −74.7 dBFS | +0.93 LU |
+    | MIDNIGHT DRIVE | −80.8 dBFS | +0.96 LU |
+    | FROZEN LAKE | −73.4 dBFS | +0.65 LU |
+    | DUSTY CAFE | −78.3 dBFS | −1.37 LU |
+
+  - SOUND SHAPE, SHORT alone, MOVEMENT (RATE up and down), everything with MOTION, FILTER at 0 and 1: clean on every
+    factory World (worst peak −3.35 dBFS, tails under −72 dBFS 6 s after STOP);
+  - cost (-O2): everything of Phase 13 at 100 % adds 192–396 host instructions a sample (at most 1,575 of 2,300).
+- `ui_play_test` (139 checks, +13): a new `livefx` scenario through the panel (FREEZE on K4, REVERSE on a white key
+  over it, FX let go with all four up, FREEZE into ADVANCED, the pages' positions kept). `persist` now also checks
+  MOVEMENT kept across a reboot and LIVE FX home.
+- The quick guard sweep adds the corners of controls 4..15 with the macros at 100 % (16 points a World, 1,488 in all),
+  all clean. The C slot tables still equal `worldc.py model`'s.
+- `macro_test`'s independent model now includes the built-in mappings and the Smart Keys windows (full.world's SHORT
+  default moves three keys slots).
+- Both regression builds match the 83 goldens; `punch_test` passes with the fix.
+
+**Sizes.** Image 556,192 B (+864 B). **25.4 KB** of the app slot is left. RAM `.data` + `.bss` 71,104 B (+0: no new
+buffer; FREEZE uses the punch ring).
+
+**Deviations** (design §9.5):
+- ECHO is gentler than the design (+40 / +60 / +30, not +60 / +70 / +40) and the big-room cap is new: at 66–72 BPM a
+  1/4 echo still sounded at −36 dBFS 6 s after STOP.
+- LIVE FX ramps home over about 300 ms (class medium), not 30 ms (fast): the owner's 100–300 ms.
+- CRUSH carries level cuts (data, as ENERGY's gain compensation): within 1.4 LU of dry.
+- The built-in mappings move the Smart Keys track only. The format has no `controls.<page>.tracks`; a World that
+  wants other tracks names the control in `controls`.
+- RATE moves SLOOP's LFO rate in Hz steps: the LFO has no tempo sync.
+- FREEZE fades over the punch engine's 64 samples (1.5 ms).
+- A restored session leaves LIVE FX home (all 16 positions are still written).
+
+**Left for later.**
+- STUTTER, REVERSE, TAPE STOP and LOOP stay on the white keys while FX is held (SLOOP's punch FX). No knob for them yet.
+- The full sweep (`SWEEP=full`) does not visit controls 4..15. Only `livefx_test` and `ui_play_test` play FREEZE.
+- LIVE ECHO at 100 % held through STOP needs up to about 8 s to fall under −60 dBFS at a slow tempo.
+- CPU costs are host instructions; Phase 17 calibrates them on the device.
+
+**Next.** Phase 14: Advanced Mode and user Worlds.

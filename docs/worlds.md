@@ -451,8 +451,19 @@ Mappings and rules that only together run past the top of a range or a limit are
 **At most 40 mappings** in all, counting `controls`.
 
 **Controls** (`SOFT SHORT BODY TAIL DRIFT WOBBLE PULSE RATE FILTER ECHO CRUSH FREEZE`) replace that control's built-in
-mappings with yours. They are evaluated as the macros are; the PLAY screens that turn them, and their built-in
-mappings, come with Phase 13.
+mappings with yours: name a control and all of its built-in mappings stand aside; leave it out and the firmware's
+apply. They are evaluated as the macros are. The player turns them on the PLAY pages: ENV held (SOUND SHAPE), LFO held
+(MOVEMENT), FX held (LIVE FX). The built-in mappings (`world_fmt.h` `WF_CTL_BUILTIN`, Phase 13):
+- SOUND SHAPE and MOVEMENT move the Smart Keys track's envelope (`atk dec sus rel`, `rev`) and LFO (`ld_pit ld_flt
+  ld_amp lrate`, `@BODY`, `@DETUNE`). Their positions are saved with the session.
+- LIVE FX moves the master: FILTER the DJ filter (`g.filt`), ECHO the delay bus (`g.dmix`, `*.dly`, `g.dfdbk`), CRUSH
+  DUST (`g.dust`, with level cuts). They are momentary: FX let go, every LIVE FX control goes home, yours too.
+- FREEZE has no mapping: from 25 % it plays the punch engine's loop of the beat while FX is held. Mappings you give
+  FREEZE move parameters as well; the loop stays.
+- Whatever moves them, the Smart Keys track's envelope and LFO stay inside fixed windows, and LIVE ECHO's feedback stays
+  at most 96 (72 in a big room): [guardrails.md §2.7](guardrails.md#27-live-fx-sound-shape-and-movement-phase-13).
+
+The `defaults` set SOUND SHAPE (`shape`) and MOVEMENT (`movement`); LIVE FX always starts at home.
 
 **Curves.** Each curve is one of:
 - 9 values 0..1 (at x = 0, 1/8, …, 1);
