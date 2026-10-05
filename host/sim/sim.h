@@ -96,6 +96,7 @@ typedef struct {
     char scene_name[4][12];              /* "INTRO" .. */
     int scenes;                          /* bit per scene that holds something */
     int scene, scene_next;               /* playing (-1 none), from the next bar (-1 none) */
+    char when[16];                       /* when it lands: NEXT BAR, IN 2 BARS, NEXT PHRASE (a scene's transition) */
     int nvar, var, var_next;             /* variations (0: none), the one asked for (-1 none) */
     char var_name[8][12];
     int macro[4];                        /* COLOR MOTION SPACE ENERGY, 0..100 */

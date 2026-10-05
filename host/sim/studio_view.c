@@ -178,7 +178,7 @@ static void draw_scenes(canvas_t *c, const studio_t *m)
         c_frame(c, x, SY, SW, SH, 10.0f, next ? 2.0f : 1.0f, edge, playing ? c_mix(CARD, ACCENT, 70) : CARD);
         c_text_l(c, x + 14, SY + 16, l, used ? TEXT : FAINT);
         c_text(c, x + 44, SY + 14, m->scene_name[i][0] ? m->scene_name[i] : "SECTION", used ? TEXT : FAINT);
-        c_text(c, x + 44, SY + 34, !used ? "EMPTY" : playing ? "PLAYING" : next ? "NEXT BAR" : "", playing ? LAV : next ? ACCENT : FAINT);
+        c_text(c, x + 44, SY + 34, !used ? "EMPTY" : playing ? "PLAYING" : next ? m->when : "", playing ? LAV : next ? ACCENT : FAINT);
         if (playing)
             c_ring(c, (float)(x + SW - 14), (float)(SY + 14), 0.0f, 4.5f, TEXT);
     }
@@ -200,15 +200,15 @@ static void draw_scenes(canvas_t *c, const studio_t *m)
     if (m->scene_next >= 0 || m->var_next >= 0) {
         char b[64];
         if (m->scene_next >= 0)
-            snprintf(b, sizeof b, "CHANGES NEXT BAR:  %s %s%s%s", cmd_scene_name(m->scene_next),
+            snprintf(b, sizeof b, "CHANGES %s:  %s %s%s%s", m->when, cmd_scene_name(m->scene_next),
                      m->scene_name[m->scene_next], m->var_next >= 0 ? "  \xB7  " : "",
                      m->var_next >= 0 ? m->var_name[m->var_next] : "");
         else
             snprintf(b, sizeof b, "CHANGES NEXT BAR:  %s", m->var_name[m->var_next]);
         c_text_c(c, (SX + VX + VW) / 2, SY + SH + 10, b, ACCENT);
     } else {
-        c_text_c(c, (SX + VX + VW) / 2, SY + SH + 10, "scenes and variations change on the next bar (Option+1..4, V)",
-                 FAINT);
+        c_text_c(c, (SX + VX + VW) / 2, SY + SH + 10, "scenes change on their transition's bar, variations on the next "
+                 "(Option+1..4, V)", FAINT);
     }
 }
 

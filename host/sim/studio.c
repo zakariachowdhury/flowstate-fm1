@@ -317,7 +317,7 @@ void studio_block(void)
         follow_device();
         return;
     }
-    if (S.phase == 2) {                          /* a World: world.c stops, loads and starts on the bar */
+    if (S.phase == 2) {                          /* a World: world.c switches on the bar, playing on (Phase 11) */
         host_world_t w;
         host_world(&w);
         if (w.pending != 2) {
@@ -467,6 +467,10 @@ void studio_fill(studio_t *m)
     snprintf(m->msg, sizeof m->msg, "%s", S.msg);
     m->scene = st.scene;
     m->scene_next = st.scene_next;
+    if (w.pending == 1 && w.bars_left > 1)       /* (a scene's transition of 2 or 4 bars, or the phrase) */
+        snprintf(m->when, sizeof m->when, w.phrase ? "NEXT PHRASE" : "IN %d BARS", w.bars_left);
+    else
+        snprintf(m->when, sizeof m->when, "NEXT BAR");
     m->var = m->var_next = -1;
     m->keys_track = -1;
     if (w.active) {                              /* a World */
