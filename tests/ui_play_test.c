@@ -366,37 +366,72 @@ static void sc_screens(void)
     check(macro_pos(5) == 10, ".. its knobs edit it meanwhile");
     wait_ms(2600);
     check(pl.scr == PS_HOME, ".. then HOME");
-    /* REC (the stand-in) */
+    /* REC (play_rec.c; the recording itself, timing and guard: tests/play_rec_test.c) */
     memcpy(keys_steps, trk[wrt.keys_trk].step, sizeof keys_steps);
     tap(B_REC);
-    check(pl.rec == PR_TAKE && pl.scr == PS_REC && host_button_led(B_REC) == 2, "REC playing: RECORDING, REC lit");
+    check(prec.st == PR_TAKE && pl.scr == PS_REC && host_button_led(B_REC) == 2, "REC playing: RECORDING, REC lit");
     redraw();
-    check(seen("RECORDING...") && seen("PLAY SOMETHING") && seen("SMART KEYS ACTIVE"),
-          "RECORDING...: the dots, PLAY SOMETHING, SMART KEYS ACTIVE");
+    check(seen("RECORDING...") && seen("PLAY SOMETHING") && seen("SMART KEYS ACTIVE") && prec_bars() == 0,
+          "RECORDING...: the dots (none filled before a note), PLAY SOMETHING, SMART KEYS ACTIVE");
     wait_bar();
-    shot("recording");
-    v = clk_beat;
-    for (i = 0; i < 2000 && pl.rec == PR_TAKE; i++)
-        frame();
-    check(pl.rec == PR_LOOP && pl.scr == PS_LOOP && clk_beat - pl.rec_beat == 4u * pl_loop_bars(),
-          "one loop length later: it loops (LOOP 1)");
-    tap(B_REC);
+    for (i = 0; i < 4; i++)                      /* a phrase over two bars: the first */
+        key_tap((uint32_t)(7 + (i * 3) % 8)), wait_ms(700);
+    wait_bar();
+    wait_ms(400);                                /* (past the bar's first step: REC closes on the next line) */
     redraw();
-    check(pl.rec == PR_OVERDUB && seen("LOOP 1") && seen("PLAYING + REC") && seen("TAP KEYS TO ADD MORE") &&
-          seen("UNDO READY"), "REC: overdub, LOOP 1, PLAYING + REC, TAP KEYS TO ADD MORE \xB7 UNDO READY");
+    check(prec_bars() == 2 && host_button_led(B_EDIT) == 0, "RECORDING: a dot a bar (2 of 4 after a bar and a bit); "
+          "no UNDO while the take runs");
+    shot("recording");
+    tap(B_REC);
+    v = clk_beat;
+    for (i = 0; i < 3; i++)                      /* .. the second: recorded until the bar line */
+        key_tap((uint32_t)(9 + (i * 5) % 9)), wait_ms(600);
+    for (i = 0; i < 2000 && prec.st == PR_TAKE; i++)
+        frame();
+    check(prec.st == PR_LOOP && pl.scr == PS_LOOP && prec.layers == 1 && (clk_beat & 3u) == 0 && clk_beat > v,
+          "REC: the take closes on the next bar line and loops (LOOP 1)");
+    check(trk[wrt.keys_trk].p[P_SLEN] == 32 && prec_has(&trk[wrt.keys_trk]), "the loop: 2 bars of what was played");
+    frames(2);
+    check(host_button_led(B_REC) == 1 && host_button_led(B_EDIT) == 1, "LOOP: REC dim (a loop), EDIT dim (UNDO ready)");
+    tap(B_REC);
+    key_tap(12);
+    wait_ms(300);
+    redraw();
+    check(prec.st == PR_OVERDUB && seen("LOOP 2") && seen("PLAYING + REC") && seen("TAP KEYS TO ADD MORE") &&
+          seen("UNDO READY"), "REC: overdub, a note: LOOP 2, PLAYING + REC, TAP KEYS TO ADD MORE \xB7 UNDO READY");
+    for (i = 0, ok = 0; i < 40; i++, frame())
+        ok |= 1 << host_button_led(B_REC);
+    check(ok == 5, "overdub: REC blinks");
     shot("loop");
     tap(B_REC);
-    check(pl.rec == PR_LOOP, "REC: overdub off");
+    check(prec.st == PR_LOOP && pl.scr == PS_LOOP, "REC: overdub off (LOOP a moment)");
+    tap(B_EDIT);
+    redraw();
+    check(prec.layers == 1 && seen("UNDONE") && seen("LOOP 1"), "EDIT tapped: UNDONE (LOOP 1 again)");
+    press(B_EDIT);
+    tap(B_OCTUP);
+    release(B_EDIT);
+    redraw();
+    check(prec.layers == 2 && seen("REDONE") && song.octave == 0 && pl.scr != PS_ADVDLG,
+          "EDIT held + OCT+: REDONE (no octave, no ADVANCED)");
     press(B_REC);
     wait_ms(1000);
-    check(pl.rec == PR_LOOP && pl.hold == PH_CLEAR, "REC held: the press undone, the clear ring");
+    check(prec.st == PR_LOOP && pl.hold == PH_CLEAR, "REC held: the press undone, the clear ring");
     redraw();
     check(seen("CLEAR LOOP"), "the ring: CLEAR LOOP");
     shot("clear");
     wait_ms(700);
     release(B_REC);
-    check(pl.rec == PR_EMPTY && pl.hold == PH_NONE, "REC held 1.5 s: the loop cleared");
-    check(!memcmp(keys_steps, trk[wrt.keys_trk].step, sizeof keys_steps), "the stand-in wrote no step");
+    redraw();
+    check(prec.st == PR_EMPTY && pl.hold == PH_NONE && !prec_has(&trk[wrt.keys_trk]) && seen("LOOP CLEARED"),
+          "REC held 1.5 s: LOOP CLEARED");
+    tap(B_EDIT);
+    check(prec.st == PR_LOOP && prec.layers == 2, "EDIT: the clear undone, the loop back");
+    press(B_REC);
+    wait_ms(1600);
+    release(B_REC);
+    check(prec.st == PR_EMPTY && !memcmp(keys_steps, trk[wrt.keys_trk].step, sizeof keys_steps),
+          "cleared again: the keys track as before REC");
     /* SAVE */
     tap(B_SAVE);
     redraw();
@@ -814,13 +849,14 @@ static void sc_fuzz(uint32_t n)
         modes[wrt.mode % 3u]++;
         if (wrt.mode == WM_PLAY && !scr[pl.scr % PS_COUNT]++)
             nscr++;
-        if (wrt.mode > WM_ADV || pl.scr >= PS_COUNT || pl.rec >= PR_COUNT || pl.hold > PH_CLEAR || pl.hot > 4 ||
+        if (wrt.mode > WM_ADV || pl.scr >= PS_COUNT || prec.st >= PR_COUNT || pl.hold > PH_CLEAR || pl.hot > 4 ||
+            prec.rc > prec.rn || prec.rn > PR_RING || prec.rh >= PR_RING ||
             (wrt.mode != WM_SLOOP && !wrt.active && !wreq.sw) || (wrt.mode == WM_SLOOP && wrt.active) ||
             (wrt.mode == WM_PLAY && (ly_bit[LY_ERASE] || ly_bit[LY_STEP] || !ly_bit[LY_FX])) ||
             (wrt.mode == WM_PLAY && wrt.active && !wrt.keys_on) || host_lcd_clipped || halted) {
             if (!bad++)
                 printf("play: fuzz: invalid at frame %u: mode %u scr %u rec %u active %u sw %u\n", i, wrt.mode, pl.scr,
-                       pl.rec, wrt.active, wreq.sw);
+                       prec.st, wrt.active, wreq.sw);
         }
     }
     host_in_set(0, 0);

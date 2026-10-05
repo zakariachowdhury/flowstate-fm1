@@ -401,4 +401,33 @@ ui_play_test() {
 run "PLAY MODE: screens, control map, World / scene / variation on the bar, ADVANCED, LEAVE WORLD, session, fuzz" \
     ui_play_test
 
+# PLAY REC (Phase 10: firmware/src/play_rec.c; design 9.1, D14; UI spec 7): tests/play_rec_test.c on the whole firmware
+# (host/core.c, FELUCCA_WORLD 1) under ASan/UBSan, block by block, each scenario in its own process: a humanised phrase
+# (up to +-0.45 of a step) at the World's quantise, at 0 and at 1 (nearest steps, micro-timing = the leftover x
+# (1 - quantize), in key as it sounded, the take closed on the bar line, playback at step + micro-timing within a
+# block, each note once a pass); the record guard (duplicates, max_poly, max_notes, out of key, lengths); REC inside a
+# bar's first step; UNDO / REDO through 4 levels and the ring's wrap, CLEAR; a take across a scene and chord change, the
+# loop's phase, loop follow; the loop across a reboot, cleared by a World switch; ARMED, STOP, ADVANCED (SLOOP's
+# sequencer, FUN4); a fuzz of REC / keys / EDIT / scenes / PLAY with audio (REC_FUZZ=n frames). With SDL2, a phrase
+# recorded headlessly in the simulator (--script: rec, keys, rec, overdub, undo)
+REC_SCRIPT='1 play; 3 rec; 3.5 expect rec = 2; 4 key C4; 4.5 key E4; 5 key G4; 6.5 key A4; 7 rec; 10 expect rec = 3
+    10 expect loop >= 3; 11 rec; 11.2 expect rec = 4; 11.5 key D5; 12 rec; 12.5 expect loop >= 5; 13 undo
+    13.5 expect loop >= 3; 13.5 expect loop < 5; 14 stop; 16 expect gated = 0; 17 quit'
+play_rec_test() {
+    $CC -g -w -fsanitize=address,undefined -fno-sanitize=shift-base -fno-sanitize-recover=undefined -Ihost -Ibuild/host-obj \
+        -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/play_rec_test" tests/play_rec_test.c -lm || return 1
+    "$OUT/play_rec_test" "$OUT" > "$OUT/play_rec.txt" 2>&1 || { cat "$OUT/play_rec.txt"; return 1; }
+    grep -a 'micro-timing =\|fuzz:' "$OUT/play_rec.txt"
+    echo "PLAY REC: $(grep -ac ' ok$' "$OUT/play_rec.txt") checks passed"
+    if command -v sdl2-config >/dev/null 2>&1; then
+        build/host-bin/flowstate-sim --demo --headless 18 --fast --mute-output --script "$REC_SCRIPT" \
+            > "$OUT/sim-rec.txt" || { cat "$OUT/sim-rec.txt"; return 1; }
+        [ "$(grep -c '^expect: .*: ok' "$OUT/sim-rec.txt")" -eq 8 ] ||
+            { cat "$OUT/sim-rec.txt"; echo "not every REC expectation ran"; return 1; }
+        echo "simulator: a phrase recorded headlessly (rec, keys, rec: a loop; rec: overdub; undo; stop): 8 expectations"
+    fi
+}
+run "PLAY REC: the take, gentle quantise and micro-timing, record guard, layers, undo ring, scenes, session, fuzz" \
+    play_rec_test
+
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }
