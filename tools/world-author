@@ -1,0 +1,4 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+# world-author: the Musical World authoring tool; see tools/world_author.py and docs/authoring.md
+exec python3 "$(dirname "$0")/world_author.py" "$@"

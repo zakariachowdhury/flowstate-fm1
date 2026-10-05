@@ -1,0 +1,1719 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Flowstate World Author (Phase 15): the page of tools/world_author.py (./tools/world-author). One file, no
+     libraries, no build step; it talks to its own server only (no other URL), and plays no sound: the simulator
+     does (Preview). JSON is the World's source of truth: the page edits it, the server writes it. docs/authoring.md.
+     ?ref=user/x.world.json opens a file, ?tab=macros a tab, ?pos=0.8 the macro preview's position, ?dev=1 the
+     diagnostics drawer (?diag=COLOR=0.85,SPACE=0.9 its positions), ?selftest=1 renders
+     every tab once and writes the result into the title. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World Author</title>
+<style>
+  :root { --bg: #0b0b0e; --fg: #e9e9ec; --dim: #8b8b95; --faint: #5c5c66; --line: #2a2a31; --card: #131318;
+          --acc: #8b7cf6; --ok: #57d18a; --bad: #ff5d68; --warn: #f0b64a; --sel: #23232c; color-scheme: dark; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; font-variant-numeric: tabular-nums; }
+  .mono, textarea, .steps-in { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 18px 0 6px; padding-bottom: 2px; border-bottom: 1px solid var(--fg); }
+  h3 { font-size: 12px; font-weight: 600; margin: 10px 0 4px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+  a { color: inherit; }
+  button { font: inherit; background: var(--fg); color: var(--bg); border: 0; padding: 2px 10px; cursor: pointer; }
+  button:disabled { opacity: .35; cursor: default; }
+  button.ghost { background: none; color: var(--dim); border: 1px solid var(--line); }
+  button.ghost:hover { color: var(--fg); border-color: var(--dim); }
+  button.x { background: none; color: var(--faint); padding: 0 4px; }
+  button.x:hover { color: var(--bad); }
+  select, input[type=text], input[type=number], textarea {
+    font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); padding: 1px 4px; border-radius: 0; }
+  input[type=number] { width: 64px; }
+  input[type=range] { accent-color: var(--acc); }
+  input[type=checkbox] { accent-color: var(--acc); }
+  textarea { width: 100%; box-sizing: border-box; }
+  .dim { color: var(--dim); } .faint { color: var(--faint); }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .top { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 16px 0; border-bottom: 1px solid var(--fg); }
+  .brand { font-weight: 600; letter-spacing: .08em; }
+  #file { font-weight: 600; }
+  #dirty { color: var(--warn); }
+  #status { min-height: 1.4em; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #status.bad { color: var(--bad); } #status.ok { color: var(--ok); }
+  .chip { display: inline-block; border: 1px solid var(--line); padding: 0 6px; color: var(--dim); }
+  .chip.on { color: var(--ok); border-color: var(--ok); } .chip.off { color: var(--bad); border-color: var(--bad); }
+  .tabs { display: flex; flex-wrap: wrap; margin-top: 6px; }
+  .tabs button { background: none; color: var(--dim); padding: 4px 10px; position: relative; }
+  .tabs button:hover { color: var(--fg); }
+  .tabs button[aria-selected="true"] { background: var(--fg); color: var(--bg); }
+  .tabs button .n { font-size: 10px; color: var(--bad); margin-left: 3px; }
+  .tabs button[aria-selected="true"] .n { color: var(--bad); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 0 24px; padding: 0 16px 40px; }
+  @media (max-width: 960px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  #problems { position: sticky; top: 110px; align-self: start; max-height: calc(100vh - 130px); overflow: auto; padding-top: 12px; }
+  #problems .p { padding: 3px 0; border-bottom: 1px solid var(--line); cursor: pointer; overflow-wrap: anywhere; }
+  #problems .p:hover { background: var(--sel); }
+  #problems .path { color: var(--dim); font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+  .e { color: var(--bad); } .w { color: var(--warn); } .okc { color: var(--ok); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); padding: 8px 10px; min-width: 0; }
+  .card.sel { border-color: var(--acc); }
+  .card h3 { margin-top: 0; display: flex; gap: 8px; align-items: center; }
+  .grid2 { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 4px 8px; align-items: center; }
+  .grid2 > label { color: var(--dim); }
+  .row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin: 2px 0; }
+  table { border-collapse: collapse; }
+  th { font-weight: 400; color: var(--dim); text-align: left; padding: 0 8px 2px 0; white-space: nowrap; }
+  td { padding: 1px 8px 1px 0; vertical-align: middle; }
+  td.r, th.r { text-align: right; }
+  .bad { outline: 1px solid var(--bad) !important; } .warnm { outline: 1px dashed var(--warn); }
+  .hint { color: var(--faint); font-size: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: stretch; }
+  .cchip { border: 1px solid var(--line); background: var(--bg); padding: 2px 6px; min-width: 48px; cursor: pointer; display: flex; flex-direction: column; }
+  .cchip .t { font-family: ui-monospace, Menlo, monospace; }
+  .cchip .n { color: var(--acc); font-size: 11px; }
+  .cchip.badc { border-color: var(--bad); } .cchip.selc { border-color: var(--acc); background: var(--sel); }
+  .cchip .ctl { display: flex; gap: 2px; justify-content: space-between; }
+  .cchip .ctl button { background: none; color: var(--faint); padding: 0 2px; font-size: 11px; }
+  .cchip .ctl button:hover { color: var(--fg); }
+  .lanes { display: grid; gap: 1px; align-items: center; overflow-x: auto; }
+  .lanes .ln { color: var(--dim); padding-right: 6px; white-space: nowrap; display: flex; gap: 4px; align-items: center; }
+  .lanes button.c { background: var(--bg); color: var(--fg); border: 1px solid var(--line); width: 22px; height: 22px; padding: 0;
+                    font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .lanes button.c.beat { border-left-color: var(--dim); } .lanes button.c.barl { border-left: 2px solid var(--fg); }
+  .lanes button.c.on { background: var(--acc); color: #000; border-color: var(--acc); }
+  .lanes button.c.hard { background: #c6bdff; } .lanes button.c.soft { background: #5d529e; } .lanes button.c.ghost { background: #3a3366; color: var(--fg); }
+  .steps { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 2px; margin: 6px 0; }
+  .steps button { background: var(--bg); color: var(--fg); border: 1px solid var(--line); padding: 2px; min-width: 0; height: 34px;
+                  font-family: ui-monospace, Menlo, monospace; font-size: 11px; overflow: hidden; text-align: left; display: flex; flex-direction: column; }
+  .steps button .k { color: var(--faint); font-size: 9px; }
+  .steps button.note { border-color: var(--acc); } .steps button.tie { border-style: dashed; border-color: var(--dim); }
+  .steps button.selc { background: var(--sel); outline: 1px solid var(--fg); } .steps button.badc { border-color: var(--bad); }
+  .steps-in { width: 100%; box-sizing: border-box; }
+  .list button { display: block; width: 100%; text-align: left; background: none; color: var(--fg); padding: 2px 6px; }
+  .list button.on { background: var(--fg); color: var(--bg); } .list .grp { color: var(--dim); margin: 8px 0 2px; }
+  .split { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 700px) { .split { grid-template-columns: minmax(0, 1fr); } }
+  canvas { display: block; max-width: 100%; background: var(--card); border: 1px solid var(--line); }
+  .mtab { width: 100%; } .mtab td { padding: 2px 6px 2px 0; } .mtab tr.sel td { background: var(--sel); }
+  .mtab input[type=text] { width: 150px; }
+  .mask16 { display: inline-flex; gap: 1px; } .mask16 button { width: 14px; height: 16px; padding: 0; background: var(--bg); border: 1px solid var(--line); }
+  .mask16 button.on { background: var(--acc); border-color: var(--acc); } .mask16 button.q { margin-left: 3px; }
+  .kbd { position: relative; height: 130px; margin: 8px 0; }
+  .kbd .wk, .kbd .bk { position: absolute; top: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; font-size: 10px; box-sizing: border-box; }
+  .kbd .wk { width: 42px; height: 128px; background: #e9e9e6; color: #333; border: 1px solid #888; }
+  .kbd .bk { width: 28px; height: 80px; background: #26262c; color: #ddd; border: 1px solid #000; z-index: 2; }
+  .kbd .wk.ct, .kbd .bk.ct { box-shadow: inset 0 -6px 0 var(--acc); }
+  .kbd .k { padding-bottom: 8px; text-align: center; line-height: 1.15; } .kbd .kk { opacity: .55; }
+  .item { display: grid; grid-template-columns: 18px 190px minmax(0, 1fr); gap: 4px; padding: 2px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .item .more { grid-column: 3; color: var(--dim); white-space: pre-wrap; font-size: 12px; overflow-wrap: anywhere; }
+  .budget { display: grid; grid-template-columns: 140px minmax(0, 1fr) 190px; gap: 4px 8px; align-items: center; margin: 4px 0; }
+  .meter { height: 8px; background: var(--line); position: relative; }
+  .meter > div { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ok); }
+  .meter > div.w { background: var(--warn); } .meter > div.e { background: var(--bad); }
+  .meter > i { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--fg); }
+  progress { width: 220px; accent-color: var(--acc); }
+  #drawer { position: fixed; left: 0; right: 0; bottom: 0; height: 46vh; background: var(--card); border-top: 2px solid var(--acc);
+            z-index: 10; overflow: auto; padding: 8px 16px; box-sizing: border-box; }
+  #drawer .sliders { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 2px 18px; }
+  #drawer .sliders label { display: grid; grid-template-columns: 58px minmax(0, 1fr) 28px; gap: 6px; align-items: center; font-size: 11px; color: var(--dim); }
+  #drawer .sliders input { width: 100%; min-width: 0; margin: 0; }
+  #drawer .sliders .mono { text-align: right; }
+  .nbar { display: inline-block; width: 90px; height: 6px; background: var(--line); position: relative; vertical-align: middle; }
+  .nbar > div { position: absolute; top: 0; bottom: 0; left: 0; background: var(--acc); }
+  dialog { background: var(--card); color: var(--fg); border: 1px solid var(--dim); min-width: 420px; max-width: 760px; }
+  dialog::backdrop { background: rgba(0, 0, 0, .6); }
+  .flist { max-height: 60vh; overflow: auto; } .flist .f { padding: 2px 4px; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+  .flist .f:hover { background: var(--sel); }
+  footer { color: var(--faint); font-size: 11px; padding: 8px 16px; }
+  .note-ok { color: var(--ok); } .sw { width: 10px; height: 10px; display: inline-block; vertical-align: middle; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="bar">
+    <span class="brand">FLOWSTATE · WORLD AUTHOR</span>
+    <span id="file">—</span><span id="dirty"></span><span id="ro" class="chip" hidden>READ-ONLY</span>
+    <span style="flex:1"></span>
+    <button class="ghost" id="b-new" title="a new World from the template">New</button>
+    <button class="ghost" id="b-open">Open</button>
+    <button class="ghost" id="b-import" title="a user World blob (.wblob) as a source: worldc import">Import</button>
+    <button id="b-save" title="Cmd/Ctrl+S">Save</button>
+    <button class="ghost" id="b-saveas">Save As</button>
+    <button class="ghost" id="b-export">Export</button>
+    <button class="ghost" id="b-preview" title="play it in the simulator (it reloads on every save)">Preview</button>
+    <span id="sim" class="chip">SIM</span>
+    <input type="file" id="f-import" accept=".wblob,application/octet-stream" hidden>
+  </div>
+  <div id="status"></div>
+  <nav class="tabs" id="tabs"></nav>
+</header>
+<div class="layout">
+  <main id="view"></main>
+  <aside id="problems"></aside>
+</div>
+<footer>Every edit is checked by tools/worldc.py as you type. The simulator plays the saved file and reloads it on
+  every save. <span id="devhint">Alt+D: diagnostics (developer).</span></footer>
+<section id="drawer" hidden></section>
+<dialog id="dlg"></dialog>
+<datalist id="dl-targets"></datalist><datalist id="dl-ptargets"></datalist><datalist id="dl-gtargets"></datalist>
+<script>
+"use strict";
+/*HELPERS-BEGIN*/
+/* Pure helpers (no DOM, no network): web/../tests/author_test.py runs them in node's vm. Each mirrors
+   tools/worldc.py where it parses the notation (scan_steps, step_token, ROMAN, curves). */
+const NOTE = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const PCS = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+function noteName(n) { return NOTE[((n % 12) + 12) % 12] + (Math.floor(n / 12) - 1); }
+function parseNote(s) {
+  const m = /^([A-G])([#b]?)(-1|[0-9])$/.exec(String(s));
+  if (!m) return null;
+  const n = 12 * (Number(m[3]) + 1) + PCS[m[1]] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0);
+  return n >= 0 && n <= 127 ? n : null;
+}
+function jp(path, key) {
+  if (typeof key === "number") return `${path}[${key}]`;
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
+}
+/* drum lanes: one character a step, '|' between bars of 16 */
+const DRUM_CYCLE = [".", "x", "X", "s", "g", "2", "3", "4"];
+function drumCells(s) { return String(s || "").replace(/\|/g, "").split(""); }
+function drumString(cells, bars) {
+  const s = cells.join("");
+  return bars && s.length > 16 ? s.match(/.{1,16}/g).join("|") : s;
+}
+function drumCycle(c, dir) {
+  const i = Math.max(0, DRUM_CYCLE.indexOf(c));
+  return DRUM_CYCLE[(i + (dir < 0 ? -1 : 1) + DRUM_CYCLE.length) % DRUM_CYCLE.length];
+}
+function drumLength(lanes) { const v = Object.values(lanes || {}); return v.length ? drumCells(v[0]).length : 16; }
+function drumResize(lanes, n) {
+  const out = {};
+  for (const [k, v] of Object.entries(lanes || {})) {
+    const c = drumCells(v).slice(0, n);
+    while (c.length < n) c.push(".");
+    out[k] = drumString(c, n > 16);
+  }
+  return out;
+}
+/* melodic steps (worldc.py scan_steps, step_token) */
+function scanSteps(s) {
+  const out = []; let i = 0; const n = s.length;
+  while (i < n) {
+    const c = s[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === "|") { out.push("|"); i++; continue; }
+    let j = i, depth = 0, broke = false;
+    while (j < n && (depth || !(/\s/.test(s[j]) || s[j] === "|"))) {
+      if (s[j] === "[") depth++;
+      else if (s[j] === "]") { depth--; if (depth < 0) { broke = true; break; } }
+      j++;
+    }
+    if (depth === 0 || broke) { out.push(s.slice(i, j)); i = j; if (broke) { out.push(s.slice(j)); break; } }
+    else { out.push(s.slice(i)); i = n; }
+  }
+  return out;
+}
+const TOKEN_ITEM = /^(?:([b#]*)([1-9][0-9]*)(['’,]*)|c([13579])(['’,]*)|([A-G][#b]?(?:-1|[0-9])))$/;
+function octOf(s) { return (s.match(/['’]/g) || []).length - (s.match(/,/g) || []).length; }
+function parseStep(tk) {
+  if (tk === ".") return { ok: true, kind: "rest", text: tk };
+  if (tk === "-") return { ok: true, kind: "tie", text: tk };
+  const m = /^(\[[^\]]*\]|[^[\]!_~*]+)((?:!|_|~|\*[2-4])*)$/.exec(tk);
+  if (!m) return { ok: false, text: tk, error: `${JSON.stringify(tk)} is not a step` };
+  const sfx = m[2].match(/!|_|~|\*[2-4]/g) || [];
+  if (new Set(sfx.map((x) => x[0])).size !== sfx.length) return { ok: false, text: tk, error: `${JSON.stringify(tk)}: a suffix twice` };
+  const body = m[1];
+  const items = body.startsWith("[") ? body.slice(1, -1).trim().split(/\s+/).filter(Boolean) : [body];
+  if (items.length < 1 || items.length > 4) return { ok: false, text: tk, error: `${JSON.stringify(tk)}: 1..4 notes in a step` };
+  const out = [];
+  for (const it of items) {
+    const mm = TOKEN_ITEM.exec(it);
+    if (!mm) return { ok: false, text: tk, error: `${JSON.stringify(it)} is not a degree (1..7, b3, 5'), a chord tone (c1 c3 c5 c7 c9) or a note (A#3)` };
+    if (mm[2]) out.push({ kind: "deg", deg: Number(mm[2]), acc: (mm[1].match(/#/g) || []).length - (mm[1].match(/b/g) || []).length, oct: octOf(mm[3]) });
+    else if (mm[4]) out.push({ kind: "chord", n: Number(mm[4]), oct: octOf(mm[5]) });
+    else {
+      const note = parseNote(mm[6]);
+      if (note === null) return { ok: false, text: tk, error: `${JSON.stringify(it)} is outside MIDI 0..127` };
+      out.push({ kind: "note", note });
+    }
+  }
+  const rat = sfx.find((x) => x[0] === "*");
+  return { ok: true, kind: "notes", text: tk, items: out, accent: sfx.includes("!"), soft: sfx.includes("_"),
+           slide: sfx.includes("~"), ratchet: rat ? Number(rat[1]) : 1 };
+}
+function parseSteps(text, perBar) {
+  const toks = scanSteps(String(text || "")); const steps = []; const bars = []; let bar = 0;
+  for (const t of toks) {
+    if (t === "|") { bars.push(bar); bar = 0; continue; }
+    steps.push(parseStep(t)); bar++;
+  }
+  let error = null;
+  if (bars.length) { bars.push(bar); if (perBar && bars.some((b) => b !== perBar)) error = `bars of [${bars.join(", ")}] steps; a bar is ${perBar}`; }
+  if (!error && (steps.length < 1 || steps.length > 64)) error = `${steps.length} steps: a pattern is 1..64 steps`;
+  const bad = steps.findIndex((s) => !s.ok);
+  if (!error && bad >= 0) error = `step ${bad + 1}: ${steps[bad].error}`;
+  return { steps, bars: bars.length ? bars : null, error };
+}
+function joinSteps(tokens, perBar) {
+  if (perBar && tokens.length > perBar && tokens.length % perBar === 0) {
+    const out = [];
+    for (let i = 0; i < tokens.length; i += perBar) out.push(tokens.slice(i, i + perBar).join(" "));
+    return out.join(" | ");
+  }
+  return tokens.join(" ");
+}
+function withSuffix(tk, sfx, on) {   /* a step's token with suffix ! _ ~ *n set or cleared (rests and ties have none) */
+  const p = parseStep(tk);
+  if (!p.ok || p.kind !== "notes") return tk;
+  const m = /^(\[[^\]]*\]|[^[\]!_~*]+)((?:!|_|~|\*[2-4])*)$/.exec(tk);
+  let s = (m[2].match(/!|_|~|\*[2-4]/g) || []).filter((x) => x[0] !== sfx[0]);
+  if (on) s.push(sfx);
+  return m[1] + s.join("");
+}
+/* progressions (worldc.py Compiler.ROMAN, SUF_ANY, SUF_CASE) */
+const ROMAN = /^([b#]?)(VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)(.*?)(?::(\d+))?$/;
+const SUF_ANY = { "°": "DIM", o: "DIM", dim: "DIM", "+": "AUG", aug: "AUG", sus2: "SUS2", sus4: "SUS4", sus: "SUS4", 5: "POW5",
+  "ø": "M7B5", "ø7": "M7B5", m7b5: "M7B5", "°7": "DIM7", o7: "DIM7", dim7: "DIM7" };
+const SUF_CASE = { "": ["MAJ", "MIN"], 7: ["DOM7", "MIN7"], 6: ["MAJ6", "MIN6"], add9: ["ADD9", "MADD9"], 9: ["ADD9", "MADD9"],
+  maj7: ["MAJ7", null], M7: ["MAJ7", null], "Δ": ["MAJ7", null], "Δ7": ["MAJ7", null] };
+const NUMERALS = ["I", "II", "III", "IV", "V", "VI", "VII"];
+function parseChord(c) {
+  const m = typeof c === "string" ? ROMAN.exec(c) : null;
+  if (!m) return { ok: false, error: `${JSON.stringify(c)}: a roman numeral such as i, VI, bVII7, ii°:2` };
+  const [, acc, num, suf, beats] = m;
+  const upper = num === num.toUpperCase();
+  let q = null;
+  if (suf in SUF_ANY) q = SUF_ANY[suf];
+  else if (suf in SUF_CASE) q = SUF_CASE[suf][upper ? 0 : 1];
+  if (!q) return { ok: false, error: `${JSON.stringify(c)}: unknown chord suffix ${JSON.stringify(suf)}` };
+  const b = beats ? Number(beats) : 4;
+  if (b < 1 || b > 32) return { ok: false, error: `${JSON.stringify(c)}: 1..32 beats` };
+  return { ok: true, acc, numeral: num, degree: NUMERALS.indexOf(num.toUpperCase()), upper, suffix: suf, quality: q, beats: b };
+}
+function chordWithBeats(c, beats) { const m = ROMAN.exec(c); return m ? `${m[1]}${m[2]}${m[3]}${beats === 4 && !m[4] ? "" : ":" + beats}` : c; }
+function progBeats(list) { let t = 0; for (const c of list || []) { const p = parseChord(c); if (!p.ok) return NaN; t += p.beats; } return t; }
+/* curves (worldc.py Compiler.lut, macro.c): y(u) for u = 0..1 how far the knob is from home */
+const BUILTIN_CURVES = ["lin", "exp", "log", "s", "late"];
+function curveLut(c) {
+  if (Array.isArray(c) && c.length === 9) return c.map(Number);
+  if (c && Array.isArray(c.lut) && c.lut.length === 9) return c.lut.map((x) => x / 255);
+  if (c && Array.isArray(c.points) && c.points.length >= 2) {
+    const p = c.points, out = [];
+    for (let k = 0; k < 9; k++) {
+      const x = k / 8;
+      for (let i = 0; i < p.length - 1; i++) {
+        const [x0, y0] = p[i], [x1, y1] = p[i + 1];
+        if (x0 <= x && x <= x1) { out.push(x1 > x0 ? y0 + (y1 - y0) * (x - x0) / (x1 - x0) : y1); break; }
+      }
+      if (out.length <= k) out.push(k ? out[k - 1] : 0);
+    }
+    return out;
+  }
+  return null;
+}
+function curveY(curve, u, curves) {
+  u = Math.max(0, Math.min(1, u));
+  const c = curve == null ? "lin" : curve;
+  if (c === "lin") return u;
+  if (c === "exp") return u * u;
+  if (c === "log") return Math.sqrt(u);
+  if (c === "s") return 3 * u * u - 2 * u * u * u;
+  if (c === "late") return u > 0.5 ? 2 * (u - 0.5) : 0;
+  const lut = curveLut(typeof c === "string" ? (curves || {})[c] : c);
+  if (!lut) return u;
+  const x = 8 * u, i = Math.min(7, Math.floor(x));
+  return lut[i] + (lut[i + 1] - lut[i]) * (x - i);
+}
+function mapOffset(m, x, home, curves) {   /* a mapping's offset with its control at x (0..1), home where it rests */
+  const mn = Number(m.min || 0), mx = Number(m.max || 0);
+  if (x < home) return mn * curveY(m.curve, (home - x) / home, curves);
+  if (x > home) return mx * curveY(m.curve, (x - home) / (1 - home), curves);
+  return 0;
+}
+function renameTarget(t, from, to) {   /* "pad.CUT", "pad+bass.rev" with track `from` renamed `to` */
+  if (typeof t !== "string" || !t.includes(".")) return t;
+  const i = t.indexOf("."), tr = t.slice(0, i);
+  return tr.split("+").map((x) => (x === from ? to : x)).join("+") + t.slice(i);
+}
+function mask16(s) { return String(s || "").replace(/\|/g, "").padEnd(16, ".").slice(0, 16).split("").map((c) => c === "x"); }
+function mask16Str(bits) { return bits.map((b) => (b ? "x" : ".")).join(""); }
+function pruneEmpty(o, keys) {   /* drop keys whose value is an empty object or array */
+  for (const k of keys || Object.keys(o)) {
+    const v = o[k];
+    if (v && typeof v === "object" && !Array.isArray(v) && !Object.keys(v).length) delete o[k];
+    else if (Array.isArray(v) && !v.length) delete o[k];
+  }
+  return o;
+}
+/*HELPERS-END*/
+
+/* ======================================================================== state, API ===== */
+const QS = new URLSearchParams(location.search);
+const S = { names: null, state: null, ref: null, writable: true, mtime: null, W: null, dirty: false, isNew: false,
+  tab: QS.get("tab") || "world", check: null, harmony: null, compile: null, job: null, model: null, dev: QS.has("dev"),
+  sel: { pattern: null, ctl: "COLOR", map: 0, prog: null, chord: 0, skprog: null, skchord: 0, oct: 0, step: -1,
+         scene: null, var: null, pos: Math.max(0, Math.min(1, Number(QS.get("pos") || 0.5))), patprog: null },
+  diag: { scene: null, var: null, pos: null }, patview: null, sim: null, timers: {}, errors: [] };
+const ROOTS = ["C", "C#", "Db", "D", "D#", "Eb", "E", "F", "F#", "Gb", "G", "G#", "Ab", "A", "A#", "Bb", "B"];
+const TABS = [["world", "World"], ["harmony", "Harmony"], ["tracks", "Tracks"], ["patterns", "Patterns"],
+  ["scenes", "Scenes"], ["variations", "Variations"], ["macros", "Macros"], ["keys", "Smart Keys"],
+  ["guard", "Guardrails"], ["defaults", "Defaults"], ["validate", "Validate"], ["json", "JSON"]];
+const TAB_OF = { format: "world", id: "world", name: "world", category: "world", blurb: "world", notes: "world", tempo: "world",
+  key: "world", swing: "world", tracks: "tracks", fx: "tracks", patterns: "patterns", progressions: "harmony",
+  scenes: "scenes", variations: "variations", macros: "macros", controls: "macros", curves: "macros", rules: "macros",
+  energy: "macros", smart_keys: "keys", guard: "guard", defaults: "defaults" };
+
+async function api(name, body) {
+  const r = await fetch("/api/" + name, body === undefined ? { cache: "no-store" }
+    : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  let j;
+  try { j = await r.json(); } catch { j = { error: `HTTP ${r.status}` }; }
+  if (!r.ok) { const e = new Error(j.error || `HTTP ${r.status}`); e.status = r.status; e.data = j; throw e; }
+  return j;
+}
+function say(t, kind) { const s = document.getElementById("status"); s.textContent = t || ""; s.className = kind || ""; }
+function schedule(key, ms, fn) { clearTimeout(S.timers[key]); S.timers[key] = setTimeout(fn, ms); }
+function clone(x) { return JSON.parse(JSON.stringify(x)); }
+/* the World as it is sent and saved: a copy without the empty objects the forms leave behind (S.W keeps them, so the
+   open tab's inputs stay attached) */
+function P() {
+  const w = clone(S.W);
+  for (const v of Object.values(w.variations || {})) if (v && typeof v === "object") pruneEmpty(v, ["sounds", "params", "fx", "swap", "macros"]);
+  for (const s of Object.values(w.scenes || {})) if (s && typeof s === "object") pruneEmpty(s, ["params", "fx"]);
+  for (const t of Array.isArray(w.tracks) ? w.tracks : []) if (t && t.sound && typeof t.sound === "object") pruneEmpty(t.sound, ["params"]);
+  const g = w.guard;
+  if (g && typeof g === "object") {
+    if (g.notes && typeof g.notes === "object") pruneEmpty(g.notes);
+    if (g.sound && typeof g.sound === "object") pruneEmpty(g.sound, ["ranges"]);
+    pruneEmpty(g, ["notes", "record", "sound", "arrangement", "cpu"]);
+    if (!Object.keys(g).length) delete w.guard;
+  }
+  if (w.smart_keys && w.smart_keys.range === undefined) delete w.smart_keys.range;
+  pruneEmpty(w, ["fx", "curves", "controls", "macros", "energy", "rules"]);
+  return w;
+}
+
+/* ======================================================================== DOM helpers ===== */
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  if (props) for (const [k, v] of Object.entries(props)) {
+    if (v == null || v === false) continue;
+    if (k === "class") e.className = v;
+    else if (k === "text") e.textContent = v;
+    else if (k === "style") e.style.cssText = v;
+    else if (k.startsWith("on") && typeof v === "function") e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat(Infinity)) if (k != null && k !== false) e.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return e;
+}
+function touch(rerender) {
+  S.dirty = true; head();
+  schedule("check", 450, runCheck);
+  schedule("harmony", 350, runHarmony);
+  if (rerender) render();
+}
+function inp(obj, key, o = {}) {
+  const num = o.type === "number";
+  const e = h("input", { type: num ? "number" : "text", class: o.class, placeholder: o.ph ?? "", min: o.min, max: o.max,
+    step: num ? (o.step ?? (o.int ? 1 : "any")) : null, "data-path": o.path, list: o.list, spellcheck: "false", title: o.title,
+    style: o.width ? `width:${o.width}` : null, autocomplete: "off" });
+  e.value = obj[key] == null ? "" : String(obj[key]);
+  e.addEventListener(o.change ? "change" : "input", () => {
+    let v = e.value;
+    if (o.upper && v !== v.toUpperCase()) { const p = e.selectionStart; e.value = v = v.toUpperCase(); e.setSelectionRange(p, p); }
+    if (v.trim() === "" && !o.req) delete obj[key];
+    else if (num) { const n = Number(v); if (!Number.isFinite(n)) return; obj[key] = o.int ? Math.round(n) : n; }
+    else obj[key] = v;
+    if (o.on) o.on(obj[key]);
+    touch(o.rerender);
+  });
+  return e;
+}
+function sel(obj, key, options, o = {}) {
+  const vals = options.map((op) => (Array.isArray(op) ? op[0] : op));
+  const e = h("select", { "data-path": o.path, class: o.class, title: o.title });
+  if (o.none !== undefined) e.append(h("option", null, o.none));
+  options.forEach((op) => e.append(h("option", null, Array.isArray(op) ? op[1] : String(op))));
+  const cur = obj[key];
+  let i = vals.findIndex((v) => JSON.stringify(v) === JSON.stringify(cur));
+  if (cur !== undefined && i < 0) { e.append(h("option", null, `${JSON.stringify(cur)} ?`)); vals.push(cur); i = vals.length - 1; }
+  e.selectedIndex = cur === undefined ? (o.none !== undefined ? 0 : -1) : i + (o.none !== undefined ? 1 : 0);
+  e.addEventListener("change", () => {
+    const k = e.selectedIndex - (o.none !== undefined ? 1 : 0);
+    if (k < 0) delete obj[key]; else obj[key] = vals[k];
+    if (o.on) o.on(obj[key]);
+    touch(o.rerender);
+  });
+  return e;
+}
+function chk(obj, key, o = {}) {
+  const e = h("input", { type: "checkbox", "data-path": o.path, title: o.title });
+  e.checked = !!obj[key];
+  e.addEventListener("change", () => { if (e.checked) obj[key] = true; else if (o.keepFalse) obj[key] = false; else delete obj[key]; if (o.on) o.on(); touch(o.rerender); });
+  return e;
+}
+function unit(get, set, o = {}) {   /* a position 0..1: slider and number */
+  const v = get();
+  const r = h("input", { type: "range", min: o.min ?? 0, max: o.max ?? 1, step: o.step ?? 0.01, style: `width:${o.w || 120}px` });
+  const n = h("input", { type: "number", min: o.min ?? 0, max: o.max ?? 1, step: o.step ?? 0.01, "data-path": o.path, style: "width:58px" });
+  r.value = n.value = v == null ? (o.def ?? 0) : v;
+  if (v == null) { r.style.opacity = 0.4; n.placeholder = String(o.def ?? ""); n.value = ""; }
+  const put = (x) => { x = Math.max(Number(r.min), Math.min(Number(r.max), Number(x))); if (!Number.isFinite(x)) return; set(Math.round(x * 1000) / 1000); touch(o.rerender); };
+  r.addEventListener("input", () => { n.value = r.value; r.style.opacity = 1; put(r.value); });
+  n.addEventListener("input", () => { if (n.value === "") { set(undefined); touch(o.rerender); return; } r.value = n.value; put(n.value); });
+  return h("span", { class: "row", style: "margin:0" }, r, n);
+}
+function fill(el, ...kids) { el.replaceChildren(...kids.flat(Infinity).filter((x) => x != null && x !== false)); return el; }
+function field(label, ...el) { return [h("label", { title: typeof label === "string" ? label : null }, label), h("div", { class: "row", style: "margin:0" }, ...el)]; }
+function btn(text, fn, o = {}) { return h("button", { class: o.class ?? "ghost", title: o.title, onclick: (ev) => { ev.preventDefault(); fn(ev); }, disabled: o.disabled }, text); }
+function xbtn(fn, title) { return h("button", { class: "x", title: title || "remove", onclick: (ev) => { ev.preventDefault(); fn(); } }, "×"); }
+function dot(path) { return h("span", { "data-path": path, "data-pathc": "1" }); }
+
+/* ======================================================================== the World's names ===== */
+const W = () => S.W;
+const N = () => S.names;
+function tracks() { return Array.isArray(S.W.tracks) ? S.W.tracks : []; }
+function trackByName(n) { return tracks().find((t) => t && t.name === n); }
+function synthTracks() { return tracks().filter((t) => t && t.role !== "drums"); }
+function drumTrack() { return tracks().find((t) => t && t.role === "drums"); }
+function keysTrack() { return (S.W.smart_keys || {}).track; }
+function engineOf(t) { return N().engines.find((e) => e.name === String((t && t.sound && t.sound.engine) || "").toUpperCase()); }
+function gdesc(name) { return N().G.find((g) => g.name === name); }
+function pdesc(name) { return N().P.find((p) => p.name === name); }
+function paramDesc(t, pn) {
+  if (!t) return null;
+  if (t.role === "drums") { if (pn === "level") return gdesc("drlvl"); if (pn === "rev") return gdesc("drrev"); return pdesc(pn); }
+  const p = pdesc(pn);
+  if (p) return p;
+  const e = engineOf(t);
+  if (!e) return null;
+  if (/^e[0-7]$/.test(pn)) return e.edit[Number(pn[1])];
+  return e.edit.find((x) => x.label === pn && x.label !== "-") || null;
+}
+function targetDesc(to) {
+  if (typeof to !== "string" || !to.includes(".")) return null;
+  const i = to.indexOf("."), tr = to.slice(0, i), pn = to.slice(i + 1);
+  if (tr === "g") return gdesc(pn);
+  if (pn === "~bright" || pn === "~shape") return { min: -64, max: 64, label: pn, fmt: "VMOD" };
+  const ts = tr === "*" ? synthTracks() : tr.split("+").map(trackByName);
+  if (pn.startsWith("@")) { const e = engineOf(ts[0]); const k = e && e.roles[pn.slice(1)]; return k != null ? e.edit[k] : null; }
+  return paramDesc(ts[0], pn);
+}
+function trackParamNames(t, where) {   /* where: "sound" (any but the World's own), else no structural ones */
+  if (!t) return [];
+  if (t.role === "drums") return ["level", "rev", ...N().P.filter((p) => p.drum).map((p) => p.name)];
+  const common = N().P.filter((p) => !p.fixed && (where === "sound" || !p.structural)).map((p) => p.name);
+  const e = engineOf(t);
+  const eng = e ? e.edit.filter((x) => x.label !== "-" && (where === "sound" || !x.structural)).map((x) => x.label) : [];
+  return [...eng, ...common];
+}
+function fillDatalists() {
+  const tg = [], pt = [], gt = [];
+  for (const t of synthTracks()) {
+    const e = engineOf(t);
+    for (const p of trackParamNames(t, "macro")) { tg.push(`${t.name}.${p}`); pt.push(`${t.name}.${p}`); }
+    if (e) for (const [r, k] of Object.entries(e.roles)) if (k != null) tg.push(`${t.name}.@${r}`);
+    tg.push(`${t.name}.~bright`, `${t.name}.~shape`);
+  }
+  for (const p of N().P.filter((p) => !p.fixed && !p.structural)) { tg.push(`*.${p.name}`); pt.push(`*.${p.name}`); }
+  const d = drumTrack();
+  if (d) for (const p of trackParamNames(d)) { tg.push(`${d.name}.${p}`); pt.push(`${d.name}.${p}`); }
+  for (const g of N().G.filter((g) => !g.structural)) { tg.push(`g.${g.name}`); pt.push(`g.${g.name}`); gt.push(g.name); }
+  const put = (id, list) => { const dl = document.getElementById(id); fill(dl, ...[...new Set(list)].map((v) => h("option", { value: v }))); };
+  put("dl-targets", tg); put("dl-ptargets", pt); put("dl-gtargets", gt);
+}
+function patternsOf(trackName) { return Object.entries(S.W.patterns || {}).filter(([, p]) => p && p.track === trackName).map(([k]) => k); }
+function drumPatterns() { const d = drumTrack(); return d ? patternsOf(d.name) : []; }
+function varNames() { return Object.keys(S.W.variations || { ORIGINAL: {} }); }
+
+/* a value editor for a parameter or global: enum names as a select, else an integer */
+function valueEditor(obj, key, desc, path) {
+  if (desc && desc.names && desc.fmt === "ENUM") return sel(obj, key, desc.names.map((n) => [n, n]), { path });
+  return h("span", { style: "white-space:nowrap" }, inp(obj, key, { type: "number", int: true, min: desc ? desc.min : -128, max: desc ? desc.max : 127, path, req: true,
+    title: desc && desc.def != null ? `default ${desc.names ? desc.names[desc.def - desc.min] : desc.def}` : null }),
+    desc ? h("span", { class: "hint", title: desc.def != null ? `default ${desc.names ? desc.names[desc.def - desc.min] : desc.def}` : null }, ` ${desc.min}..${desc.max}`) : null);
+}
+/* a {key: value} table (params, fx, ranges): o.keys suggestions, o.desc(key), o.list a datalist id, o.range [lo, hi] */
+function kvEdit(parent, key, o) {
+  const d = parent[key] && typeof parent[key] === "object" ? parent[key] : {};
+  const path = o.path;
+  const rows = Object.entries(d).map(([k, v]) => {
+    const kin = h("input", { type: "text", value: k, list: o.list, spellcheck: "false", style: `width:${o.kw || "120px"}`, "data-path": jp(path, k) });
+    kin.addEventListener("change", () => {
+      const nk = kin.value.trim();
+      if (!nk || nk === k || nk in d) { kin.value = k; return; }
+      const n = {}; for (const [kk, vv] of Object.entries(d)) n[kk === k ? nk : kk] = vv;
+      parent[key] = n; touch(true);
+    });
+    const desc = o.desc ? o.desc(k) : null;
+    let ve;
+    if (o.range) {
+      const arr = Array.isArray(v) ? v : [0, 0];
+      ve = h("span", { class: "row", style: "margin:0" }, inp(arr, 0, { type: "number", int: true, req: true, on: () => { d[k] = arr; } }), "..",
+        inp(arr, 1, { type: "number", int: true, req: true, on: () => { d[k] = arr; } }), desc ? h("span", { class: "hint" }, `of ${desc.min}..${desc.max}`) : null);
+    } else ve = valueEditor(d, k, desc, jp(path, k));
+    return h("tr", null, h("td", null, kin), h("td", null, ve), h("td", null, xbtn(() => { delete d[k]; if (!Object.keys(d).length) delete parent[key]; touch(true); })));
+  });
+  const add = h("input", { type: "text", placeholder: o.ph || "add…", list: o.list, spellcheck: "false", style: `width:${o.kw || "120px"}` });
+  const doAdd = () => {
+    const k = add.value.trim();
+    if (!k) return;
+    const desc = o.desc ? o.desc(k) : null;
+    const dd = parent[key] && typeof parent[key] === "object" ? parent[key] : (parent[key] = {});
+    dd[k] = o.range ? [desc ? desc.min : 0, desc ? desc.max : 127] : desc ? (desc.names && desc.fmt === "ENUM" ? desc.names[desc.def - desc.min] : desc.def) : 0;
+    touch(true);
+  };
+  add.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); doAdd(); } });
+  return h("div", { "data-path": path, "data-pathc": "1" }, h("table", null, rows, h("tr", null, h("td", null, add), h("td", { colspan: 2 }, btn("add", doAdd), o.hint ? h("span", { class: "hint" }, " " + o.hint) : null))));
+}
+
+/* ======================================================================== header, problems ===== */
+function head() {
+  document.getElementById("file").textContent = S.ref ? S.ref : "—";
+  document.getElementById("dirty").textContent = S.dirty ? " ●" : "";
+  document.getElementById("ro").hidden = S.writable;
+  document.title = (S.dirty ? "● " : "") + (S.W ? (S.W.name || "?") : "") + " · World Author";
+  if (QS.has("selftest") && S.selftest) document.title = S.selftest;
+  const sim = document.getElementById("sim"), st = S.sim;
+  sim.className = "chip" + (st && st.running ? " on" : st && st.missing ? " off" : "");
+  sim.textContent = !st ? "SIM" : st.running ? `SIM ▶ ${(st.file || "").split("/").pop()}` : st.missing ? "SIM missing" : "SIM stopped";
+  sim.title = !st ? "" : st.missing ? `build it: ${st.build}` : st.running ? `pid ${st.pid}: reloads the file on every save (click to stop)` : st.exit != null ? `exited ${st.exit}` : "";
+}
+function renderTabs() {
+  const cnt = {};
+  for (const e of (S.check && S.check.errors) || []) { const t = TAB_OF[(e.keys || [])[0]] || "world"; cnt[t] = (cnt[t] || 0) + 1; }
+  document.getElementById("tabs").replaceChildren(...TABS.map(([k, l]) => h("button", { "aria-selected": String(S.tab === k),
+    onclick: () => { S.tab = k; render(); } }, l, cnt[k] ? h("span", { class: "n" }, cnt[k]) : null)));
+}
+function renderProblems() {
+  const c = S.check, box = document.getElementById("problems");
+  if (!c) { fill(box, h("div", { class: "dim" }, "checking…")); return; }
+  const kids = [h("div", { class: c.ok ? "okc" : "e" }, c.ok ? `✓ worldc check: ok${c.bytes != null ? `, ${c.bytes.toLocaleString()} B` : ""}`
+    : `✗ ${c.errors.length} error(s)`, c.warnings.length ? h("span", { class: "w" }, ` · ${c.warnings.length} warning(s)`) : null)];
+  const item = (e, cls) => h("div", { class: "p", onclick: () => goto(e) }, h("div", { class: "path" }, e.path, h("span", { class: "faint" }, ` · ${e.item}`)), h("div", { class: cls }, e.msg));
+  for (const e of c.errors) kids.push(item(e, "e"));
+  for (const e of c.warnings) kids.push(item(e, "w"));
+  fill(box, ...kids);
+}
+function goto(e) {
+  const t = TAB_OF[(e.keys || [])[0]];
+  if (t) {
+    S.tab = t;
+    const k = e.keys || [];
+    if (t === "patterns" && typeof k[1] === "string") S.sel.pattern = k[1];
+    if ((k[0] === "macros" || k[0] === "controls") && typeof k[1] === "string") { S.sel.ctl = k[1]; S.sel.map = typeof k[2] === "number" ? k[2] : 0; }
+    if (k[0] === "progressions" && typeof k[1] === "string") S.sel.prog = k[1];
+    render();
+  }
+  const el = [...document.querySelectorAll("[data-path]")].find((x) => x.dataset.path === e.path) ||
+    [...document.querySelectorAll("[data-path]")].filter((x) => e.path.startsWith(x.dataset.path)).sort((a, b) => b.dataset.path.length - a.dataset.path.length)[0];
+  if (el) { el.scrollIntoView({ block: "center" }); if (el.focus) el.focus(); }
+}
+function markErrors() {
+  const c = S.check;
+  if (!c) return;
+  for (const el of document.querySelectorAll("#view [data-path]")) {
+    const p = el.dataset.path, cont = el.dataset.pathc;
+    const hit = (e) => e.path === p || (cont && (e.path.startsWith(p + ".") || e.path.startsWith(p + "[")));
+    const es = c.errors.filter(hit), ws = c.warnings.filter(hit);
+    el.classList.toggle("bad", es.length > 0);
+    el.classList.toggle("warnm", !es.length && ws.length > 0);
+    if (es.length || ws.length) el.title = [...es, ...ws].map((x) => x.msg).join("\n");
+  }
+}
+async function runCheck() {
+  if (!S.W) return;
+  const w = S.W;
+  try { S.check = await api("check", { world: P() }); }
+  catch (e) { S.check = { ok: false, errors: [{ path: "$", msg: e.message, item: "metadata", keys: [] }], warnings: [] }; }
+  renderProblems(); renderTabs(); markErrors();
+  if (S.tab === "patterns") schedule("pat", 50, loadPatternView);
+  if (S.tab === "macros") schedule("macmodel", 50, runMacroModel);
+  if (!document.getElementById("drawer").hidden) schedule("diag", 50, runDiag);
+}
+async function runHarmony() {
+  if (!S.W) return;
+  try {
+    const w = P();
+    w.progressions = Object.assign({}, w.progressions, { "\u0000palette": paletteTokens() });
+    S.harmony = await api("harmony", { world: w });
+  } catch (e) { S.harmony = null; }
+  const ae = document.activeElement;   /* (not while the author types in the view: its input would be rebuilt) */
+  if ((S.tab === "harmony" || S.tab === "keys" || S.tab === "world") && !(ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && ae.closest("#view") && ae.type !== "range")) render();
+}
+
+/* ======================================================================== tabs ===== */
+function render() {
+  renderTabs();
+  if (!S.W) return;
+  fillDatalists();
+  const fn = { world: tabWorld, harmony: tabHarmony, tracks: tabTracks, patterns: tabPatterns, scenes: tabScenes,
+    variations: tabVariations, macros: tabMacros, keys: tabKeys, guard: tabGuard, defaults: tabDefaults,
+    validate: tabValidate, json: tabJson }[S.tab] || tabWorld;
+  const v = document.getElementById("view");
+  const y = window.scrollY;
+  fill(v, ...[fn()].flat(Infinity).filter((x) => x != null && x !== false));
+  window.scrollTo(0, y);
+  markErrors();
+  head();
+}
+
+/* ---- World */
+function tabWorld() {
+  const w = S.W;
+  w.tempo = w.tempo && typeof w.tempo === "object" ? w.tempo : { bpm: 120 };
+  w.key = w.key && typeof w.key === "object" ? w.key : { root: "C", scale: "MAJ" };
+  const bpm = Number(w.tempo.bpm) || 120;
+  const L = N().limits;
+  return [
+    h("h2", null, "World"),
+    h("div", { class: "grid2" },
+      ...field("id", inp(w, "id", { path: "$.id", req: true }), h("span", { class: "hint" }, "a-z 0-9 _, up to 24: the file name and the device id (FNV-1a)")),
+      ...field("name", inp(w, "name", { path: "$.name", upper: true, req: true }), h("span", { class: "hint" }, `up to ${L.WF_NAME_LEN - 1}: A-Z 0-9 space & ' - .`)),
+      ...field("category", inp(w, "category", { path: "$.category", upper: true, req: true }), h("span", { class: "hint" }, `up to ${L.WF_CAT_LEN - 1}; the list sorts by category, then name`)),
+      ...field("blurb", inp(w, "blurb", { path: "$.blurb", width: "260px" }), h("span", { class: "hint" }, `up to ${L.WF_BLURB_LEN - 1} printable Latin-1`)),
+      ...field("notes", (() => { const t = h("textarea", { rows: 3, "data-path": "$.notes" }); t.value = w.notes || ""; t.addEventListener("input", () => { if (t.value) w.notes = t.value; else delete w.notes; touch(); }); return t; })())),
+    h("h2", null, "Tempo, key, swing"),
+    h("div", { class: "grid2" },
+      ...field("BPM", inp(w.tempo, "bpm", { type: "number", int: true, min: 40, max: 240, path: "$.tempo.bpm", req: true }),
+        "min", inp(w.tempo, "min", { type: "number", int: true, min: 40, max: 240, path: "$.tempo.min", ph: String(Math.max(40, Math.round(bpm * 0.9))) }),
+        "max", inp(w.tempo, "max", { type: "number", int: true, min: 40, max: 240, path: "$.tempo.max", ph: String(Math.min(240, Math.round(bpm * 1.1))) }),
+        h("span", { class: "hint" }, `the player's tempo nudge: ±10 % by default, at most ±${L.WF_TEMPO_RANGE_PCT} % (${bpm - Math.floor(bpm * L.WF_TEMPO_RANGE_PCT / 100)}..${bpm + Math.floor(bpm * L.WF_TEMPO_RANGE_PCT / 100)})`)),
+      ...field("key", sel(w.key, "root", ROOTS, { path: "$.key.root", rerender: true }),
+        sel(w.key, "scale", N().scales.map((s) => s.name), { path: "$.key.scale", rerender: true }),
+        h("span", { class: "hint" }, S.harmony ? `${S.harmony.scale_tones.join(" ")} · degrees ${S.harmony.degrees.join(" ")}` : ""),
+        h("span", { class: "hint" }, "written to every synth track; no scene or variation changes it")),
+      ...field("swing", inp(w, "swing", { type: "number", int: true, min: 0, max: 100, path: "$.swing", ph: "0" }), h("span", { class: "hint" }, "0..100 (G_SWING)"))),
+    h("h2", null, "At a glance"),
+    h("div", { class: "hint" }, `${tracks().length} tracks · ${Object.keys(w.patterns || {}).length} patterns · ${Object.keys(w.progressions || {}).length} progressions · ` +
+      `${Object.keys(w.variations || {}).length || 1} variations · ${["macros", "controls"].reduce((n, g) => n + Object.values(w[g] || {}).reduce((m, l) => m + (Array.isArray(l) ? l.length : 0), 0), 0)} mappings of ${L.WF_MAX_MAPS} · ` +
+      (S.check && S.check.bytes != null ? `${S.check.bytes.toLocaleString()} B compiled` : "does not compile yet")),
+  ];
+}
+
+/* ---- Harmony */
+function paletteTokens() {
+  const out = [];
+  for (const n of NUMERALS) out.push(n, n.toLowerCase());
+  for (const n of NUMERALS) out.push(n + "maj7", n.toLowerCase() + "7", n + "7", n + "sus4", n + "add9", n.toLowerCase() + "°");
+  return out;
+}
+function renameProgression(old, nw) {
+  const w = S.W, p = {};
+  for (const [k, v] of Object.entries(w.progressions)) p[k === old ? nw : k] = v;
+  w.progressions = p;
+  for (const s of Object.values(w.scenes || {})) if (s && s.progression === old) s.progression = nw;
+}
+function tabHarmony() {
+  const w = S.W;
+  w.progressions = w.progressions && typeof w.progressions === "object" ? w.progressions : {};
+  const H = S.harmony;
+  const progs = Object.keys(w.progressions);
+  if (!S.sel.prog || !(S.sel.prog in w.progressions)) S.sel.prog = progs[0] || null;
+  const cards = progs.map((name) => {
+    const list = Array.isArray(w.progressions[name]) ? w.progressions[name] : (w.progressions[name] = []);
+    const res = H && H.progressions[name];
+    const path = jp("$.progressions", name);
+    const nm = h("input", { type: "text", value: name, style: "width:110px", spellcheck: "false" });
+    nm.addEventListener("change", () => { const n = nm.value.trim(); if (!n || n in w.progressions) { nm.value = name; return; } renameProgression(name, n); if (S.sel.prog === name) S.sel.prog = n; touch(true); });
+    const chips = list.map((c, i) => {
+      const r = res && res.chords[i];
+      const p = parseChord(c);
+      const t = h("span", { class: "t" }, c);
+      t.addEventListener("dblclick", () => { const v = prompt("chord (roman numeral, :beats)", c); if (v != null && v.trim()) { list[i] = v.trim(); touch(true); } });
+      return h("div", { class: "cchip" + (p.ok && (!r || r.ok) ? "" : " badc"), "data-path": jp(path, i), title: r && !r.ok ? r.error : p.ok ? `${p.quality}, ${p.beats} beats` : p.error },
+        t, h("span", { class: "n" }, r && r.ok ? r.name : p.ok ? "…" : "?"),
+        h("div", { class: "ctl" },
+          h("button", { title: "earlier", onclick: () => { if (i) { [list[i - 1], list[i]] = [list[i], list[i - 1]]; touch(true); } } }, "◀"),
+          h("button", { title: "beats −", onclick: () => { if (p.ok && p.beats > 1) { list[i] = chordWithBeats(c, p.beats / 2 >= 1 && p.beats % 2 === 0 ? p.beats / 2 : p.beats - 1); touch(true); } } }, "−"),
+          h("span", { class: "faint", style: "font-size:10px" }, p.ok ? p.beats : ""),
+          h("button", { title: "beats +", onclick: () => { if (p.ok && p.beats < 32) { list[i] = chordWithBeats(c, Math.min(32, p.beats * 2)); touch(true); } } }, "+"),
+          h("button", { title: "later", onclick: () => { if (i < list.length - 1) { [list[i + 1], list[i]] = [list[i], list[i + 1]]; touch(true); } } }, "▶"),
+          h("button", { title: "remove", onclick: () => { list.splice(i, 1); touch(true); } }, "×")));
+    });
+    const add = h("input", { type: "text", placeholder: "+ chord, e.g. VImaj7:2", style: "width:150px", spellcheck: "false" });
+    add.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && add.value.trim()) { list.push(...add.value.trim().split(/\s+/)); touch(true); } });
+    const beats = progBeats(list);
+    const used = (H && H.used[name]) || [];
+    return h("div", { class: "card" + (S.sel.prog === name ? " sel" : ""), onclick: () => { if (S.sel.prog !== name) { S.sel.prog = name; render(); } } },
+      h("h3", null, nm, h("span", { class: [4, 8, 16, 32].includes(beats) ? "okc" : "e", "data-path": path }, Number.isNaN(beats) ? "? beats" : `${beats} beats`),
+        h("span", { class: "hint" }, used.length ? `scenes ${used.join(" ")}` : "not used by a scene"), h("span", { style: "flex:1" }),
+        xbtn(() => { if (confirm(`delete progression ${name}?`)) { delete w.progressions[name]; touch(true); } }, "delete the progression")),
+      h("div", { class: "chips" }, chips, add));
+  });
+  const pal = H && H.progressions["\u0000palette"];
+  return [
+    h("h2", null, `Progressions · ${H ? `${H.key} ${H.scale}` : ""}`),
+    h("div", { class: "hint" }, "Numerals count the World's scale (VII in A minor is G). Chips: ◀ ▶ move, − + halve or double the beats, double-click edits; " +
+      "a progression is 1–16 chords and 4, 8, 16 or 32 beats. A scene names one (Scenes)."),
+    h("div", { class: "cards", style: "margin-top:8px" }, cards),
+    h("div", { class: "row", style: "margin-top:8px" }, btn("+ progression", () => { let n = "prog", i = 1; while ((n + i) in w.progressions) i++; w.progressions[n + i] = ["i:4"]; S.sel.prog = n + i; touch(true); })),
+    h("h2", null, "Palette (click: append to the selected progression)"),
+    h("div", { class: "chips" }, pal ? pal.chords.map((c) => h("div", { class: "cchip" + (c.ok ? "" : " badc"), title: c.ok ? `${c.quality}: ${c.tones.join(" ")}` : c.error,
+      onclick: () => { if (S.sel.prog) { w.progressions[S.sel.prog].push(c.token); touch(true); } } }, h("span", { class: "t" }, c.token), h("span", { class: "n" }, c.ok ? c.name : "—"))) : h("span", { class: "dim" }, "…")),
+  ];
+}
+
+/* ---- Tracks */
+function renameTrack(old, nw) {
+  const w = S.W;
+  for (const p of Object.values(w.patterns || {})) if (p && p.track === old) p.track = nw;
+  const rk = (o) => { if (!o || typeof o !== "object" || !(old in o)) return o; const n = {}; for (const [k, v] of Object.entries(o)) n[k === old ? nw : k] = v; return n; };
+  const rt = (o) => { if (!o || typeof o !== "object") return o; const n = {}; for (const [k, v] of Object.entries(o)) n[renameTarget(k, old, nw)] = v; return n; };
+  for (const s of Object.values(w.scenes || {})) if (s) { s.patterns = rk(s.patterns); if (s.params) s.params = rt(s.params); }
+  for (const v of Object.values(w.variations || {})) if (v) { v.sounds = rk(v.sounds); if (v.params) v.params = rt(v.params); if (!v.sounds) delete v.sounds; }
+  for (const g of ["macros", "controls"]) for (const l of Object.values(w[g] || {})) for (const m of l || []) if (m) m.to = renameTarget(m.to, old, nw);
+  for (const r of w.rules || []) for (const a of (r && r.then) || []) a.to = renameTarget(a.to, old, nw);
+  for (const e of Object.values(w.energy || {})) for (const b of (e && e.bands) || []) {
+    if (Array.isArray(b.layers)) b.layers = b.layers.map((x) => (x === old ? nw : x));
+    if (old in b) { const n = {}; for (const [k, v] of Object.entries(b)) n[k === old ? nw : k] = v; Object.keys(b).forEach((k) => delete b[k]); Object.assign(b, n); }
+  }
+  if (w.smart_keys && w.smart_keys.track === old) w.smart_keys.track = nw;
+  if (w.guard) {
+    if (w.guard.notes) w.guard.notes = rk(w.guard.notes);
+    const snd = w.guard.sound;
+    if (snd && snd.ranges) snd.ranges = rt(snd.ranges);
+    if (snd && Array.isArray(snd.combos)) for (const c of snd.combos) { c.when = rt(c.when); c.cap = rt(c.cap); }
+  }
+}
+function setEngine(t, name) {
+  const old = engineOf(t), e = N().engines.find((x) => x.name === name);
+  t.sound.engine = name;
+  if (!e.presets.includes(t.sound.preset)) t.sound.preset = e.presets[0];
+  const dropped = [];
+  if (old && t.sound.params) for (const k of Object.keys(t.sound.params)) if (!pdesc(k) && (old.edit.some((x) => x.label === k) || /^e[0-7]$/.test(k))) { dropped.push(k); delete t.sound.params[k]; }
+  pruneEmpty(t.sound, ["params"]);
+  if (dropped.length) say(`${t.name}: ${old.name}'s ${dropped.join(", ")} dropped (they belong to that engine)`);
+}
+function tabTracks() {
+  const w = S.W;
+  if (!Array.isArray(w.tracks)) w.tracks = [];
+  const kt = keysTrack();
+  const cards = w.tracks.map((t, i) => {
+    t.sound = t.sound && typeof t.sound === "object" ? t.sound : {};
+    const drum = i === 3, path = jp("$.tracks", i), e = engineOf(t);
+    const nm = h("input", { type: "text", value: t.name || "", style: "width:100px", spellcheck: "false", "data-path": jp(path, "name") });
+    nm.addEventListener("change", () => { const n = nm.value.trim(); if (!n || n === t.name || trackByName(n)) { nm.value = t.name; return; } const old = t.name; t.name = n; renameTrack(old, n); touch(true); });
+    const rows = [...field("name", nm, kt === t.name ? h("span", { class: "chip on" }, "SMART KEYS") : !drum ? btn("play the Smart Keys", () => { (w.smart_keys = w.smart_keys || {}).track = t.name; touch(true); }, { title: "make this the Smart Keys track" }) : null)];
+    if (drum) {
+      rows.push(...field("role", h("span", { class: "dim" }, "drums (the fourth track)")));
+      rows.push(...field("kit", sel(t.sound, "kit", N().kits, { path: jp(jp(path, "sound"), "kit"), none: `(default ${N().default_kit})` })));
+    } else {
+      rows.push(...field("role", sel(t, "role", N().roles.filter((r) => r !== "drums"), { path: jp(path, "role"), rerender: true })));
+      const ri = N().roles.indexOf(t.role);
+      rows.push(...field("register", inp(t, "register", { path: jp(path, "register"), width: "60px", ph: ri >= 0 ? noteName(N().register_default[ri]) : "C3" }), h("span", { class: "hint" }, "the floor of its home octave")));
+      const es = h("select", { "data-path": jp(jp(path, "sound"), "engine") }, ...N().engines.map((x) => h("option", null, x.name)));
+      es.value = e ? e.name : ""; if (!e) es.selectedIndex = -1;
+      es.addEventListener("change", () => { setEngine(t, es.value); touch(true); });
+      rows.push(...field("engine", es));
+      rows.push(...field("preset", e ? sel(t.sound, "preset", e.presets, { path: jp(jp(path, "sound"), "preset") }) : h("span", { class: "e" }, "choose an engine")));
+    }
+    const names = trackParamNames(t, "sound");
+    const lid = `dl-p${i}`;
+    return h("div", { class: "card", "data-path": path, "data-pathc": "1" },
+      h("h3", null, `${i + 1}`, h("span", null, t.name || "?"), h("span", { class: "dim" }, drum ? "drums" : `${t.role || "?"} · ${e ? e.name : "?"}`)),
+      h("div", { class: "grid2" }, rows),
+      h("h3", null, "parameters", h("span", { class: "hint" }, drum ? "level and rev are the globals g.drlvl / g.drrev" : "set on top of the preset")),
+      h("datalist", { id: lid }, names.map((n) => h("option", { value: n }))),
+      kvEdit(t.sound, "params", { path: jp(jp(path, "sound"), "params"), list: lid, desc: (k) => paramDesc(t, k), ph: "+ parameter" }));
+  });
+  return [
+    h("h2", null, "Tracks"),
+    h("div", { class: "hint" }, "Three synth tracks and the drum track. One synth track plays the Smart Keys (it gets no scene pattern). Engine parameters use the engine's EDIT labels (CUT, RES …); renaming a track renames it everywhere."),
+    h("div", { class: "cards", style: "margin-top:8px" }, cards),
+    h("h2", null, "Global effects (fx)"),
+    h("div", { class: "hint" }, "Unset globals keep SLOOP's defaults. swing is set on the World tab."),
+    kvEdit(w, "fx", { path: "$.fx", list: "dl-gtargets", desc: (k) => gdesc(k), ph: "+ global" }),
+  ];
+}
+
+/* ---- Patterns */
+function stepsPerBar(div) { const i = N().divs.indexOf(div || "1/16"); return 4 * (i >= 0 ? N().div_den[i] : 4); }
+function tabPatterns() {
+  const w = S.W;
+  w.patterns = w.patterns && typeof w.patterns === "object" ? w.patterns : {};
+  const names = Object.keys(w.patterns);
+  if (!S.sel.pattern || !(S.sel.pattern in w.patterns)) S.sel.pattern = names[0] || null;
+  const groups = tracks().map((t) => [t.name, patternsOf(t.name)]);
+  const orphans = names.filter((n) => !trackByName((w.patterns[n] || {}).track));
+  const list = h("div", { class: "list" }, groups.map(([tn, ps]) => [h("div", { class: "grp" }, tn, h("span", { class: "faint" }, tn === keysTrack() ? " (Smart Keys: the player's loop)" : "")),
+    ps.map((p) => h("button", { class: S.sel.pattern === p ? "on" : null, "data-path": jp("$.patterns", p), "data-pathc": "1", onclick: () => { S.sel.pattern = p; S.sel.step = -1; render(); } }, p))]),
+    orphans.length ? [h("div", { class: "grp" }, "no track"), orphans.map((p) => h("button", { class: S.sel.pattern === p ? "on" : null, onclick: () => { S.sel.pattern = p; render(); } }, p))] : null,
+    h("div", { class: "row", style: "margin-top:8px" }, ...tracks().map((t) => btn(`+ ${t.name}`, () => {
+      let n = `${t.name}_`, i = 1; while (w.patterns[n + i]) i++;
+      w.patterns[n + i] = t.role === "drums" ? { track: t.name, lanes: { kick: "x...x...x...x..." } } : { track: t.name, div: "1/8", steps: "1 . . . 5 . . ." };
+      S.sel.pattern = n + i; touch(true);
+    }, { title: `a new pattern for ${t.name}` }))));
+  return [h("h2", null, "Patterns"), h("div", { class: "split" }, list, h("div", null, S.sel.pattern ? patternEditor(S.sel.pattern) : h("div", { class: "dim" }, "no pattern yet")))];
+}
+function usesOf(name) {
+  const out = [];
+  for (const [k, s] of Object.entries(S.W.scenes || {})) {
+    if (!s) continue;
+    for (const [t, v] of Object.entries(s.patterns || {})) if (v === name || (v && typeof v === "object" && Object.values(v).includes(name))) out.push(`scene ${k} (${t})`);
+    if (s.fill === name) out.push(`scene ${k} fill`);
+  }
+  for (const [k, v] of Object.entries(S.W.variations || {})) for (const [a, b] of Object.entries((v && v.swap) || {})) if (a === name || b === name) out.push(`variation ${k} swap`);
+  return out;
+}
+function patternEditor(name) {
+  const w = S.W, p = w.patterns[name], path = jp("$.patterns", name);
+  const t = trackByName(p.track), drum = t ? t.role === "drums" : "lanes" in p;
+  const nm = h("input", { type: "text", value: name, style: "width:140px", spellcheck: "false" });
+  nm.addEventListener("change", () => {
+    const n = nm.value.trim();
+    if (!n || n in w.patterns) { nm.value = name; return; }
+    const ps = {}; for (const [k, v] of Object.entries(w.patterns)) ps[k === name ? n : k] = v; w.patterns = ps;
+    for (const s of Object.values(w.scenes || {})) if (s) {
+      if (s.fill === name) s.fill = n;
+      for (const [tk, v] of Object.entries(s.patterns || {})) { if (v === name) s.patterns[tk] = n; else if (v && typeof v === "object") for (const [b, x] of Object.entries(v)) if (x === name) v[b] = n; }
+    }
+    for (const v of Object.values(w.variations || {})) if (v && v.swap) { const sw = {}; for (const [a, b] of Object.entries(v.swap)) sw[a === name ? n : a] = b === name ? n : b; v.swap = sw; }
+    S.sel.pattern = n; touch(true);
+  });
+  const sameKind = tracks().filter((x) => (x.role === "drums") === drum).map((x) => x.name);
+  const used = usesOf(name);
+  const headr = h("div", { class: "row" }, "name", nm, "track", sel(p, "track", sameKind, { path: jp(path, "track"), rerender: true }),
+    drum ? h("span", { class: "dim" }, "1/16") : ["div", sel(p, "div", N().divs, { path: jp(path, "div"), none: "1/16 (default)", rerender: true })],
+    h("span", { style: "flex:1" }), btn("duplicate", () => { let n = name + "_", i = 2; while (w.patterns[n + i]) i++; w.patterns[n + i] = clone(p); S.sel.pattern = n + i; touch(true); }),
+    btn("delete", () => { if (confirm(`delete pattern ${name}?` + (used.length ? ` It is used by ${used.join(", ")}.` : ""))) { delete w.patterns[name]; touch(true); } }));
+  const body = drum ? drumEditor(p, path) : melodicEditor(p, path, t);
+  return h("div", null, headr, h("div", { class: "hint" }, used.length ? `used by ${used.join(", ")}` : "not used by a scene, a fill or a swap: not compiled (worldc warns)"), body);
+}
+function drumEditor(p, path) {
+  p.lanes = p.lanes && typeof p.lanes === "object" ? p.lanes : {};
+  const n = drumLength(p.lanes);
+  const lanes = Object.keys(p.lanes);
+  const bars = Object.values(p.lanes).some((s) => String(s).includes("|"));
+  const grid = h("div", { class: "lanes", style: `grid-template-columns: 120px repeat(${n}, 22px)` });
+  for (const ln of lanes) {
+    const cells = drumCells(p.lanes[ln]);
+    grid.append(h("div", { class: "ln", "data-path": jp(jp(path, "lanes"), ln) }, xbtn(() => { delete p.lanes[ln]; touch(true); }, "remove the lane"), ln));
+    cells.forEach((c, i) => {
+      const b = h("button", { class: "c" + (c !== "." ? " on" : "") + (c === "X" ? " hard" : c === "s" ? " soft" : c === "g" ? " ghost" : "") + (i % 16 === 0 && i ? " barl" : i % 4 === 0 ? " beat" : ""), title: `step ${i + 1}: click / shift-click / right-click` }, c === "." ? "" : c);
+      const cyc = (dir) => { const cc = drumCells(p.lanes[ln]); cc[i] = drumCycle(cc[i], dir); p.lanes[ln] = drumString(cc, bars || n > 16); touch(true); };
+      b.addEventListener("click", (ev) => cyc(ev.shiftKey ? -1 : 1));
+      b.addEventListener("contextmenu", (ev) => { ev.preventDefault(); cyc(-1); });
+      grid.append(b);
+    });
+  }
+  const free = N().lanes.filter((l) => !lanes.includes(l.id)).map((l) => l.id);
+  const addl = h("select", null, h("option", null, "+ lane"), ...free.map((x) => h("option", null, x)));
+  addl.addEventListener("change", () => { if (addl.selectedIndex > 0) { p.lanes[addl.value] = drumString(new Array(n).fill("."), bars || n > 16); touch(true); } });
+  const len = h("select", { "data-path": jp(path, "lanes") }, ...[16, 32, 64].map((x) => h("option", { selected: x === n ? true : null }, String(x))));
+  len.addEventListener("change", () => { p.lanes = drumResize(p.lanes, Number(len.value)); touch(true); });
+  return h("div", null, h("div", { class: "row" }, "steps", len, addl, h("span", { class: "hint" }, "click: . → x → X (hard) → s (soft) → g (ghost) → 2 3 4 (ratchets) → .; shift or right-click goes back")),
+    h("div", { "data-path": jp(path, "lanes"), "data-pathc": "1", style: "overflow-x:auto" }, grid));
+}
+function melodicEditor(p, path, t) {
+  const per = stepsPerBar(p.div);
+  const parsed = parseSteps(p.steps, per);
+  const toks = parsed.steps.map((s) => s.text);
+  const ta = h("textarea", { class: "steps-in", rows: 2, "data-path": jp(path, "steps"), spellcheck: "false" });
+  ta.value = p.steps || "";
+  const msg = h("div", { class: parsed.error ? "e" : "hint" }, parsed.error || `${toks.length} steps at ${p.div || "1/16"} (${per} a bar)`);
+  ta.addEventListener("input", () => { p.steps = ta.value; const r = parseSteps(ta.value, per); msg.className = r.error ? "e" : "hint"; msg.textContent = r.error || `${r.steps.length} steps`; touch(); });
+  ta.addEventListener("change", () => render());
+  const setTok = (i, tk) => { const a = parseSteps(p.steps, per).steps.map((s) => s.text); a[i] = tk; p.steps = joinSteps(a, per); touch(true); };
+  const cols = Math.min(16, Math.max(4, per));
+  const grid = h("div", { class: "steps", style: `grid-template-columns: repeat(${cols}, minmax(30px, 64px))` }, parsed.steps.map((s, i) =>
+    h("button", { class: (s.ok ? s.kind === "notes" ? "note" : s.kind === "tie" ? "tie" : "" : "badc") + (S.sel.step === i ? " selc" : ""), title: s.error || s.text,
+      onclick: () => { S.sel.step = S.sel.step === i ? -1 : i; render(); } }, h("span", { class: "k" }, i + 1), s.kind === "rest" ? "" : s.text)));
+  let ed = null;
+  if (S.sel.step >= 0 && S.sel.step < toks.length) {
+    const i = S.sel.step, tk = toks[i], ps = parseStep(tk);
+    const ein = h("input", { type: "text", value: tk, style: "width:160px", spellcheck: "false" });
+    ein.addEventListener("keydown", (ev) => { if (ev.key === "Enter") setTok(i, ein.value.trim() || "."); });
+    const q = (label, tok, title) => btn(label, () => setTok(i, tok), { title });
+    const deg = (t && S.harmony) ? S.harmony.degrees.length : 7;
+    ed = h("div", { class: "card" }, h("div", { class: "row" }, `step ${i + 1}`, ein, btn("set", () => setTok(i, ein.value.trim() || ".")),
+      q("rest .", "."), q("tie -", "-"), btn("insert", () => { const a = [...toks]; a.splice(i, 0, "."); p.steps = joinSteps(a, per); touch(true); }),
+      btn("delete", () => { const a = [...toks]; a.splice(i, 1); p.steps = joinSteps(a.length ? a : ["."], per); S.sel.step = Math.min(i, a.length - 1); touch(true); })),
+      h("div", { class: "row" }, "degrees", [...Array(Math.min(7, deg || 7))].map((_, k) => q(String(k + 1), String(k + 1))), q("1'", "1'"), q("5,", "5,"),
+        "chord", ["c1", "c3", "c5", "c7", "c9"].map((c) => q(c, c)), q("[c1 c3 c5]", "[c1 c3 c5]", "a triad in one step")),
+      ps.ok && ps.kind === "notes" ? h("div", { class: "row" }, "suffix",
+        [["!", "accent"], ["_", "soft"], ["~", "slide"], ["*2", "ratchet 2"], ["*3", "ratchet 3"], ["*4", "ratchet 4"]].map(([sf, l]) => {
+          const on = sf[0] === "*" ? ps.ratchet === Number(sf[1]) : sf === "!" ? ps.accent : sf === "_" ? ps.soft : ps.slide;
+          return h("button", { class: on ? null : "ghost", onclick: () => setTok(i, withSuffix(tk, sf, !on)) }, `${sf} ${l}`);
+        })) : null);
+  }
+  const progs = Object.keys(S.W.progressions || {});
+  const pv = S.patview && S.patview.name === S.sel.pattern ? S.patview : null;
+  const psel = h("select", null, ...progs.map((x) => h("option", { selected: (S.sel.patprog || (pv && pv.progression)) === x ? true : null }, x)));
+  psel.addEventListener("change", () => { S.sel.patprog = psel.value; loadPatternView(); });
+  const cv = h("canvas", { id: "roll", width: 900, height: 220 });
+  setTimeout(() => drawRoll(cv, pv), 0);
+  if (!pv) schedule("pat", 30, loadPatternView);
+  return h("div", null,
+    h("div", { class: "hint" }, "Tokens: degrees 1–7 (b3 #4, octave ' ,), chord tones c1 c3 c5 c7 c9, notes A#3, [up to 4 in a step], . rest, - tie; suffixes ! accent, _ soft, ~ slide, *2..4 ratchet; | between bars."),
+    ta, msg, grid, ed,
+    h("h3", null, "as compiled", pv && pv.chordy ? ["over", psel] : null, h("span", { class: "hint" }, pv ? (pv.ok ? `${pv.len} steps${pv.chordy ? ` (unrolled from ${pv.src_len} over ${pv.progression})` : ""}` : (pv.errors[0] || {}).msg || "") : "…")),
+    cv);
+}
+async function loadPatternView() {
+  const name = S.sel.pattern;
+  if (!S.W || !name || S.tab !== "patterns") return;
+  const p = (S.W.patterns || {})[name];
+  if (!p || "lanes" in p) { S.patview = null; return; }
+  try { S.patview = await api("pattern", { world: P(), name, progression: S.sel.patprog }); }
+  catch (e) { S.patview = { name, ok: false, errors: [{ msg: e.message }] }; }
+  const cv = document.getElementById("roll");
+  if (cv) { drawRoll(cv, S.patview); const hh = cv.previousElementSibling && cv.previousElementSibling.querySelector(".hint"); if (hh) hh.textContent = S.patview.ok ? `${S.patview.len} steps${S.patview.chordy ? ` (unrolled from ${S.patview.src_len} over ${S.patview.progression})` : ""}` : (S.patview.errors[0] || {}).msg || ""; }
+}
+function drawRoll(cv, pv) {
+  const g = cv.getContext("2d"), W_ = cv.width, H_ = cv.height;
+  g.fillStyle = "#131318"; g.fillRect(0, 0, W_, H_);
+  if (!pv || !pv.ok || !pv.steps || !pv.steps.length) { g.fillStyle = "#5c5c66"; g.font = "12px sans-serif"; g.fillText(pv ? "does not compile (see the problems)" : "…", 10, 20); return; }
+  const notes = pv.steps.flatMap((s) => s.notes || []);
+  if (!notes.length) { g.fillStyle = "#5c5c66"; g.fillText("no notes", 10, 20); return; }
+  const lo = Math.min(...notes) - 2, hi = Math.max(...notes) + 2, rows = hi - lo + 1, n = pv.steps.length;
+  const lx = 34, cw = (W_ - lx) / n, rh = (H_ - 4) / rows;
+  const per = stepsPerBar(pv.div), beat = per / 4;
+  for (let r = 0; r < rows; r++) { const note = hi - r; if ([1, 3, 6, 8, 10].includes(note % 12)) { g.fillStyle = "#0f0f13"; g.fillRect(lx, 2 + r * rh, W_ - lx, rh); } if (note % 12 === 0) { g.fillStyle = "#8b8b95"; g.font = "10px sans-serif"; g.fillText(noteName(note), 2, 2 + (r + 0.8) * rh); } }
+  for (let i = 0; i <= n; i++) { g.fillStyle = i % per === 0 ? "#5c5c66" : i % beat === 0 ? "#2a2a31" : "#1b1b21"; g.fillRect(lx + i * cw, 0, 1, H_); }
+  let last = [];
+  pv.steps.forEach((s, i) => {
+    if (s.t === "note") {
+      let len = 1; while (i + len < n && pv.steps[i + len].t === "tie") len++;
+      for (const nt of s.notes) {
+        const y = 2 + (hi - nt) * rh;
+        g.fillStyle = s.accent ? "#c6bdff" : s.soft ? "#5d529e" : "#8b7cf6";
+        g.fillRect(lx + i * cw + 1, y + 1, Math.max(2, len * cw - 2), Math.max(2, rh - 2));
+        if (s.ratchet > 1) { g.fillStyle = "#000"; for (let k = 1; k < s.ratchet; k++) g.fillRect(lx + i * cw + k * cw / s.ratchet, y + 1, 1, Math.max(2, rh - 2)); }
+      }
+      last = s.notes;
+    }
+  });
+}
+
+/* ---- Scenes */
+function tabScenes() {
+  const w = S.W;
+  w.scenes = w.scenes && typeof w.scenes === "object" ? w.scenes : {};
+  const kt = keysTrack();
+  const cards = N().scenes.map((k, si) => {
+    const path = jp("$.scenes", k);
+    if (!w.scenes[k]) return h("div", { class: "card", "data-path": path }, h("h3", null, k, h("span", { class: "e" }, "missing")), btn(`add scene ${k}`, () => { w.scenes[k] = { name: N().scene_roles[si].toUpperCase(), role: N().scene_roles[si], progression: Object.keys(w.progressions || {})[0] || "" }; touch(true); }));
+    const s = w.scenes[k];
+    s.patterns = s.patterns && typeof s.patterns === "object" ? s.patterns : {};
+    const rows = [
+      ...field("name", inp(s, "name", { path: jp(path, "name"), upper: true, req: true, width: "120px" })),
+      ...field("role", sel(s, "role", N().scene_roles, { path: jp(path, "role") })),
+      ...field("progression", sel(s, "progression", Object.keys(w.progressions || {}), { path: jp(path, "progression") }),
+        S.harmony && S.harmony.progressions[s.progression] ? h("span", { class: "hint" }, S.harmony.progressions[s.progression].chords.map((c) => c.name || "?").join(" ")) : null),
+      ...field("energy", sel(s, "energy", Object.keys(w.energy || {}), { path: jp(path, "energy"), none: "— (all layers)" })),
+      ...field("transition", sel(s, "transition", N().transitions.map((x) => [x, typeof x === "number" ? `${x} bar${x > 1 ? "s" : ""}` : x]), { path: jp(path, "transition"), none: "1 bar (default)" })),
+      ...field("fill", sel(s, "fill", drumPatterns(), { path: jp(path, "fill"), none: "— none" })),
+    ];
+    for (const t of synthTracks()) {
+      if (t.name === kt) { rows.push(...field(t.name, h("span", { class: "dim" }, "Smart Keys: the player's loop"))); continue; }
+      rows.push(...field(t.name, sel(s.patterns, t.name, [[null, "— none"], ...patternsOf(t.name).map((x) => [x, x])], { path: jp(jp(path, "patterns"), t.name), none: "— (absent)" })));
+    }
+    const d = drumTrack();
+    if (d) {
+      const cur = s.patterns[d.name];
+      const beats = typeof cur === "string" ? { GROOVE: cur } : cur && typeof cur === "object" ? { ...cur } : {};
+      const put = () => { const keys = Object.keys(beats).filter((b) => beats[b]); s.patterns[d.name] = !keys.length ? null : keys.length === 1 && keys[0] === "GROOVE" ? beats.GROOVE : Object.fromEntries(N().beats.filter((b) => beats[b]).map((b) => [b, beats[b]])); };
+      rows.push(...field(d.name, h("span", { class: "row", style: "margin:0", "data-path": jp(jp(path, "patterns"), d.name), "data-pathc": "1" }, N().beats.map((b) => {
+        const se = h("select", { title: `BEAT ${b}` }, h("option", { value: "" }, b === "GROOVE" ? "GROOVE: —" : `${b}: (groove)`), ...drumPatterns().map((x) => h("option", { value: x, selected: beats[b] === x ? true : null }, b === "GROOVE" ? `GROOVE: ${x}` : `${b}: ${x}`)));
+        se.addEventListener("change", () => { if (se.value) beats[b] = se.value; else delete beats[b]; put(); touch(); });
+        return se;
+      }))));
+    }
+    return h("div", { class: "card", "data-path": path, "data-pathc": "1" }, h("h3", null, k, h("span", null, s.name || ""), h("span", { class: "dim" }, s.role || "")),
+      h("div", { class: "grid2" }, rows),
+      h("h3", null, "params", h("span", { class: "hint" }, "track.param, *.param or g.name: absolute, applied last")),
+      kvEdit(s, "params", { path: jp(path, "params"), list: "dl-ptargets", desc: (x) => targetDesc(x), ph: "+ target" }),
+      h("h3", null, "fx"), kvEdit(s, "fx", { path: jp(path, "fx"), list: "dl-gtargets", desc: (x) => gdesc(x), ph: "+ global" }));
+  });
+  return [h("h2", null, "Scenes A–D"), h("div", { class: "hint" }, "A scene keeps the tempo, key, engines and the Smart Keys; a change lands on its transition's bar line (a fill on the bar before when the drums play)."),
+    h("div", { class: "cards", style: "margin-top:8px" }, cards)];
+}
+
+/* ---- Variations */
+function tabVariations() {
+  const w = S.W;
+  if (!w.variations || typeof w.variations !== "object") w.variations = { ORIGINAL: {} };
+  const names = Object.keys(w.variations);
+  const reorder = (from, to) => { const k = [...names]; const [x] = k.splice(from, 1); k.splice(to, 0, x); const n = {}; for (const kk of k) n[kk] = w.variations[kk]; w.variations = n; touch(true); };
+  const cards = names.map((vn, i) => {
+    const v = w.variations[vn] && typeof w.variations[vn] === "object" ? w.variations[vn] : (w.variations[vn] = {});
+    const path = jp("$.variations", vn);
+    if (i === 0) return h("div", { class: "card", "data-path": path, "data-pathc": "1" }, h("h3", null, vn, h("span", { class: "dim" }, "the World as authored: always first and empty")),
+      vn !== "ORIGINAL" ? h("div", { class: "e" }, "the first variation must be ORIGINAL") : null);
+    const nm = h("input", { type: "text", value: vn, style: "width:110px", spellcheck: "false" });
+    nm.addEventListener("input", () => { const p = nm.selectionStart; nm.value = nm.value.toUpperCase(); nm.setSelectionRange(p, p); });
+    nm.addEventListener("change", () => {
+      const n = nm.value.trim(); if (!n || n in w.variations) { nm.value = vn; return; }
+      const o = {}; for (const [k, x] of Object.entries(w.variations)) o[k === vn ? n : k] = x; w.variations = o;
+      if (w.defaults && w.defaults.variation === vn) w.defaults.variation = n; touch(true);
+    });
+    if (!v.sounds || typeof v.sounds !== "object") v.sounds = {};
+    const sounds = h("div", { class: "grid2" }, tracks().map((t) => {
+      const opts = t.role === "drums" ? N().kits : (engineOf(t) || { presets: [] }).presets;
+      return field(t.name, sel(v.sounds, t.name, opts, { path: jp(jp(path, "sounds"), t.name), none: "— (the track's)" }));
+    }));
+    const swaps = Object.entries(v.swap || {}).map(([a, b]) => {
+      const ta = (w.patterns[a] || {}).track;
+      return h("tr", null, h("td", null, a), h("td", null, "→"), h("td", null, sel(v.swap, a, patternsOf(ta).filter((x) => x !== a), { path: jp(jp(path, "swap"), a) })), h("td", null, xbtn(() => { delete v.swap[a]; touch(true); })));
+    });
+    const synthPats = synthTracks().filter((t) => t.name !== keysTrack()).flatMap((t) => patternsOf(t.name));
+    const sadd = h("select", null, h("option", null, "+ swap a pattern"), ...synthPats.filter((x) => !(v.swap || {})[x]).map((x) => h("option", null, x)));
+    sadd.addEventListener("change", () => { if (sadd.selectedIndex > 0) { const a = sadd.value, o = patternsOf(w.patterns[a].track).filter((x) => x !== a); (v.swap = v.swap || {})[a] = o[0] || a; touch(true); } });
+    const mac = h("div", { class: "grid2" }, N().controls.slice(0, 4).map((c) => field(c, unit(() => (v.macros || {})[c], (x) => { v.macros = v.macros || {}; if (x === undefined) delete v.macros[c]; else v.macros[c] = x; }, { path: jp(jp(path, "macros"), c), def: "" }))));
+    return h("div", { class: "card", "data-path": path, "data-pathc": "1" },
+      h("h3", null, nm, h("span", { class: "dim" }, `${i + 1}/${names.length}`), h("span", { style: "flex:1" }),
+        btn("▲", () => { if (i > 1) reorder(i, i - 1); }, { title: "earlier", disabled: i <= 1 }), btn("▼", () => { if (i < names.length - 1) reorder(i, i + 1); }, { title: "later", disabled: i >= names.length - 1 }),
+        xbtn(() => { if (confirm(`delete variation ${vn}?`)) { delete w.variations[vn]; touch(true); } }, "delete the variation")),
+      h("h3", null, "sounds", h("span", { class: "hint" }, "another preset of the same engine, or another kit")), sounds,
+      h("h3", null, "params"), kvEdit(v, "params", { path: jp(path, "params"), list: "dl-ptargets", desc: (x) => targetDesc(x), ph: "+ target" }),
+      h("h3", null, "fx", h("span", { class: "hint" }, "not swing")), kvEdit(v, "fx", { path: jp(path, "fx"), list: "dl-gtargets", desc: (x) => gdesc(x), ph: "+ global" }),
+      h("h3", null, "swap", h("span", { class: "hint" }, "a synth pattern for another of its track and length class")), h("table", null, swaps), sadd,
+      h("h3", null, "energy bias"), unit(() => v.energy_bias, (x) => { if (x === undefined) delete v.energy_bias; else v.energy_bias = x; }, { min: -0.25, max: 0.25, step: 0.01, path: jp(path, "energy_bias"), def: 0 }),
+      h("h3", null, "macro defaults", h("span", { class: "hint" }, "where the macros the player has not turned go when it lands")), mac);
+  });
+  return [h("h2", null, "Variations"), h("div", { class: "hint" }, `Same World, new feel: up to ${N().limits.MAX_VARS}, ORIGINAL first. A variation cannot change the tempo, key, scale, progressions, swing, drum grooves or Smart Keys.`),
+    h("div", { class: "cards", style: "margin-top:8px" }, cards),
+    h("div", { class: "row", style: "margin-top:8px" }, btn("+ variation", () => { let n = "VAR", i = 2; while (`${n}${i}` in w.variations) i++; w.variations[`${n}${i}`] = {}; touch(true); }, { disabled: names.length >= N().limits.MAX_VARS }))];
+}
+
+/* ---- Macros, controls, curves, rules, ENERGY */
+function ctlGroup(c) { return N().controls.indexOf(c) < 4 ? "macros" : "controls"; }
+function tabMacros() {
+  const w = S.W, ctl = S.sel.ctl, grp = ctlGroup(ctl), ci = N().controls.indexOf(ctl), home = N().control_home[ci];
+  const own = w[grp] && Array.isArray(w[grp][ctl]);
+  const list = own ? w[grp][ctl] : [];
+  const nmaps = ["macros", "controls"].reduce((n, g) => n + Object.values(w[g] || {}).reduce((m, l) => m + (Array.isArray(l) ? l.length : 0), 0), 0);
+  const tabs = h("div", { class: "row" }, N().controls.map((c, k) => {
+    const g = ctlGroup(c), n = ((w[g] || {})[c] || []).length;
+    return [k === 4 ? h("span", { class: "faint" }, " | ") : null, h("button", { class: c === ctl ? null : "ghost", "data-path": jp(`$.${g}`, c), "data-pathc": "1", onclick: () => { S.sel.ctl = c; S.sel.map = 0; render(); } }, c, n ? h("span", { class: "faint" }, ` ${n}`) : null)];
+  }), h("span", { class: "hint" }, `${nmaps} of ${N().limits.WF_MAX_MAPS} mappings`));
+  const builtin = N().builtin.filter((b) => b.control === ctl);
+  if (S.sel.map >= list.length) S.sel.map = Math.max(0, list.length - 1);
+  const rows = list.map((m, i) => {
+    const path = jp(jp(`$.${grp}`, ctl), i);
+    const curves = [...BUILTIN_CURVES, ...Object.keys(w.curves || {})];
+    const isInline = m.curve != null && typeof m.curve !== "string";
+    return h("tr", { class: S.sel.map === i ? "sel" : null, onclick: (ev) => { if (S.sel.map !== i && ev.target.tagName !== "INPUT" && ev.target.tagName !== "SELECT") { S.sel.map = i; render(); } }, "data-path": path, "data-pathc": "1" },
+      h("td", null, inp(m, "to", { path: jp(path, "to"), list: "dl-targets", req: true, change: true, rerender: true })),
+      h("td", null, home > 0 ? inp(m, "min", { type: "number", int: true, min: -128, max: 127, path: jp(path, "min"), ph: "0" }) : h("span", { class: "faint", title: `${ctl} rests at 0: only max` }, "—")),
+      h("td", null, inp(m, "max", { type: "number", int: true, min: -128, max: 127, path: jp(path, "max"), ph: "0" })),
+      h("td", null, isInline ? h("span", { class: "dim", title: JSON.stringify(m.curve) }, "inline") : sel(m, "curve", curves, { path: jp(path, "curve"), none: "lin", rerender: true })),
+      h("td", null, sel(m, "smooth", N().smooth, { path: jp(path, "smooth"), none: "medium" })),
+      h("td", { title: "saturate: 100 % may reach the parameter's maximum" }, chk(m, "saturate", { path: jp(path, "saturate") })),
+      h("td", null, h("span", { class: "hint" }, (() => { const d = targetDesc(m.to); return d ? `${d.min}..${d.max}` : ""; })())),
+      h("td", null, xbtn(() => { list.splice(i, 1); if (!list.length) { delete w[grp][ctl]; pruneEmpty(w, [grp]); } touch(true); })));
+  });
+  const addMap = () => { w[grp] = w[grp] || {}; (w[grp][ctl] = w[grp][ctl] || []).push({ to: "", max: 10, ...(home > 0 ? { min: -10 } : {}) }); S.sel.map = w[grp][ctl].length - 1; touch(true); };
+  const table = h("table", { class: "mtab" }, h("tr", null, ["target", "min", "max", "curve", "smooth", "sat.", "range", ""].map((x) => h("th", null, x))), rows);
+  const scenes = N().scenes, vars = varNames();
+  if (!S.sel.scene) S.sel.scene = (w.defaults && w.defaults.scene) || "B";
+  if (!vars.includes(S.sel.var)) S.sel.var = vars[0];
+  const pos = h("input", { type: "range", min: 0, max: 1, step: 0.01, value: S.sel.pos, style: "width:220px" });
+  const posv = h("span", { class: "mono" }, `${Math.round(S.sel.pos * 100)} %`);
+  pos.addEventListener("input", () => { S.sel.pos = Number(pos.value); posv.textContent = `${Math.round(S.sel.pos * 100)} %`; drawCurve(); schedule("macmodel", 120, runMacroModel); });
+  const ssel = h("select", null, ...scenes.map((s) => h("option", { selected: s === S.sel.scene ? true : null }, s)));
+  ssel.addEventListener("change", () => { S.sel.scene = ssel.value; runMacroModel(); });
+  const vsel = h("select", null, ...vars.map((s) => h("option", { selected: s === S.sel.var ? true : null }, s)));
+  vsel.addEventListener("change", () => { S.sel.var = vsel.value; runMacroModel(); });
+  setTimeout(() => { drawCurve(); runMacroModel(); }, 0);
+  return [
+    h("h2", null, "Macros and controls"),
+    h("div", { class: "hint" }, "Each mapping moves one target by an offset from the authored value: home (50 %; 0 for the controls that rest at 0) changes nothing, turned down it runs to min, up to max, along its curve. 100 % is the largest value you chose, never everything at its maximum."),
+    tabs,
+    own ? null : builtin.length ? h("div", { class: "card", style: "margin:6px 0" }, h("div", null, `${ctl}: the firmware's built-in mappings apply (Phase 13): `, h("span", { class: "mono" }, builtin.map((b) => `${b.target} ${b.max > 0 ? "+" : ""}${b.max} ${b.curve}`).join(", ")), "."),
+      btn("replace them with my own", () => { w.controls = w.controls || {}; w.controls[ctl] = builtin.map((b) => ({ to: b.target.replace(/^keys\./, `${keysTrack()}.`), max: b.max, ...(b.curve !== "lin" ? { curve: b.curve } : {}), ...(b.smooth !== "medium" ? { smooth: b.smooth } : {}) })); touch(true); }, { title: "copies them as mappings of this World (on the Smart Keys track)" })) : null,
+    table, h("div", { class: "row" }, btn("+ mapping", addMap), h("span", { class: "hint" }, "targets: track.param, *.param, a+b.param, track.@ROLE, track.~bright / ~shape, g.name")),
+    h("h3", null, "preview", h("span", { class: "hint" }, "the curve as authored (line) and the model's effective value of the target (dots; the firmware's macro engine and guard, tools/worldc.py)")),
+    h("div", { class: "row" }, "scene", ssel, "variation", vsel, ctl, pos, posv, btn("test all macros", testAllMacros, { title: "every macro at 0, 25, 50, 75, 100 % (the others at their defaults): every target's effective value" })),
+    h("div", { class: "row", style: "align-items:flex-start" }, h("canvas", { id: "curve", width: 420, height: 200 }), h("div", { id: "mapread", style: "min-width:280px" })),
+    h("div", { id: "testall" }),
+    h("h2", null, "Rules (cross-macro)"), rulesEditor(),
+    h("h2", null, "Curves"), curvesEditor(),
+    h("h2", null, "ENERGY tables"), energyEditor(),
+  ];
+}
+function selMapping() {
+  const ctl = S.sel.ctl, g = ctlGroup(ctl), l = ((S.W[g] || {})[ctl]) || [];
+  return l[S.sel.map] ? { m: l[S.sel.map], path: jp(jp(`$.${g}`, ctl), S.sel.map) } : null;
+}
+function drawCurve() {
+  const cv = document.getElementById("curve");
+  if (!cv) return;
+  const g = cv.getContext("2d"), Wd = cv.width, Ht = cv.height;
+  g.fillStyle = "#131318"; g.fillRect(0, 0, Wd, Ht);
+  const sm = selMapping(), ci = N().controls.indexOf(S.sel.ctl), home = N().control_home[ci];
+  g.fillStyle = "#5c5c66"; g.font = "10px sans-serif";
+  if (!sm) { g.fillText("no mapping selected", 10, 16); return; }
+  const m = sm.m, ext = Math.max(1, Math.abs(m.min || 0), Math.abs(m.max || 0));
+  const X = (x) => 30 + x * (Wd - 40), Y = (v) => Ht / 2 - v / ext * (Ht / 2 - 14);
+  g.fillStyle = "#2a2a31"; g.fillRect(30, Ht / 2, Wd - 40, 1); g.fillRect(X(home), 6, 1, Ht - 12);
+  g.fillStyle = "#8b8b95"; g.fillText(`+${ext}`, 2, 14); g.fillText(`-${ext}`, 2, Ht - 6); g.fillText("0 %", 30, Ht - 2); g.fillText("100 %", Wd - 38, Ht - 2);
+  g.strokeStyle = "#8b7cf6"; g.lineWidth = 2; g.beginPath();
+  for (let k = 0; k <= 200; k++) { const x = k / 200, y = mapOffset(m, x, home, S.W.curves); if (k) g.lineTo(X(x), Y(y)); else g.moveTo(X(x), Y(y)); }
+  g.stroke();
+  g.fillStyle = "#e9e9ec"; g.fillRect(X(S.sel.pos), 6, 1, Ht - 12);
+  const sweep = S.macsweep;
+  if (sweep && sweep.path === sm.path) for (const [x, v] of sweep.pts) { g.fillStyle = "#57d18a"; g.fillRect(X(x) - 2, Y(v) - 2, 4, 4); }
+}
+async function runMacroModel() {
+  if (S.tab !== "macros" || !S.W || !(S.check && S.check.bytes != null)) { const r = document.getElementById("mapread"); if (r) r.textContent = S.check && S.check.bytes == null ? "the World does not compile: no model" : ""; return; }
+  const sm = selMapping(), ctl = S.sel.ctl;
+  const xs = [...Array(21)].map((_, k) => k / 20);
+  try {
+    const res = await api("model", { world: P(), scene: S.sel.scene, var: S.sel.var, batch: [...xs.map((x) => ({ [ctl]: x })), { [ctl]: S.sel.pos }] });
+    const at = res.batch[res.batch.length - 1];
+    const rd = document.getElementById("mapread");
+    if (!rd) return;
+    if (!sm) { fill(rd); return; }
+    const mine = (r) => r.slots.filter((s) => s.maps.includes(sm.path));
+    S.macsweep = { path: sm.path, pts: xs.map((x, k) => { const s = mine(res.batch[k])[0]; return s ? [x, s.kind === "vmod" ? s.effective : s.effective - s.base] : null; }).filter(Boolean) };
+    drawCurve();
+    const sl = mine(at);
+    fill(rd, h("div", { class: "dim" }, `${ctl} at ${Math.round(S.sel.pos * 100)} %, scene ${at.scene} / ${at.var}`),
+      sl.length ? h("table", null, h("tr", null, ["target", "base", "offset", "effective", ""].map((x) => h("th", null, x))), sl.map((s) => h("tr", null,
+        h("td", { class: "mono" }, s.target, s.role ? h("span", { class: "faint" }, ` ${s.role}`) : null), h("td", { class: "r" }, s.base), h("td", { class: "r" }, s.offset > 0 ? `+${s.offset}` : s.offset),
+        h("td", { class: "r" + (s.held ? " w" : "") }, s.effective, s.held ? " held" : ""), h("td", null, h("span", { class: "nbar" }, h("div", { style: `width:${Math.max(0, Math.min(1, s.kind === "vmod" ? (s.effective + 64) / 128 : s.norm)) * 100}%` })))))) :
+        h("div", { class: "faint" }, Math.abs(S.sel.pos - N().control_home[N().controls.indexOf(ctl)]) < 0.005 ? "at home: the World as authored (no offset)" : "this mapping moves nothing here (the target is missing on this track's engine)"),
+      at.over ? h("div", { class: "e" }, `${at.over} target(s) over the ${at.max_targets} the overlay holds`) : null);
+  } catch (e) { const rd = document.getElementById("mapread"); if (rd) rd.textContent = e.message; }
+}
+async function testAllMacros() {
+  const box = document.getElementById("testall");
+  fill(box, h("div", { class: "dim" }, "evaluating…"));
+  const xs = [0, 0.25, 0.5, 0.75, 1], macros = N().controls.slice(0, 4);
+  try {
+    const res = await api("model", { world: P(), scene: S.sel.scene, var: S.sel.var, batch: macros.flatMap((c) => xs.map((x) => ({ [c]: x }))) });
+    const tables = macros.map((c, ci) => {
+      const rs = res.batch.slice(ci * 5, ci * 5 + 5);
+      const tg = [...new Set(rs.flatMap((r) => r.slots.filter((s) => s.controls.includes(c)).map((s) => s.target)))];
+      return h("div", { class: "card" }, h("h3", null, c), tg.length ? h("table", null, h("tr", null, h("th", null, "target"), xs.map((x) => h("th", { class: "r" }, `${x * 100}%`))),
+        tg.map((t) => h("tr", null, h("td", { class: "mono" }, t), rs.map((r) => { const s = r.slots.find((q) => q.target === t); return h("td", { class: "r" + (s && s.held ? " w" : ""), title: s ? `base ${s.base}, offset ${s.offset}, range ${s.lo}..${s.hi}` : "home" }, s ? s.effective : "·"); })))) : h("div", { class: "faint" }, "moves nothing"),
+        rs.some((r) => r.over) ? h("div", { class: "e" }, "too many targets at once") : null);
+    });
+    fill(box, h("h3", null, `every macro, scene ${S.sel.scene} / ${S.sel.var}`, h("span", { class: "hint" }, "orange: the guard or a limit holds the value. The full test of every combination: Validate (quick or full).")), h("div", { class: "cards" }, tables));
+  } catch (e) { fill(box, h("div", { class: "e" }, e.message)); }
+}
+function rulesEditor() {
+  const w = S.W, rules = Array.isArray(w.rules) ? w.rules : [];
+  const cards = rules.map((r, i) => {
+    const path = jp("$.rules", i);
+    r.if = r.if && typeof r.if === "object" ? r.if : {};
+    r.then = Array.isArray(r.then) ? r.then : [];
+    const conds = Object.entries(r.if).map(([c, th]) => h("span", { class: "row", style: "margin:0" },
+      (() => { const s = h("select", null, ...N().controls.map((x) => h("option", { selected: x === c ? true : null }, x))); s.addEventListener("change", () => { const n = {}; for (const [k, v] of Object.entries(r.if)) n[k === c ? s.value : k] = v; r.if = n; touch(true); }); return s; })(),
+      ">", inp(r.if, c, { type: "number", min: 0, max: 0.99, step: 0.05, path: jp(jp(path, "if"), c), req: true }), Object.keys(r.if).length > 1 ? xbtn(() => { delete r.if[c]; touch(true); }) : null));
+    const acts = r.then.map((a, j) => h("span", { class: "row", style: "margin:0" }, inp(a, "to", { list: "dl-targets", path: jp(jp(jp(path, "then"), j), "to"), req: true, change: true }), "add",
+      inp(a, "add", { type: "number", int: true, min: -128, max: 127, path: jp(jp(jp(path, "then"), j), "add"), req: true }), xbtn(() => { r.then.splice(j, 1); touch(true); })));
+    return h("div", { class: "card", "data-path": path, "data-pathc": "1" }, h("div", { class: "row" }, h("b", null, "if"), conds,
+      Object.keys(r.if).length < 2 ? btn("+ condition", () => { const c = N().controls.slice(0, 4).find((x) => !(x in r.if)); r.if[c] = 0.75; touch(true); }) : null, h("span", { style: "flex:1" }), xbtn(() => { rules.splice(i, 1); if (!rules.length) delete w.rules; touch(true); }, "delete the rule")),
+      h("div", { class: "row" }, h("b", null, "then"), acts, r.then.length < 4 ? btn("+ action", () => { r.then.push({ to: "g.dfdbk", add: -10 }); touch(true); }) : null));
+  });
+  return [h("div", { class: "hint" }, "When every named control is above its threshold, each action adds up to `add` to its target, fading in from the thresholds to 100 % (the lesser of two). Up to 8 rules of 1–4 actions."),
+    h("div", { class: "cards" }, cards), btn("+ rule", () => { (w.rules = Array.isArray(w.rules) ? w.rules : []).push({ if: { SPACE: 0.75, ENERGY: 0.75 }, then: [{ to: "g.dfdbk", add: -12 }] }); touch(true); }, { disabled: rules.length >= N().limits.WF_MAX_RULES })];
+}
+function curvesEditor() {
+  const w = S.W, cs = w.curves && typeof w.curves === "object" ? w.curves : {};
+  const cards = Object.entries(cs).map(([name, c]) => {
+    const path = jp("$.curves", name);
+    const lut = curveLut(c);
+    const txt = h("input", { type: "text", style: "width:260px", spellcheck: "false", "data-path": path, value: Array.isArray(c) ? c.join(" ") : c && c.points ? c.points.map((p) => p.join(":")).join(" ") : c && c.lut ? c.lut.join(" ") : "" });
+    const kind = Array.isArray(c) ? "values" : c && c.points ? "points" : "lut";
+    txt.addEventListener("change", () => {
+      const parts = txt.value.trim().split(/[\s,]+/).filter(Boolean);
+      if (kind === "points") cs[name] = { points: parts.map((p) => p.split(":").map(Number)) };
+      else if (kind === "lut") cs[name] = { lut: parts.map((x) => Math.round(Number(x))) };
+      else cs[name] = parts.map(Number);
+      touch(true);
+    });
+    const cv = h("canvas", { width: 120, height: 60 });
+    setTimeout(() => { const g = cv.getContext("2d"); g.fillStyle = "#131318"; g.fillRect(0, 0, 120, 60); g.strokeStyle = "#8b7cf6"; g.beginPath(); for (let k = 0; k <= 60; k++) { const u = k / 60, y = curveY(name, u, cs); g.lineTo(4 + u * 112, 56 - y * 52); } g.stroke(); }, 0);
+    return h("div", { class: "card" }, h("h3", null, name, h("span", { class: "dim" }, kind), h("span", { style: "flex:1" }), xbtn(() => { delete cs[name]; pruneEmpty(w, ["curves"]); touch(true); })),
+      h("div", { class: "row" }, cv, h("div", null, txt, h("div", { class: "hint" }, kind === "points" ? "x:y pairs from 0:0 to 1:1" : kind === "lut" ? "9 integers 0..255" : "9 values 0..1 at x = 0, 1/8 … 1"), lut ? null : h("div", { class: "e" }, "not a curve"))));
+  });
+  const add = (kind) => { let n = "curve", i = 1; while (`${n}${i}` in cs) i++; w.curves = cs; cs[`${n}${i}`] = kind === "points" ? { points: [[0, 0], [0.5, 0.2], [1, 1]] } : [0, 0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.8, 1]; touch(true); };
+  return [h("div", { class: "hint" }, "Named curves for the mappings (curve: name). Each runs from 0 to 1; at most 8."), h("div", { class: "cards" }, cards),
+    h("div", { class: "row" }, btn("+ curve (9 values)", () => add("values")), btn("+ curve (points)", () => add("points")))];
+}
+function energyEditor() {
+  const w = S.W, tabs = w.energy && typeof w.energy === "object" ? w.energy : {};
+  const tn = tracks().map((t) => t.name), synth = synthTracks().map((t) => t.name), kt = keysTrack();
+  const lanes = N().lanes.map((l) => l.id);
+  const lanePick = (obj, key, path, allWord) => {
+    const cur = obj[key] === "all" || obj[key] === undefined ? (allWord ? "all" : []) : obj[key];
+    const isAll = cur === "all";
+    const all = h("label", null, h("input", { type: "checkbox", checked: isAll ? true : null, onchange: (ev) => { if (ev.target.checked) { if (allWord === "default") delete obj[key]; else obj[key] = "all"; } else obj[key] = []; touch(true); } }), " all");
+    const boxes = isAll ? [] : lanes.map((l) => h("label", { class: "dim", style: "font-size:11px" }, h("input", { type: "checkbox", checked: cur.includes(l) ? true : null, onchange: (ev) => { const a = Array.isArray(obj[key]) ? obj[key] : []; obj[key] = ev.target.checked ? [...a, l] : a.filter((x) => x !== l); touch(); } }), l));
+    return h("span", { class: "row", style: "margin:0", "data-path": path }, all, boxes);
+  };
+  const m16 = (obj, key, path) => {
+    const bits = mask16(obj[key] || "xxxxxxxxxxxxxxxx");
+    return h("span", { class: "mask16", "data-path": path }, bits.map((b, i) => h("button", { class: (b ? "on" : "") + (i && i % 4 === 0 ? " q" : ""), title: `step ${i + 1}`, onclick: () => { bits[i] = !bits[i]; obj[key] = mask16Str(bits); touch(true); } })),
+      obj[key] !== undefined ? xbtn(() => { delete obj[key]; touch(true); }, "every step") : null);
+  };
+  const cards = Object.entries(tabs).map(([name, e]) => {
+    const path = jp("$.energy", name);
+    e.bands = Array.isArray(e.bands) ? e.bands : [];
+    const bands = e.bands.map((b, i) => {
+      const bp = jp(jp(path, "bands"), i);
+      const layersAll = b.layers === "all" || b.layers === undefined;
+      return h("div", { class: "card", style: "margin:4px 0", "data-path": bp, "data-pathc": "1" },
+        h("div", { class: "row" }, h("b", null, `band ${i + 1}`), "from", inp(b, "from", { type: "number", min: 0, max: 1, step: 0.05, path: jp(bp, "from"), req: true }),
+          chk(b, "fills", { path: jp(bp, "fills") }), "fills", chk(b, "ratchets", { path: jp(bp, "ratchets") }), "ratchets", h("span", { style: "flex:1" }), xbtn(() => { e.bands.splice(i, 1); touch(true); })),
+        h("div", { class: "row" }, "layers", h("label", null, h("input", { type: "checkbox", checked: layersAll ? true : null, onchange: (ev) => { if (ev.target.checked) b.layers = "all"; else b.layers = tn.filter((x) => x === kt); touch(true); } }), " all"),
+          layersAll ? null : tn.map((t) => h("label", { class: t === kt ? "dim" : null }, h("input", { type: "checkbox", disabled: t === kt ? true : null, checked: (b.layers || []).includes(t) ? true : null, onchange: (ev) => { b.layers = ev.target.checked ? [...b.layers, t] : b.layers.filter((x) => x !== t); touch(); } }), " " + t))),
+        h("div", { class: "row" }, "drums", lanePick(b, "drums", jp(bp, "drums"), "default")),
+        h("div", { class: "row" }, "density", m16(b, "density", jp(bp, "density")), h("span", { class: "hint" }, "on the density lanes")),
+        synth.filter((t) => t !== kt).map((t) => h("div", { class: "row" }, t, m16(b, t, jp(bp, t)), h("span", { class: "hint" }, "its notes play on x only"))));
+    });
+    return h("div", { class: "card", "data-path": path, "data-pathc": "1" }, h("h3", null, name, h("span", { class: "dim" }, `scenes ${Object.entries(w.scenes || {}).filter(([, s]) => s && s.energy === name).map(([k]) => k).join(" ") || "—"}`), h("span", { style: "flex:1" }), xbtn(() => { delete tabs[name]; pruneEmpty(w, ["energy"]); touch(true); })),
+      h("div", { class: "row" }, "density lanes", lanePick(e, "density_lanes", jp(path, "density_lanes"), "")),
+      bands, e.bands.length < 4 ? btn("+ band", () => { const last = e.bands[e.bands.length - 1]; e.bands.push({ from: last ? Math.min(0.95, Math.round((Number(last.from) + 0.25) * 100) / 100) : 0, layers: "all" }); touch(true); }) : null);
+  });
+  return [h("div", { class: "hint" }, "ENERGY arranges: its band (with the variation's bias) picks the layers heard, the drum lanes, the density and the fills; the Smart Keys track is in every band. Up to 4 tables of up to 4 bands; each scene names one."),
+    h("div", { class: "cards" }, cards), btn("+ ENERGY table", () => { let n = "e", i = 1; while (`${n}${i}` in tabs) i++; w.energy = tabs; tabs[`${n}${i}`] = { bands: [{ from: 0, layers: tn.filter((x) => x !== tn[3]) }, { from: 0.5, layers: "all", fills: true }] }; touch(true); }, { disabled: Object.keys(tabs).length >= 4 })];
+}
+
+/* ---- Smart Keys */
+function tabKeys() {
+  const w = S.W;
+  w.smart_keys = w.smart_keys && typeof w.smart_keys === "object" ? w.smart_keys : {};
+  const sk = w.smart_keys, H = S.harmony;
+  const msIsList = Array.isArray(sk.melody_scale);
+  const msSel = h("select", { "data-path": "$.smart_keys.melody_scale" }, h("option", { value: "" }, "(default: PEN if it fits, else MPEN, else the scale)"), ...N().scales.map((s) => h("option", { value: s.name, selected: sk.melody_scale === s.name ? true : null }, s.name)), h("option", { value: "\u0000list", selected: msIsList ? true : null }, "semitones…"));
+  msSel.addEventListener("change", () => { if (!msSel.value) delete sk.melody_scale; else if (msSel.value === "\u0000list") sk.melody_scale = [0, 3, 5, 7, 10]; else sk.melody_scale = msSel.value; touch(true); });
+  const msList = msIsList ? (() => { const t = h("input", { type: "text", value: sk.melody_scale.join(" "), style: "width:150px" }); t.addEventListener("change", () => { sk.melody_scale = t.value.trim().split(/[\s,]+/).filter(Boolean).map(Number); touch(true); }); return t; })() : null;
+  if (sk.range !== undefined && !Array.isArray(sk.range)) delete sk.range;
+  const rng = sk.range ? [...sk.range] : null;
+  const rIn = (k) => { const t = h("input", { type: "text", value: rng ? rng[k] : "", placeholder: H ? H.keys.range[k] : "", style: "width:52px", "data-path": "$.smart_keys.range" }); t.addEventListener("change", () => { const a = [r0.value.trim(), r1.value.trim()]; if (!a[0] && !a[1]) delete sk.range; else sk.range = [a[0] || (H ? H.keys.range[0] : "C3"), a[1] || (H ? H.keys.range[1] : "C6")]; touch(true); }); return t; };
+  const r0 = rIn(0), r1 = rIn(1);
+  const rows = h("div", { class: "grid2" },
+    ...field("track", sel(sk, "track", synthTracks().map((t) => t.name), { path: "$.smart_keys.track", rerender: true }), h("span", { class: "hint" }, "plays the player's loop, never a scene pattern")),
+    ...field("mode", sel(sk, "mode", N().keys_modes, { path: "$.smart_keys.mode", none: "melody (default)" }), h("span", { class: "hint" }, "chords, bass and drums play as melody until they exist")),
+    ...field("melody scale", msSel, msList, h("span", { class: "hint" }, H ? `plays ${H.keys.melody.join(" ")}` : "")),
+    ...field("tonic", inp(sk, "tonic", { path: "$.smart_keys.tonic", width: "52px", ph: H ? H.keys.tonic : "", rerender: true, change: true }), h("span", { class: "hint" }, "the C4 key's note; it must be the root")),
+    ...field("range", r0, "..", r1, h("span", { class: "hint" }, "every note folds by octaves into it (also guard.notes.<track>.range)")),
+    ...field("white keys", sel(sk, "white", N().white, { path: "$.smart_keys.white", none: "scale (default)", rerender: true }), h("span", { class: "hint" }, "scale: fixed; safe: the melody's safe tones over the chord")),
+    ...field("black keys", sel(sk, "black", N().black, { path: "$.smart_keys.black", none: "chord (default)", rerender: true }), h("span", { class: "hint" }, "the chord's tones (chord+9: and its 9th when safe)")));
+  const progs = H ? Object.keys(H.progressions).filter((p) => p !== "\u0000palette") : [];
+  if (!progs.includes(S.sel.skprog)) { S.sel.skprog = progs[0]; S.sel.skchord = 0; }
+  const P = H && S.sel.skprog ? H.progressions[S.sel.skprog] : null;
+  const psel = h("select", null, ...progs.map((p) => h("option", { selected: p === S.sel.skprog ? true : null }, p)));
+  psel.addEventListener("change", () => { S.sel.skprog = psel.value; S.sel.skchord = 0; render(); });
+  const chips = P ? h("div", { class: "chips" }, P.chords.map((c, i) => h("div", { class: "cchip" + (i === S.sel.skchord ? " selc" : "") + (c.ok ? "" : " badc"), onclick: () => { S.sel.skchord = i; render(); } }, h("span", { class: "t" }, c.token), h("span", { class: "n" }, c.name || "?")))) : null;
+  const ch = P && P.chords[S.sel.skchord];
+  let kb = h("div", { class: "dim" }, H ? "no chord" : "…");
+  if (ch && ch.ok) {
+    kb = h("div", { class: "kbd", style: "width:" + 16 * 42 + "px" });
+    let wi = 0;
+    for (const k of ch.keys) {
+      const fold = (n) => { let v = n + 12 * S.sel.oct; const lo = parseNote(H.keys.range[0]), hi = parseNote(H.keys.range[1]); while (v > hi) v -= 12; while (v < lo) v += 12; return v; };
+      const note = fold(k.note), label = h("div", { class: "k" }, noteName(note), h("div", { class: "kk" }, noteName(53 + k.key)));
+      if (k.black) kb.append(h("div", { class: "bk" + (k.chord ? " ct" : ""), style: `left:${wi * 42 - 14}px`, title: `key ${k.key + 1}` }, label));
+      else { kb.append(h("div", { class: "wk" + (k.chord ? " ct" : ""), style: `left:${wi * 42}px`, title: `key ${k.key + 1}` }, label)); wi++; }
+    }
+  }
+  const oct = h("select", null, ...[-2, -1, 0, 1, 2].map((o) => h("option", { selected: o === S.sel.oct ? true : null, value: o }, `OCT ${o > 0 ? "+" : ""}${o}`)));
+  oct.addEventListener("change", () => { S.sel.oct = Number(oct.value); render(); });
+  return [h("h2", null, "Smart Keys (SMART MELODY)"), h("div", { class: "hint" }, "White keys walk the melody scale from the tonic (they never move); black keys play the tones of the chord sounding, ascending; every note folds into the range. A held note never moves."), rows,
+    h("h2", null, "The 27 keys over a chord"),
+    h("div", { class: "row" }, "progression", psel, oct, ch && ch.ok ? h("span", { class: "hint" }, `${ch.name}: ${ch.tones.join(" ")} · safe ${ch.safe.join(" ")} · range ${H.keys.range.join("..")}`) : null),
+    chips, kb, h("div", { class: "hint" }, "Big: the note played; small: the key (F3..G5). A violet edge marks a chord tone.")];
+}
+
+/* ---- Guardrails */
+function gpath(path) { const kt = keysTrack() || "keys"; return path.replace("KEYS", kt).split("."); }
+function gget(path) { let o = S.W.guard; for (const k of gpath(path)) { if (!o || typeof o !== "object") return undefined; o = o[k]; } return o; }
+function gset(path, v) {
+  const ks = gpath(path);
+  if (v === undefined) {
+    const chain = [S.W]; let o = S.W.guard; if (!o) return;
+    chain.push(o);
+    for (const k of ks.slice(0, -1)) { o = o && o[k]; if (!o) return; chain.push(o); }
+    delete o[ks[ks.length - 1]];
+    const keys = ["guard", ...ks];
+    for (let i = chain.length - 1; i > 0; i--) if (!Object.keys(chain[i]).length) delete chain[i - 1][keys[i - 1]];
+    return;
+  }
+  S.W.guard = S.W.guard || {}; let o = S.W.guard;
+  for (const k of ks.slice(0, -1)) o = o[k] = o[k] && typeof o[k] === "object" ? o[k] : {};
+  o[ks[ks.length - 1]] = v;
+}
+function guardField(f) {
+  const v = gget(f.path), path = "$.guard." + gpath(f.path).join(".");
+  const enumOf = { follow: N().follow, avoid: N().avoid, dens: N().density_change, mute: ["bar", "2bars"] }[f.kind];
+  if (enumOf) {
+    const def = f.kind === "mute" ? (f.default === 2 ? "2bars" : "bar") : enumOf[f.default];
+    const s = h("select", { "data-path": path }, h("option", { value: "" }, `${def} (default)`), ...enumOf.map((x) => h("option", { selected: v === x || (f.kind === "mute" && v === (x === "bar" ? 1 : 2)) ? true : null }, x)));
+    s.addEventListener("change", () => { gset(f.path, s.value || undefined); touch(); });
+    return s;
+  }
+  const scale = f.kind === "unit" ? 250 : f.kind === "q8" ? 256 : 1;
+  const def = f.kind === "int" && f.path.endsWith("fills_every") && !f.default ? "the progression's length" : String(Math.round(f.default / scale * 1000) / 1000);
+  const t = h("input", { type: "number", "data-path": path, placeholder: `${def} (default)`, min: f.min / scale, max: f.max / scale, step: scale > 1 ? 0.01 : 1, style: "width:150px" });
+  if (v != null) t.value = v;
+  t.addEventListener("input", () => { const x = t.value.trim(); gset(f.path, x === "" ? undefined : scale > 1 ? Number(x) : Math.round(Number(x))); touch(); });
+  return h("span", { class: "row", style: "margin:0" }, t, h("span", { class: "hint" }, `${Math.round(f.min / scale * 100) / 100}..${Math.round(f.max / scale * 100) / 100}`));
+}
+function tabGuard() {
+  const w = S.W, G = N().guard, kt = keysTrack();
+  const sec = (prefix) => G.filter((f) => f.path.startsWith(prefix)).map((f) => field(f.path.split(".").pop(), guardField(f)));
+  const ranges = synthTracks().map((t) => {
+    const nt = ((w.guard || {}).notes || {})[t.name] || {};
+    const rng = Array.isArray(nt.range) ? nt.range : null;
+    const a = h("input", { type: "text", value: rng ? rng[0] : "", placeholder: "C3", style: "width:52px", "data-path": `$.guard.notes.${t.name}.range` }), b = h("input", { type: "text", value: rng ? rng[1] : "", placeholder: "C6", style: "width:52px" });
+    const put = () => { const x = a.value.trim(), y = b.value.trim(); gset(`notes.${t.name}.range`, x || y ? [x || "C3", y || "C6"] : undefined); touch(); };
+    a.addEventListener("change", put); b.addEventListener("change", put);
+    return field(t.name, a, "..", b, t.name === kt ? h("span", { class: "hint" }, "the Smart Keys track: the same as smart_keys.range") : null);
+  });
+  w.guard = w.guard && typeof w.guard === "object" ? w.guard : {};
+  const snd = w.guard.sound = w.guard.sound && typeof w.guard.sound === "object" ? w.guard.sound : {};
+  const combos = snd.combos;
+  const mode = combos === undefined ? "default" : Array.isArray(combos) && !combos.length ? "none" : "own";
+  const msel = h("select", { "data-path": "$.guard.sound.combos" }, ...[["default", "the firmware's six (default)"], ["none", "none ([])"], ["own", "my own (up to 8)"]].map(([v, l]) => h("option", { value: v, selected: v === mode ? true : null }, l)));
+  msel.addEventListener("change", () => { if (msel.value === "default") gset("sound.combos", undefined); else if (msel.value === "none") gset("sound.combos", []); else gset("sound.combos", clone(N().default_combos.filter((c) => !JSON.stringify(c).includes("track")).slice(0, 2))); touch(true); });
+  const combo = (c, i) => {
+    const path = jp("$.guard.sound.combos", i);
+    const kv = (obj, key) => Object.entries(obj || {}).map(([t, v]) => h("span", { class: "row", style: "margin:0" },
+      (() => { const e = h("input", { type: "text", value: t, list: "dl-targets", style: "width:130px" }); e.addEventListener("change", () => { const n = {}; for (const [k, x] of Object.entries(c[key])) n[k === t ? e.value.trim() : k] = x; c[key] = n; touch(true); }); return e; })(),
+      key === "when" ? ">" : "≤", inp(c[key], t, { type: "number", int: true, min: -128, max: 127, req: true }),
+      key === "when" && Object.keys(c.when).length > 1 ? xbtn(() => { delete c.when[t]; touch(true); }) : null));
+    return h("div", { class: "card", "data-path": path, "data-pathc": "1" }, h("div", { class: "row" }, h("b", null, "when"), kv(c.when, "when"), Object.keys(c.when || {}).length < 2 ? btn("+", () => { c.when["g.rsize"] = 100; touch(true); }) : null,
+      h("b", null, "cap"), kv(c.cap, "cap"), h("span", { style: "flex:1" }), xbtn(() => { combos.splice(i, 1); touch(true); })));
+  };
+  return [
+    h("h2", null, "Guardrails (GUARD)"), h("div", { class: "hint" }, "Every field is optional: an empty field takes the firmware default shown. The hard limits (feedback 120, reverb size 127, level 120, resonance 110, ±64 smooth steps) hold whatever a World says."),
+    h("h3", null, "notes: each synth track's range"), h("div", { class: "grid2" }, ranges),
+    h("h3", null, `the Smart Keys track (${kt || "?"})`), h("div", { class: "grid2" }, sec("notes.")),
+    h("h3", null, "record"), h("div", { class: "grid2" }, sec("record.")),
+    h("h3", null, "sound: caps"), h("div", { class: "grid2" }, sec("sound.")),
+    h("h3", null, "sound: safe ranges", h("span", { class: "hint" }, "the macros keep each target's effective value inside [lo, hi] (a base the World put outside stays)")),
+    kvEdit(snd, "ranges", { path: "$.guard.sound.ranges", list: "dl-targets", desc: (k) => targetDesc(k), range: true, ph: "+ target", hint: `at most ${N().limits.WF_MAX_GRANGES}` }),
+    h("h3", null, "sound: combinations"), h("div", { class: "row" }, msel),
+    mode === "default" ? h("div", { class: "hint mono" }, N().default_combos.map((c) => `when ${Object.entries(c.when).map(([k, v]) => `${k} > ${v}`).join(" & ")}: ${Object.entries(c.cap).map(([k, v]) => `${k} ≤ ${v}`).join("")}`).map((t) => h("div", null, t))) : null,
+    mode === "own" ? [combos.map(combo), combos.length < N().limits.WF_MAX_COMBOS ? btn("+ combination", () => { combos.push({ when: { "g.rsize": 110 }, cap: { "g.dfdbk": 70 } }); touch(true); }) : null] : null,
+    h("h3", null, "arrangement (the ENERGY bands' timing)"), h("div", { class: "grid2" }, sec("arrangement.")),
+    h("h3", null, "cpu"), h("div", { class: "grid2" }, sec("cpu.")),
+  ];
+}
+
+/* ---- Defaults */
+function tabDefaults() {
+  const w = S.W;
+  w.defaults = w.defaults && typeof w.defaults === "object" ? w.defaults : {};
+  const d = w.defaults;
+  const four = (key, names, dflt) => h("div", { class: "grid2", "data-path": jp("$.defaults", key), "data-pathc": "1" }, names.map((n, i) => field(n, unit(() => (Array.isArray(d[key]) ? d[key][i] : undefined),
+    (x) => { if (!Array.isArray(d[key])) d[key] = [...dflt]; d[key][i] = x === undefined ? dflt[i] : x; }, { def: dflt[i], path: jp(jp("$.defaults", key), i), w: 200 }))),
+    ...field("", Array.isArray(d[key]) ? btn("reset to the defaults", () => { delete d[key]; touch(true); }) : h("span", { class: "hint" }, `default ${dflt.join(", ")}`)));
+  const mains = N().scenes.filter((k) => ((w.scenes || {})[k] || {}).role === "main");
+  const C = N().controls;
+  return [h("h2", null, "Defaults (where the World starts)"),
+    h("div", { class: "grid2" },
+      ...field("scene", sel(d, "scene", N().scenes, { path: "$.defaults.scene", none: `(the first main: ${mains[0] || "A"})` })),
+      ...field("variation", sel(d, "variation", varNames(), { path: "$.defaults.variation", none: "(the first)" })),
+      ...field("PULSE", sel(d, "pulse", N().pulse, { path: "$.defaults.pulse", none: "OFF (default)" })),
+      ...field("BEAT", sel(d, "beat", N().beats, { path: "$.defaults.beat", none: "GROOVE (default)" }))),
+    h("h3", null, "macros"), four("macros", C.slice(0, 4), [0.5, 0.5, 0.5, 0.5]),
+    h("h3", null, "SOUND SHAPE (ENV)"), four("shape", C.slice(4, 8), [0, 0, 0, 0]),
+    h("h3", null, "MOVEMENT (LFO)"), four("movement", C.slice(8, 12), [0, 0, 0, 0.5]),
+    h("div", { class: "hint" }, "LIVE FX always starts at home. Positions are stored in steps of 1/250.")];
+}
+
+/* ---- Validate */
+const MARK = { pass: "✓", fail: "✗", warn: "⚠", skip: "–" }, MCLS = { pass: "okc", fail: "e", warn: "w", skip: "faint" };
+function budgetRow(label, v, limit, text, soft) {
+  const f = limit ? Math.min(1, v / limit) : 0;
+  return h("div", { class: "budget" }, h("span", null, label), h("div", { class: "meter" }, h("div", { class: v > limit ? "e" : soft && v > soft ? "w" : "", style: `width:${f * 100}%` }), soft ? h("i", { style: `left:${soft / limit * 100}%`, title: "guideline" }) : null), h("span", { class: "mono dim" }, text));
+}
+function tabValidate() {
+  const job = S.job, rep = job && (job.report || job.static);
+  if (!S.compile && S.check && S.check.bytes != null) api("compile", { world: P() }).then((c) => { S.compile = c; if (S.tab === "validate") render(); }).catch(() => {});
+  const user = h("input", { type: "checkbox", checked: S.valUser ? true : null, onchange: (ev) => { S.valUser = ev.target.checked; } });
+  const run = (mode) => startValidate(mode);
+  const items = rep ? rep.items.map((it) => {
+    const open = S.openItem === it.item;
+    const more = [...it.errors, ...it.warnings];
+    return h("div", { class: "item", onclick: () => { S.openItem = open ? null : it.item; render(); } }, h("span", { class: MCLS[it.status] }, MARK[it.status]), h("span", null, it.item),
+      h("span", { class: it.status === "fail" ? "e" : it.status === "warn" ? "w" : "dim" }, it.summary || it.info || ""), open && more.length ? h("div", { class: "more" }, more.join("\n")) : null);
+  }) : h("div", { class: "dim" }, "not validated yet");
+  const D = {};
+  if (rep) for (const it of rep.items) D[it.item] = it.data || {};
+  const C = S.compile, bud = [];
+  const cpu = D["CPU budget"] || {}, ram = D["RAM budget"] || {}, fl = D["flash budget"] || {};
+  if (cpu.cpu_mean_max != null) {
+    bud.push(budgetRow("CPU, mean", cpu.cpu_mean_max, cpu.budget, `${Math.round(cpu.cpu_mean_max).toLocaleString()} of ${cpu.budget.toLocaleString()} instr/sample`));
+    bud.push(budgetRow("CPU, costliest half", cpu.cpu_half_max, cpu.limit, `${Math.round(cpu.cpu_half_max).toLocaleString()} of ${cpu.limit.toLocaleString()}`));
+  } else bud.push(h("div", { class: "budget" }, h("span", null, "CPU"), h("span", { class: "hint" }, "measured by the render sweep: run quick or full"), h("span")));
+  const bytes = fl.bytes ?? (C && C.bytes), cap = fl.limit ?? (C && C.limits.cap);
+  if (bytes != null) bud.push(budgetRow("flash, blob", bytes, cap, `${bytes.toLocaleString()} of ${cap.toLocaleString()} B`, fl.guideline ?? (C && C.limits.soft)));
+  if (fl.factory_set) bud.push(budgetRow("flash, factory set", fl.factory_set.bytes, fl.factory_set.budget, `${fl.factory_set.bytes.toLocaleString()} of ${fl.factory_set.budget.toLocaleString()} B`));
+  const pool = ram.pool_patterns ?? (C && C.pool);
+  if (pool != null) bud.push(budgetRow("RAM, pattern pool", pool, ram.pool ?? 16, `${pool} of ${ram.pool ?? 16} patterns`));
+  if (ram.slots != null) bud.push(budgetRow("RAM, targets", ram.slots_all_controls, ram.slot_limit, `${ram.slots} (${ram.slots_all_controls} every control up) of ${ram.slot_limit}`));
+  const sw = rep && rep.sweep;
+  return [h("h2", null, "Validate (tools/validate-world)"),
+    h("div", { class: "row" }, btn("Static", () => run("static"), { title: "the compiler, the model and the budgets: a second" }), h("button", { onclick: () => run("quick"), title: "plus 372 renders over the macro space: about 6 s" }, "Quick"),
+      btn("Full", () => run("full"), { title: "every scene × variation × the 4-D grid: about 40 s" }), h("label", null, user, " as a user World (3,840 B)"),
+      job && job.state === "running" ? [h("progress", { value: job.progress, max: 1 }), h("span", { class: "dim" }, `${job.phase} · ${job.elapsed}s`)] : job ? h("span", { class: job.state === "error" ? "e" : "dim" }, job.state === "error" ? job.error : `${job.mode}: ${job.elapsed}s${rep && rep.ok ? " · passed" : rep ? " · FAILED" : ""}`) : null),
+    h("div", { class: "hint" }, "The 17 items of the owner's checklist (docs/validation.md). Quick plays each scene over the 3⁴ grid of the four macros with a player, and the corners of the other controls: the test of all macros. Click an item for its messages."),
+    h("div", { style: "margin-top:8px" }, items),
+    h("h2", null, "Budgets"), bud,
+    sw ? h("div", { class: "hint", style: "margin-top:6px" }, `sweep ${sw.mode}: ${sw.points} renders, worst peak ${sw.worst_peak_dbfs} dBFS, worst tail ${sw.worst_tail_dbfs} dBFS, loudness ${sw.loudness_lufs.join("..")} LUFS, ${Number(sw.values_checked).toLocaleString()} values checked`) : null];
+}
+async function startValidate(mode) {
+  try {
+    S.compile = await api("compile", { world: P(), user: !!S.valUser }).catch(() => null);
+    const r = await api("validate", { world: P(), ref: S.ref, mode, user: !!S.valUser });
+    S.job = { state: "running", mode, phase: "starting", progress: 0, elapsed: 0 };
+    render();
+    const poll = async () => {
+      S.job = await api("job?id=" + encodeURIComponent(r.job));
+      if (S.tab === "validate") render();
+      if (S.job.state === "running") setTimeout(poll, 400);
+      else say(S.job.state === "error" ? S.job.error : `validate ${mode}: ${(S.job.report || {}).ok ? "passed" : "FAILED"} (${S.job.elapsed}s)`, S.job.state === "error" || !(S.job.report || {}).ok ? "bad" : "ok");
+    };
+    setTimeout(poll, 300);
+  } catch (e) { say(e.message, "bad"); }
+}
+
+/* ---- JSON */
+function tabJson() {
+  const t = h("textarea", { rows: 40, spellcheck: "false", class: "mono" });
+  t.value = JSON.stringify(S.W, null, 2);
+  const msg = h("span", { class: "hint" }, "the file is written in the tool's stable layout; this is the same JSON");
+  return [h("h2", null, "JSON (the source of truth)"), h("div", { class: "row" }, btn("apply", () => { try { const v = JSON.parse(t.value); if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("a JSON object"); S.W = v; touch(true); say("applied"); } catch (e) { msg.textContent = e.message; msg.className = "e"; } }), msg), t];
+}
+
+/* ======================================================================== diagnostics drawer ===== */
+function toggleDrawer(on) {
+  const d = document.getElementById("drawer");
+  d.hidden = on === undefined ? !d.hidden : !on;
+  if (!d.hidden) { buildDrawer(); runDiag(); }
+}
+function buildDrawer() {
+  const d = document.getElementById("drawer"), C = N().controls;
+  if (!S.diag.pos) {
+    const df = (S.W && S.W.defaults) || {};
+    S.diag.pos = C.map((c, i) => i < 4 ? ((df.macros || [])[i] ?? 0.5) : i < 8 ? ((df.shape || [])[i - 4] ?? 0) : i < 12 ? ((df.movement || [])[i - 8] ?? N().control_home[i]) : N().control_home[i]);
+    for (const kv of (QS.get("diag") || "").split(",").filter(Boolean)) { const [k, v] = kv.split("="); const i = C.indexOf(k); if (i >= 0 && Number.isFinite(Number(v))) S.diag.pos[i] = Number(v); }
+  }
+  const vars = varNames();
+  if (!S.diag.scene) S.diag.scene = ((S.W || {}).defaults || {}).scene || "B";
+  if (!vars.includes(S.diag.var)) S.diag.var = vars[0];
+  const ss = h("select", null, ...N().scenes.map((s) => h("option", { selected: s === S.diag.scene ? true : null }, s))); ss.addEventListener("change", () => { S.diag.scene = ss.value; runDiag(); });
+  const vs = h("select", null, ...vars.map((s) => h("option", { selected: s === S.diag.var ? true : null }, s))); vs.addEventListener("change", () => { S.diag.var = vs.value; runDiag(); });
+  const sl = C.map((c, i) => {
+    const r = h("input", { type: "range", min: 0, max: 1, step: 0.01, value: S.diag.pos[i] }), v = h("span", { class: "mono" }, Math.round(S.diag.pos[i] * 100));
+    r.addEventListener("input", () => { S.diag.pos[i] = Number(r.value); v.textContent = Math.round(S.diag.pos[i] * 100); schedule("diag", 100, runDiag); });
+    return h("label", null, c, r, v);
+  });
+  fill(d, h("div", { class: "row" }, h("b", null, "DIAGNOSTICS"), h("span", { class: "hint" }, "developer only: the hidden targets the controls move (the model of macro.c and guard.c), as the simulator's inspector (Option+I) shows them"),
+    h("span", { style: "flex:1" }), "scene", ss, "variation", vs, btn("defaults", () => { S.diag.pos = null; buildDrawer(); runDiag(); }), btn("close", () => toggleDrawer(false))),
+    h("div", { class: "sliders" }, sl), h("div", { id: "diagout", style: "margin-top:6px" }));
+}
+async function runDiag() {
+  const out = document.getElementById("diagout");
+  if (!out || !S.W) return;
+  try {
+    const pos = {}; N().controls.forEach((c, i) => { pos[c] = S.diag.pos[i]; });
+    const r = await api("model", { world: P(), scene: S.diag.scene, var: S.diag.var, pos });
+    fill(out, h("div", { class: "dim" }, `${r.slots.length} targets moving (of ${r.max_targets})${r.over ? `, ${r.over} over` : ""} · rules ${r.rules.map((x) => `#${x.index + 1} ${Math.round(x.strength * 100)} %`).join(", ") || "none"}`),
+      h("table", { class: "mtab" }, h("tr", null, ["target", "role", "base", "offset", "effective", "normalised", "range", "smooth", "controls", "mappings"].map((x) => h("th", null, x))),
+        r.slots.map((s) => h("tr", null, h("td", { class: "mono" }, s.target), h("td", { class: "dim" }, s.role || ""), h("td", { class: "r" }, s.base), h("td", { class: "r" }, s.offset > 0 ? `+${s.offset}` : s.offset),
+          h("td", { class: "r" + (s.held ? " w" : "") }, s.effective), h("td", null, h("span", { class: "nbar" }, h("div", { style: `width:${Math.max(0, Math.min(1, s.kind === "vmod" ? (s.effective + 64) / 128 : s.norm)) * 100}%` })), " ", s.kind === "vmod" ? ((s.effective + 64) / 128).toFixed(2) : s.norm.toFixed(2)),
+          h("td", { class: "mono dim" }, `${s.lo}..${s.hi}`), h("td", { class: "dim" }, s.smooth), h("td", { class: "dim" }, s.controls.join(" ")), h("td", { class: "mono faint" }, s.maps.join(" "))))));
+  } catch (e) { fill(out, h("div", { class: "e" }, e.message)); }
+}
+
+/* ======================================================================== files ===== */
+function dialog(title, ...body) {
+  const d = document.getElementById("dlg");
+  fill(d, h("h3", null, title), ...body);
+  if (!d.open) d.showModal();
+  return d;
+}
+function closeDlg() { const d = document.getElementById("dlg"); if (d.open) d.close(); }
+async function openRef(ref) {
+  const r = await api("load?ref=" + encodeURIComponent(ref));
+  if (!r.world) { say(`${ref}: ${r.error}`, "bad"); S.W = null; return; }
+  S.W = r.world; S.ref = ref; S.writable = r.writable; S.mtime = r.mtime; S.dirty = false; S.isNew = false;
+  S.check = S.harmony = S.job = S.compile = S.patview = null; S.diag.pos = null; S.sel.pattern = null; S.sel.prog = null;
+  say(`${ref}${r.writable ? "" : " (read-only: Save As writes a copy under worlds/user/)"}`);
+  render(); runCheck(); runHarmony();
+  if (!document.getElementById("drawer").hidden) buildDrawer();
+}
+function confirmDiscard() { return !S.dirty || confirm("Discard the unsaved changes?"); }
+async function doOpen() {
+  const l = await api("list");
+  dialog("Open a World", h("div", { class: "flist" }, l.dirs.map((d) => [h("div", { class: "dim", style: "margin-top:6px" }, `${d.label} · ${d.path}${d.writable ? "" : " · read-only"}`),
+    d.files.length ? d.files.map((f) => h("div", { class: "f", onclick: async () => { if (!confirmDiscard()) return; closeDlg(); await openRef(f.ref); } },
+      h("span", null, h("b", null, f.name || f.file), " ", h("span", { class: "dim" }, f.category || ""), f.error ? h("span", { class: "e" }, " " + f.error) : null),
+      h("span", { class: "dim mono" }, `${f.bpm || ""} ${f.key || ""} · ${f.file}`))) : h("div", { class: "faint" }, "none")])), h("div", { class: "row", style: "margin-top:8px" }, btn("cancel", closeDlg)));
+}
+async function doNew() {
+  const id = h("input", { type: "text", value: "my_world", spellcheck: "false" }), name = h("input", { type: "text", value: "MY WORLD" });
+  name.addEventListener("input", () => { name.value = name.value.toUpperCase(); id.value = name.value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 24); });
+  dialog("A new World (from the template)", h("div", { class: "grid2" }, ...field("name", name), ...field("id", id)), h("div", { class: "hint" }, "Four tracks, two progressions, scenes A–D, a pattern per part, macros with gain compensation, an ENERGY table: it validates clean. It is written to worlds/user/<id>.world.json on Save."),
+    h("div", { class: "row", style: "margin-top:8px" }, h("button", { onclick: async () => {
+      if (!confirmDiscard()) return;
+      const r = await api(`new?id=${encodeURIComponent(id.value)}&name=${encodeURIComponent(name.value)}`);
+      closeDlg();
+      S.W = r.world; S.ref = `user/${r.world.id}.world.json`; S.writable = true; S.mtime = null; S.isNew = true; S.dirty = true;
+      S.check = S.harmony = S.job = S.patview = null; S.diag.pos = null; S.tab = "world";
+      render(); runCheck(); runHarmony(); say("a new World: Save writes " + S.ref);
+    } }, "create"), btn("cancel", closeDlg)));
+}
+async function doSave(force) {
+  if (!S.W) return;
+  if (!S.ref || !S.writable) return doSaveAs();
+  try {
+    const r = await api("save", { ref: S.ref, world: P(), new: S.isNew, base_mtime: S.isNew ? null : S.mtime, force: !!force });
+    S.dirty = false; S.isNew = false; S.mtime = r.mtime; S.check = r.check; S.sim = r.sim;
+    renderProblems(); renderTabs(); markErrors(); head();
+    say(`saved ${r.file} (${r.bytes.toLocaleString()} B)` + (r.check.ok ? `, checks clean, ${r.check.bytes.toLocaleString()} B compiled` : `, ${r.check.errors.length} error(s)`) + (r.sim && r.sim.running ? " · the simulator reloads it" : ""), r.check.ok ? "ok" : "bad");
+  } catch (e) {
+    if (e.status === 409 && e.data && e.data.changed && confirm(`${e.message}\nSave over it anyway?`)) return doSave(true);
+    if (e.status === 409 && e.data && e.data.exists && confirm(`${e.message}\nSave over it?`)) { S.isNew = false; S.mtime = null; return doSave(true); }
+    say(e.message, "bad");
+  }
+}
+async function doSaveAs() {
+  const st = S.state, dirs = st.dirs.filter((d) => d.writable);
+  const fname = h("input", { type: "text", value: `${(S.W.id || "world").replace(/[^a-z0-9_]/g, "_")}${S.writable ? "_copy" : ""}.world.json`, style: "width:260px", spellcheck: "false" });
+  const wid = h("input", { type: "text", value: S.W.id || "", spellcheck: "false" }), nm = h("input", { type: "text", value: S.W.name || "" });
+  nm.addEventListener("input", () => { nm.value = nm.value.toUpperCase(); });
+  fname.addEventListener("input", () => { wid.value = fname.value.replace(/\.world\.json$/, "").toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 24); });
+  const dsel = h("select", null, ...dirs.map((d) => h("option", { value: d.key }, `${d.path}`)));
+  dialog("Save As", h("div", { class: "grid2" }, ...field("directory", dsel), ...field("file", fname), ...field("id", wid, h("span", { class: "hint" }, "two Worlds may not share an id")), ...field("name", nm)),
+    h("div", { class: "row", style: "margin-top:8px" }, h("button", { onclick: async () => {
+      const ref = `${dsel.value}/${fname.value.trim()}`;
+      const w = P(); w.id = wid.value.trim(); w.name = nm.value.trim() || w.name;
+      try {
+        const r = await api("save", { ref, world: w, new: true });
+        closeDlg();
+        S.W = w; S.ref = ref; S.writable = true; S.mtime = r.mtime; S.dirty = false; S.isNew = false; S.check = r.check;
+        render(); say(`saved ${r.file}`, "ok");
+      } catch (e) { if (e.status === 409 && confirm(`${e.message}\nSave over it?`)) { const r = await api("save", { ref, world: w, force: true }); closeDlg(); S.W = w; S.ref = ref; S.writable = true; S.mtime = r.mtime; S.dirty = false; render(); say(`saved ${r.file}`, "ok"); } else say(e.message, "bad"); }
+    } }, "save"), btn("cancel", closeDlg)));
+}
+function download(name, data, type) { const a = h("a", { href: URL.createObjectURL(new Blob([data], { type })), download: name }); document.body.append(a); a.click(); a.remove(); }
+async function doExport() {
+  const ks = { wblob: h("input", { type: "checkbox", checked: true }), c: h("input", { type: "checkbox", checked: true }), json: h("input", { type: "checkbox", checked: true }) };
+  const user = h("input", { type: "checkbox" });
+  const out = h("div");
+  dialog("Export", h("div", { class: "row" }, h("label", null, ks.wblob, " blob (.wblob)"), h("label", null, ks.c, " C array (.h)"), h("label", null, ks.json, " JSON copy"), h("label", null, user, " as a user World (flag USER, 3,840 B)")),
+    h("div", { class: "hint" }, "Written to build/author/<id>/; the links below download them too."), out,
+    h("div", { class: "row", style: "margin-top:8px" }, h("button", { onclick: async () => {
+      try {
+        const r = await api("export", { world: P(), user: user.checked, kinds: Object.keys(ks).filter((k) => ks[k].checked) });
+        const bin = r.blob ? Uint8Array.from(atob(r.blob), (c) => c.charCodeAt(0)) : null;
+        fill(out, h("div", { class: "okc" }, `${r.bytes.toLocaleString()} B compiled → ${r.dir}`), ...r.files.map((f) => h("div", { class: "row" }, h("span", { class: "mono" }, f.path), h("span", { class: "dim" }, `${f.bytes.toLocaleString()} B`),
+          btn("download", () => f.kind === "wblob" ? download(f.path.split("/").pop(), bin, "application/octet-stream") : download(f.path.split("/").pop(), f.kind === "c" ? r.c : r.json, "text/plain")))));
+      } catch (e) { fill(out, h("div", { class: "e" }, e.message), ...((e.data && e.data.errors) || []).slice(0, 8).map((x) => h("div", { class: "e mono" }, x.text))); }
+    } }, "export"), btn("close", closeDlg)));
+}
+async function doPreview() {
+  try {
+    if (!S.ref || S.isNew || S.dirty) {
+      if (!confirm("The simulator plays the saved file. Save now?")) return;
+      await doSave();
+      if (S.dirty || S.isNew) return;
+    }
+    const r = await api("preview", { ref: S.ref });
+    S.sim = r; head();
+    if (r.missing) say(`no simulator: ${r.build}`, "bad");
+    else say(r.reused ? "the simulator is playing this file: it reloads on every save" : `simulator started (pid ${r.pid}): Option+Space plays, it reloads on every save`, "ok");
+    pollSim();
+  } catch (e) { say(e.message, "bad"); }
+}
+async function pollSim() { try { S.sim = await api("preview"); head(); if (S.sim.running) schedule("sim", 3000, pollSim); } catch { /* the server went away */ } }
+async function doImport(file) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let s = ""; for (const b of buf) s += String.fromCharCode(b);
+  try {
+    const r = await api("import", { blob: btoa(s) });
+    if (!confirmDiscard()) return;
+    S.W = r.world; S.ref = `user/${r.world.id}.world.json`; S.writable = true; S.isNew = true; S.dirty = true; S.mtime = null;
+    S.check = S.harmony = S.job = null; render(); runCheck(); runHarmony(); say(`imported ${file.name}: Save writes ${S.ref}`);
+  } catch (e) { say(e.message, "bad"); }
+}
+
+/* ======================================================================== start ===== */
+window.addEventListener("error", (ev) => { S.errors.push(String(ev.message)); say("page error: " + ev.message, "bad"); });
+window.addEventListener("unhandledrejection", (ev) => { S.errors.push(String(ev.reason && ev.reason.message || ev.reason)); });
+window.addEventListener("beforeunload", (ev) => { if (S.dirty) { ev.preventDefault(); ev.returnValue = ""; } });
+document.addEventListener("keydown", (ev) => {
+  if ((ev.metaKey || ev.ctrlKey) && ev.key === "s") { ev.preventDefault(); doSave(); }
+  if (ev.altKey && (ev.code === "KeyD")) { ev.preventDefault(); toggleDrawer(); }
+});
+document.getElementById("b-new").onclick = doNew;
+document.getElementById("b-open").onclick = doOpen;
+document.getElementById("b-save").onclick = () => doSave();
+document.getElementById("b-saveas").onclick = doSaveAs;
+document.getElementById("b-export").onclick = doExport;
+document.getElementById("b-preview").onclick = doPreview;
+document.getElementById("b-import").onclick = () => document.getElementById("f-import").click();
+document.getElementById("f-import").onchange = (ev) => { if (ev.target.files[0]) doImport(ev.target.files[0]); ev.target.value = ""; };
+document.getElementById("sim").onclick = async () => { if (S.sim && S.sim.running && confirm("Stop the simulator?")) { S.sim = await api("preview", { stop: true }); head(); } };
+async function selftestWrite(errs) {   /* ?selftest=write (a scratch worlds directory only): the file paths of the page */
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const id = "selftest_" + Date.now().toString(36);
+  window.confirm = () => true;
+  try {
+    const r = await api(`new?id=${id}&name=SELFTEST`);
+    S.W = r.world; S.ref = `user/${id}.world.json`; S.writable = true; S.isNew = true; S.dirty = true; render();
+    await doSave();
+    if (S.dirty || S.isNew) errs.push("write: New + Save");
+    S.W.blurb = "edited by the page"; touch(); await doSave();
+    await openRef(S.ref);
+    if (S.W.blurb !== "edited by the page" || S.dirty) errs.push("write: edit, Save, reload");
+    await doSaveAs(); await wait(50);
+    const files = [...document.querySelectorAll("#dlg input[type=text]")];
+    files[0].value = `${id}_b.world.json`; files[0].dispatchEvent(new Event("input"));
+    document.querySelector("#dlg button:not(.ghost)").click(); await wait(400);
+    if (S.ref !== `user/${id}_b.world.json` || S.dirty) errs.push(`write: Save As (${S.ref})`);
+    await doExport(); await wait(50);
+    document.querySelector("#dlg button:not(.ghost)").click(); await wait(600);
+    if (!/B compiled/.test(document.getElementById("dlg").textContent)) errs.push("write: Export");
+    closeDlg();
+    await doPreview();
+    if (!S.sim || !(S.sim.missing || S.sim.running)) errs.push("write: Preview");
+    const st = await api("list");
+    const mine = st.dirs.find((d) => d.key === "user").files.map((x) => x.file);
+    if (!mine.includes(`${id}.world.json`) || !mine.includes(`${id}_b.world.json`)) errs.push("write: the files");
+  } catch (e) { errs.push("write: " + e.message); }
+}
+async function selftest() {   /* ?selftest=1: every tab rendered once, the drawer, the macro test: errors into the title */
+  const errs = [];
+  await new Promise((r) => setTimeout(r, 400));
+  for (const [k] of TABS) { try { S.tab = k; render(); await new Promise((r) => setTimeout(r, 120)); } catch (e) { errs.push(`${k}: ${e.message}`); } }
+  try { S.tab = "macros"; render(); await testAllMacros(); toggleDrawer(true); await runDiag(); await new Promise((r) => setTimeout(r, 300)); } catch (e) { errs.push(`macros: ${e.message}`); }
+  if (!document.querySelectorAll("#diagout tr").length) errs.push("diagnostics: no rows");
+  if (QS.get("selftest") === "write") await selftestWrite(errs);
+  errs.push(...S.errors);
+  S.tab = QS.get("tab") || "world"; render();
+  if (!QS.has("dev")) toggleDrawer(false);
+  S.selftest = errs.length ? "SELFTEST FAIL " + errs.join(" | ") : "SELFTEST OK";
+  head();
+}
+(async function start() {
+  try {
+    [S.names, S.state] = await Promise.all([api("names"), api("state")]);
+    S.sim = S.state.sim; head();
+    let ref = QS.get("ref") || S.state.initial;
+    if (!ref) {
+      const l = await api("list");
+      const u = l.dirs.find((d) => d.key === "user"), f = l.dirs.find((d) => d.key === "factory");
+      ref = (u && u.files[0] && u.files[0].ref) || (f && (f.files.find((x) => x.id === "neon_rain") || f.files[0]) || {}).ref;
+    }
+    if (ref) await openRef(ref); else { renderTabs(); say("no World yet: New makes one"); }
+    if (S.dev) toggleDrawer(true);
+    if (S.sim && S.sim.running) pollSim();
+    if (QS.has("selftest")) await selftest();
+  } catch (e) { say("the server is not answering: " + e.message, "bad"); S.selftest = "SELFTEST FAIL " + e.message; head(); }
+})();
+</script>
+</body>
+</html>

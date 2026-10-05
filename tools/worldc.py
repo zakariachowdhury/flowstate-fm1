@@ -7,6 +7,8 @@
   tools/worldc.py check WORLD.json... [--user] [--json]
   tools/worldc.py model WORLD.json|BLOB [--random N] [--seed S]
   tools/worldc.py names [ENGINE]
+  tools/worldc.py import USER.wblob [-o OUT.json]
+  tools/worldc.py rename BLOB NAME [-o OUT]
 
 names     what a World may name: engines (EDIT labels, value names, roles, presets), common parameters, the World
           globals, drum kits and lanes, scales, divisions (from worlds/schema/sloop-params.json).
@@ -18,6 +20,8 @@ check     the static checks (schema, names, ranges, notation, budgets), then the
           parameter's range or past a hard limit, none at the maximum at 100 % unless "saturate", at most 48 slots,
           a Smart Keys range of an octave at least; no audio.
 model     the model's slot tables at sampled macro positions (the format of tests/guard_sweep.c --dump-slots).
+import    a user World blob (MY WORLDS, Phase 14) as a best-effort source: decompile, its OVERRIDES folded in.
+rename    a blob's display name (and a user World's id, FNV-1a of its name), for the authoring tool (Phase 15).
 
 Sources of truth (nothing is copied by hand):
   firmware/src/world_fmt.h         every format constant (read by a small parser below)
@@ -1919,7 +1923,8 @@ def decode(b):
     secs, off, prev = {}, 20 + 4 * nsec, 0
     for i in range(nsec):
         t, c, ln = struct.unpack_from("<BBH", b, 20 + 4 * i)
-        need(prev < t <= F["WF_S_LAST"], F["WE_SECTION"], f"section type {t}")
+        need(prev < t <= (F["WF_S_OVERRIDES"] if b[5] & F["WF_F_USER"] else F["WF_S_LAST"]), F["WE_SECTION"],
+             f"section type {t}")
         prev = t
         secs[t] = (c, off, ln)
         off += ln
@@ -2087,6 +2092,16 @@ def decode(b):
     need(c == 1 and len(s) == 16, F["WE_LENGTH"], "DEFAULTS")
     ir["defaults"] = {"scene": s[0], "var": s[1], "ctl": list(s[2:6]), "pulse": s[6], "beat": s[7],
                       "shape": list(s[8:12]), "move": list(s[12:16])}
+    ir["overrides"] = []                 # (Phase 14) a user World's edits: (scope, id, value), fwd1-format.md 14
+    if F["WF_S_OVERRIDES"] in secs:
+        c, s = sec(F["WF_S_OVERRIDES"])
+        need(len(s) == F["WF_SPAIR"] * c, F["WE_LENGTH"], "OVERRIDES")
+        for k in range(c):
+            sc, i = s[3 * k], s[3 * k + 1]
+            snd = sc & F["WF_OVR_SOUND"]
+            t = sc & ~F["WF_OVR_SOUND"]
+            need(t < NTRK - 1 if snd else sc <= F["WF_SCOPE_G"], F["WE_PARAM"], f"OVERRIDES scope {sc}")
+            ir["overrides"].append((sc, i, s[3 * k + 2] if snd else struct.unpack_from("<b", s, 3 * k + 2)[0]))
     return ir
 
 
@@ -2456,6 +2471,108 @@ def decompile(b):
                      "movement": [x / UNIT for x in d["move"]]}
     return w
 
+
+
+def world_id_of(name):
+    """a World source id for a display name: "NEON RAIN 2" -> "neon_rain_2" """
+    return (re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "world")[:24]
+
+
+def import_user(b):
+    """a user World blob (MY WORLDS, flag USER, Phase 14) -> a best-effort World source (dict). decompile() of the
+    blob, then its OVERRIDES folded in: a sound record becomes the track's engine and preset (the World's engine
+    parameters of that track are dropped when the engine changed), a parameter record the track's sound.params, a
+    global record fx (swing at the top level); the scenes' and variations' values of an overridden parameter or
+    global are dropped, since an override wins in every scene and variation. The keys loop is not a source key: its
+    pattern is left out. Notes stay absolute where decompile() writes them so"""
+    ir = decode(b)
+    w = decompile(b)
+    w["id"] = world_id_of(w["name"])
+    tn = [t["name"] for t in w["tracks"]]
+    eng = [t["engine"] for t in ir["tracks"]]
+    ov = ir.get("overrides", [])
+    for sc, i, v in ov:                  # the sounds first: the parameters are named on the engine the track plays
+        if sc & F["WF_OVR_SOUND"]:
+            t = sc & ~F["WF_OVR_SOUND"]
+            if i >= len(PR.engines) or v >= len(PR.engines[i]["presets"]):
+                continue
+            snd = w["tracks"][t]["sound"]
+            if i != eng[t] and snd.get("params"):
+                old = {e["label"] for e in PR.engines[eng[t]]["edit"]}
+                snd["params"] = {k: x for k, x in snd["params"].items()
+                                 if k not in old and not re.fullmatch(r"e[0-7]", k)}
+                if not snd["params"]:
+                    del snd["params"]
+            snd["engine"], snd["preset"] = PR.engines[i]["name"], PR.engines[i]["presets"][v]
+            eng[t] = i
+
+    def pname(t, pid):
+        if t == TRK_DRUM or pid < PR.P_E0:
+            return PR.P[pid]["name"]
+        lab = PR.engines[eng[t]]["edit"][pid - PR.P_E0]["label"]
+        return lab if lab != "-" else f"e{pid - PR.P_E0}"
+
+    def pval(desc, v):
+        if desc.get("names") and desc["fmt"] == "ENUM" and desc["min"] <= v <= desc["max"]:
+            return desc["names"][v - desc["min"]]
+        return v
+
+    gone_p, gone_g = set(), set()
+    for sc, i, v in ov:
+        if sc & F["WF_OVR_SOUND"]:
+            continue
+        if sc == F["WF_SCOPE_G"]:
+            if i >= len(PR.G):
+                continue
+            nm = PR.G[i]["name"]
+            if i == G_SWING:
+                w["swing"] = v
+            else:
+                w.setdefault("fx", {})[nm] = pval(PR.G[i], v)
+            gone_g.add(nm)
+        elif sc == TRK_DRUM and i == PR.P_E0:
+            w["tracks"][sc]["sound"]["kit"] = PR.kits[v] if 0 <= v < len(PR.kits) else w["tracks"][sc]["sound"]["kit"]
+        elif i < PR.lim["P_COUNT"]:
+            d = PR.P[i] if sc == TRK_DRUM or i < PR.P_E0 else PR.engines[eng[sc]]["edit"][i - PR.P_E0]
+            nm = pname(sc, i)
+            w["tracks"][sc]["sound"].setdefault("params", {})[nm] = pval(d, v)
+            gone_p.add(f"{tn[sc]}.{nm}")
+    for rec in list(w.get("scenes", {}).values()) + list(w.get("variations", {}).values()):
+        for key, gone in (("params", gone_p), ("fx", gone_g)):
+            if key in rec:
+                rec[key] = {k: x for k, x in rec[key].items() if k not in gone}
+                if not rec[key]:
+                    del rec[key]
+    lp = ir["keys"]["loop"]
+    if lp != NONE:
+        w.get("patterns", {}).pop(f"p{lp}", None)
+    w["notes"] = (f"Imported by tools/worldc.py import from a user World blob ({len(ov)} override(s) folded in"
+                  f"{', the keys loop left out' if lp != NONE else ''}). Notes are absolute; names are generated.")
+    return {"notes": w.pop("notes"), **w}
+
+
+def rename_blob(b, name):
+    """a blob with another display name: META's name, and for a user World its id (FNV-1a of the name, as the
+    device names them), the CRC again"""
+    decode(b)
+    ok = set(F["WF_NAME_CHARS"])
+    if not name or len(name) > F["WF_NAME_LEN"] - 1 or any(c not in ok for c in name):
+        raise BlobError(F["WE_PARAM"], f"{json.dumps(name)}: 1..{F['WF_NAME_LEN'] - 1} characters of "
+                                       "A-Z 0-9 space & ' - .")
+    b = bytearray(b)
+    L = struct.unpack_from("<H", b, 6)[0]
+    nsec, off = b[16], 20 + 4 * b[16]
+    for i in range(nsec):
+        t, _, ln = struct.unpack_from("<BBH", b, 20 + 4 * i)
+        if t == F["WF_S_META"]:
+            b[off:off + F["WF_NAME_LEN"]] = name.encode("latin-1").ljust(F["WF_NAME_LEN"], b"\0")
+            break
+        off += ln
+    if b[5] & F["WF_F_USER"]:
+        struct.pack_into("<I", b, 8, fnv1a(name))
+    struct.pack_into("<I", b, F["WF_CRC_AT"], blob_crc(bytes(b), L))
+    decode(bytes(b))
+    return bytes(b)
 
 def step_text(s):
     if s.time == ST_TIE:
@@ -3117,7 +3234,27 @@ def main(argv=None):
     md.add_argument("--seed", type=int, default=1)
     nm = sub.add_parser("names", help="engines, presets, parameters, kits, lanes a World may name")
     nm.add_argument("engine", nargs="?")
+    im = sub.add_parser("import", help="a user World blob (MY WORLDS) -> a best-effort World source JSON")
+    im.add_argument("blob")
+    im.add_argument("-o", "--out")
+    rn = sub.add_parser("rename", help="a blob with another display name (a user World: its id too)")
+    rn.add_argument("blob")
+    rn.add_argument("name")
+    rn.add_argument("-o", "--out", help="default: the blob itself")
     a = ap.parse_args(argv)
+    if a.cmd in ("import", "rename"):
+        try:
+            b = Path(a.blob).read_bytes()
+            if a.cmd == "rename":
+                Path(a.out or a.blob).write_bytes(rename_blob(b, a.name))
+                print(f"{a.blob}: renamed {json.dumps(a.name)} -> {a.out or a.blob}")
+                return 0
+            txt = json.dumps(import_user(b), indent=2, ensure_ascii=False) + "\n"
+        except BlobError as e:
+            print(f"{a.blob}: {e}", file=sys.stderr)
+            return 1
+        Path(a.out).write_text(txt) if a.out else sys.stdout.write(txt)
+        return 0
     if a.cmd == "names":
         return names(a.engine)
     if a.cmd == "compile":
