@@ -672,6 +672,7 @@ The globals follow the same order: SLOOP defaults, then `swing`, `fx`, the varia
 | | Limit |
 | --- | --- |
 | Blob size | above 2,048 B worldc warns; above 3,072 B a factory World fails. `check` prints the size. |
+| Factory set | all of `worlds/factory` within the app-slot room the code leaves, less 8 KB: about 1,400 B a World for a library of 30 (`validate-world`'s flash budget, [validation.md §3](validation.md#3-the-budgets)) |
 | Patterns | 16 in the pool, **after** unrolling: a chord-token pattern counts once per progression it plays over, and each swap target counts. Unused patterns are not compiled, and worldc warns. |
 | Pattern length | 64 steps, also after unrolling |
 | Progressions | 8 used, each 1–16 chords, 4/8/16/32 beats |

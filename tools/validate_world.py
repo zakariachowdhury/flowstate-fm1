@@ -39,7 +39,9 @@ ITEMS = ("metadata", "presets", "engines", "patterns", "scenes", "variation", "s
          "macro ranges", "Guardrails", "CPU budget", "RAM budget", "flash budget", "no clipping",
          "no invalid feedback", "no invalid parameter IDs")
 SWEEP_ITEMS = ("CPU budget", "no clipping", "no invalid feedback", "no invalid parameter IDs")
-FACTORY_SHARE = 0.5          # the factory Worlds may take this share of the app-slot space the code leaves (docs)
+CODE_RESERVE = 8192          # of the app-slot room the code leaves, kept for the code (design 11.1: 8 KB free); the
+                             # factory Worlds may take the rest (docs/validation.md 3; Phase 18, after FONT_L went)
+WORLD_INDEX_ENTRY = 8        # tools/gen_worlds.py: a world_index_t {id, off, len} per factory World
 HOST_DIR = ROOT / "build" / "host" / "validate"
 FACTORY_DIR = ROOT / "worlds" / "factory"
 F, GL = worldc.F, worldc.GL
@@ -321,7 +323,8 @@ class World:
                     if not fs["ok"]:
                         flash.errors.append(
                             f"factory set: {fs['worlds']} Worlds take {fs['bytes']:,} B, over {fs['budget']:,} B "
-                            f"({int(FACTORY_SHARE * 100)} % of the {fs['room']:,} B of the app slot the code leaves)")
+                            f"(the {fs['room']:,} B of the app slot the code leaves, less {CODE_RESERVE:,} B kept "
+                            f"for the code)")
             flash.status = "fail" if flash.errors else "warn" if flash.warnings else "pass"
         else:
             flash.status, flash.info = "skip", "not checked: the World does not compile"
@@ -349,9 +352,14 @@ def app_slot():
     return int(m.group(1), 0) if m else None
 
 
+def world_flash(n):
+    """what a factory blob of n B takes in the image: WORLD_DATA keeps each blob 4-byte aligned, plus its index entry"""
+    return (n + 3) // 4 * 4 + WORLD_INDEX_ENTRY
+
+
 def factory_set_budget(user):
-    """Worlds in worlds/factory against the app slot: the slot minus the code (the image minus the factory blobs the
-    image carries) is the room for Worlds; they may take FACTORY_SHARE of it"""
+    """Worlds in worlds/factory against the app slot: the slot minus the code (the image minus the factory Worlds the
+    image carries: blobs, alignment, index) is the room; the Worlds may take all of it but CODE_RESERVE"""
     files = sorted(FACTORY_DIR.glob("*.world.json"))
     if not files:
         return {"skipped": "no worlds/factory/*.world.json"}
@@ -361,7 +369,7 @@ def factory_set_budget(user):
         w.compile()
         if w.blob is None:
             return {"skipped": f"{f.name} does not compile"}
-        total += len(w.blob)
+        total += world_flash(len(w.blob))
     img = ROOT / "build" / "felucca.bin"
     slot = app_slot()
     if not img.exists():
@@ -370,9 +378,9 @@ def factory_set_budget(user):
         return {"skipped": "APP_SLOT not found in tools/fm1pkg_make.py", "bytes": total, "worlds": len(files)}
     image = img.stat().st_size
     room = slot - (image - total)
-    budget = int(room * FACTORY_SHARE)
+    budget = room - CODE_RESERVE
     return {"bytes": total, "worlds": len(files), "image": image, "app_slot": slot, "room": room,
-            "budget": budget, "share": FACTORY_SHARE, "free_now": slot - image, "ok": total <= budget}
+            "budget": budget, "reserve": CODE_RESERVE, "free_now": slot - image, "ok": total <= budget}
 
 
 # ------------------------------------------------------------------------- the host sweep ---

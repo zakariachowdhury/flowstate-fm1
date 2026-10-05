@@ -159,8 +159,8 @@ The Validate tab runs `tools/validate-world --json` in the background ([validati
   its messages.
 - **The budget bars.** CPU is measured in host instructions a sample against 2,300 (and 2,700 for one DMA half). The
   flash bar is the blob against 3,072 B (3,840 B for a user World), with the 2,048 B guideline. For a World in
-  `worlds/factory`, the factory set is measured against its share of the app slot. RAM is the pattern pool and the
-  targets.
+  `worlds/factory`, the factory set is measured against the room the app slot leaves it. RAM is the pattern pool and
+  the targets.
 - **"As a user World"** validates with the user limits.
 
 The World is validated as it is in the page. A saved factory file is validated in place, so the factory-set budget

@@ -283,10 +283,11 @@ def test_budgets():
     if "skipped" in fs:
         print(f"budgets: factory set not checked ({fs['skipped']})")
         return
-    check(fs["ok"] and fs["bytes"] <= fs["budget"] == int(fs["room"] * vw.FACTORY_SHARE),
-          f"the factory set is inside its share of the app slot: {fs}")
-    print(f"budgets: factory set {fs['bytes']:,} B of {fs['budget']:,} B ({int(vw.FACTORY_SHARE * 100)} % of the "
-          f"{fs['room']:,} B the code leaves; {fs['free_now']:,} B free in the slot now)")
+    check(fs["ok"] and fs["bytes"] <= fs["budget"] == fs["room"] - vw.CODE_RESERVE,
+          f"the factory set is inside the app-slot room the code leaves, less its reserve: {fs}")
+    check(vw.world_flash(1365) == 1376 and vw.world_flash(1316) == 1324, "a blob in the image: 4-byte aligned + index")
+    print(f"budgets: factory set {fs['bytes']:,} B of {fs['budget']:,} B (the {fs['room']:,} B the code leaves, "
+          f"less {vw.CODE_RESERVE:,} B for the code; {fs['free_now']:,} B free in the slot now)")
 
 
 def main():

@@ -47,7 +47,7 @@ neon_rain  NEON RAIN  1,365 B  (worlds/factory/neon_rain.world.json)
   ✓ Guardrails                audible; loudness steps 4.5 LU with a player, 0.0 without (limits 9 / 12)
   ✓ CPU budget                mean 1,612 of 2,300, costliest half 2,097 of 2,700 instr/sample
   ✓ RAM budget                pool 12 of 16 patterns; targets 23 (36 with every control up) of 48
-  ✓ flash budget              1,365 B of 3,072 B (factory World); factory set 5,924 B of 13,460 B
+  ✓ flash budget              1,365 B of 3,072 B (factory World); factory set 5,964 B of 43,680 B
   ✓ no clipping               peak at most -3.4 dBFS (limit -0.3) over 372 renders
   ✓ no invalid feedback       worst tail -61.4 dBFS after STOP (limit -60)
   ✓ no invalid parameter IDs  11,827,253 effective values inside their descriptors
@@ -87,7 +87,7 @@ positions (COLOR / MOTION / SPACE / ENERGY, in %), worst case first.
 | --- | --- | --- |
 | `CPU budget` | the mean over any render at most 2,300 host instructions a sample (`GL_CPU_BUDGET`); no DMA half but one over 2,700 (`GL_CPU_FULL`); at most 8 voices; the CPU guard's estimate not more than 15 % under the measured mean | fewer distorted tracks, a lower GRAIN `DENS`, less UNISON; see §3 |
 | `RAM budget` | at most 16 patterns in the pool after unrolling chord tokens; at most 48 overlay targets moving at once, with the macros anywhere on the 3⁴ grid and again with every control 4..15 at 100 % | share patterns; fewer `*.param` mappings |
-| `flash budget` | the compiled blob at most 3,072 B (factory) or 3,840 B (`--user`); above 2,048 B is a warning; and, for a World in `worlds/factory`, the factory set against its share of the app slot (§3) | shorter patterns, `.` and `-` instead of notes, fewer variations |
+| `flash budget` | the compiled blob at most 3,072 B (factory) or 3,840 B (`--user`); above 2,048 B is a warning; and, for a World in `worlds/factory`, the factory set against the room the app slot leaves it (§3) | shorter patterns, `.` and `-` instead of notes, fewer variations |
 | `no clipping` | no sample at full scale, peak at most -0.3 dBFS, no jump of more than 0.9 of full scale between two samples, DC at most 0.001, the master limiter's input at most 4 × `LIM_T` | lower `level`s, the drums' level, or a macro's `max` |
 | `no invalid feedback` | after STOP the tail falls under -60 dBFS within 6 s (10 s with LIVE ECHO at 100 %), with no voice left | lower `fx.dfdbk`, `fx.rsize`, the sends, or the SPACE mapping's top |
 | `no invalid parameter IDs` | every parameter name a track, mapping, rule, variation or guard range uses exists for the engine it is applied to, and is not structural; in the sweep, every effective value the overlay writes (read every 4 blocks) stays inside its descriptor, hard limit and range | the name the message gives; `worldc.py names ENGINE` lists what exists |
@@ -150,27 +150,33 @@ The CPU numbers are host instructions a sample, counted by the kernel, and only 
 | Overlay targets | 48 | `OV_MAX` (`world_rt.h`) |
 | Blob, factory | 3,072 B (2,048 B guideline) | `WF_FACTORY_LEN`, `WF_SOFT_LEN` |
 | Blob, user | 3,840 B | `WF_MAX_LEN` |
-| Factory set | 50 % of the app-slot space the code leaves | below |
+| Factory set | the app-slot room the code leaves, less 8 KB kept for the code | below |
 
 **The factory set.** The factory Worlds live in the app slot with the code. The room for Worlds is the slot minus the
-code:
+code, and the code keeps 8 KB of it (the free space design §11.1 asks the build to keep):
 
 ```
-room   = APP_SLOT - (size of build/felucca.bin - sum of the factory blobs)
-budget = 50 % of room
+a World = its blob rounded up to 4 B (WORLD_DATA) + 8 B (its WORLD_INDEX entry)
+room    = APP_SLOT - (size of build/felucca.bin - sum of the factory Worlds)
+budget  = room - 8,192 B
 ```
 
 `APP_SLOT` (0x8DFBC) is read from `tools/fm1pkg_make.py`, which `tools/build.py` uses; the image size from
 `build/felucca.bin`, which is built from the same factory Worlds. The sum is over all of `worlds/factory`, and the
-result is part of `flash budget` for each factory World validated. Today the four Worlds take 5,924 B of a 13,460 B
-budget. The other half is for the code that Phases 14 to 17 still add. If `build/felucca.bin` is absent (no build
-yet), the flash line is `⚠` and says so. The check assumes the image was built from the current factory Worlds:
-rebuild after adding one.
+result is part of `flash budget` for each factory World validated. If `build/felucca.bin` is absent (no build yet),
+the flash line is `⚠` and says so. The check assumes the image was built from the current factory Worlds: rebuild
+after adding one.
 
-The share is `FACTORY_SHARE` in `tools/validate_world.py`. The design's plan for 30 factory Worlds (about 45–60 KB,
-[§11.1](design/play-mode-architecture.md#111-flash-75316-b-free-in-the-app-slot)) does not fit today's budget, and the
-check will say so as the Worlds are added. Phase 18 replaces the PERC one-shots first, which frees at least 50 KB of
-room (about 38 KB of budget at this share): revisit the share then.
+Phase 18 freed the room first: FONT_L is drawn as FONT_S doubled (24,736 B) and SLOOP's unreachable HOME screen went
+(904 B). With the four Worlds the image is 535,656 B, 45,908 B of the slot are free, and the four take 5,964 B of a
+43,680 B budget. The code takes 529,700 B of the image then, and about 531,100 B once the factory data passes about
+10 KB (the toolchain encodes some code longer as the data after it moves; measured flat from 8 to 34 Worlds). A library
+of 30 then has about 42,270 B: **about 1,400 B a World, a blob of about 1,390 B** on average (the four average 1,481 B).
+One World may still be up to 3,072 B: the budget is the set's.
+
+The reserve is `CODE_RESERVE` in `tools/validate_world.py`. Compressing the blobs was measured and left out: LZ4
+saves 21–25 % on the four Worlds (24.8 % with an optimal parse), under the 25 % that would pay for a decoder and for
+decoding the World playing into RAM instead of reading it in place.
 
 **Targets at once.** A macro slot is a target a macro or control moves; the firmware's overlay holds 48. `worldc
 check` counts them with the four macros on the grid and the controls at the World's defaults. `validate-world` also
@@ -245,7 +251,7 @@ Worlds peak at 21–24 targets, 32–36 with every control up.
 | `✗ RAM budget  17 patterns after unrolling` | a chord-token pattern counts once for each progression it plays over, and each swap target counts | use a faster `div`, share patterns between scenes, drop a variation's swap |
 | `✗ RAM budget  57 targets moving at once` | `*.param` expands to every synth track | name the tracks that matter; combine mappings that share a target |
 | `✗ flash budget  the blob is 3,297 B` | patterns are most of a World | shorter patterns; repeated notes cost 2 B; `-` ties; fewer variations |
-| `✗ flash budget  factory set` | the factory Worlds together use more than their share of the app slot | trim Worlds, or free space in the firmware first (§3) |
+| `✗ flash budget  factory set` | the factory Worlds together use more than the app slot leaves them (the room the code leaves, less 8 KB) | trim Worlds, or free space in the firmware first (§3) |
 | `✗ no clipping  clip(peak ...)` | the mix reaches full scale at a macro corner | lower `level`s, the drums' level, or the ENERGY mapping's top |
 | `✗ no invalid feedback  feedback(tail -45 dBFS ...)` | the echo and room ring on after STOP | lower `fx.dfdbk` and `fx.rsize`; at slow tempos a 1/4 echo is the longest; or lower the SPACE mapping |
 | `✗ no invalid parameter IDs  "NOPE" is neither a common parameter` | a typo, or a parameter of another engine | `python3 tools/worldc.py names ENGINE` |
