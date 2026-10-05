@@ -281,7 +281,7 @@ Each record is `15 + 2a + 2b + 3n` bytes:
 | nswap (b) | 1 | 0–16 |
 | swaps | 2b | `{u8 from, u8 to}`: two **synth** patterns |
 | npairs (n) | 1 | 0–64 |
-| pairs | 3n | scoped pairs as in SCENES. Scope 4 may not set `WF_G_NOVAR` (`G_SWING`): a variation keeps the groove. |
+| pairs | 3n | scoped pairs as in SCENES. Scope 4 may not set `WF_G_NOVAR` (`G_SWING`): a variation keeps the groove. Scope 5 (`WF_SCOPE_CTL`, Phase 12): a macro default, id 0–3 (COLOR MOTION SPACE ENERGY), value a `u8` position 0–250. |
 
 Variation 0 must be empty: no sounds, no swaps, no pairs, bias 0. worldc requires its name to be ORIGINAL.
 

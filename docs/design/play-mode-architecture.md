@@ -876,6 +876,18 @@ The UI requests a scene by staging immediately. A newer request while one is `RE
 | BEAT masks "intersected with ENERGY" | `arr_dskip`: a BEAT the scene has no pattern for plays its GROOVE masked: MINIMAL kick, kick 2, snare, clap, rim; BUSY every density step and the ratchets; BREAK kick, kick 2, snare, snare 2 with hat and pedal on the second eighth of each beat. A scene's own BEAT pattern plays unmasked (`et.bm` + 4). MINIMAL never fills. A BEAT changes on the next bar line (pattern and masks together); a scene waiting for its line carries it | §9.2's table. |
 | Flash, RAM (§11) | image 555,008 B (+2,284 B); RAM `.data` + `.bss` 71,088 B (+608 B) | 26.5 KB of the app slot left. |
 
+### 7.2 As built (Phase 12)
+
+The variation table above, with what Phase 12 adds (`world.c` `wvar_macros`, `macro.c` `mac.touched`, `tools/worldc.py`; the tests: `tests/scene_test.c` `variations`, `tests/worldc_test.py`, `tests/world_render.c`).
+
+| Here | As built | Why |
+| --- | --- | --- |
+| A variation's macro defaults (UI spec §6) | VARS pairs of scope 5 (`WF_SCOPE_CTL`: id 0–3, a `u8` position 0–250; JSON `"macros": {"SPACE": 0.7}`); old blobs need nothing. When a variation commits (or a World loads), each of COLOR MOTION SPACE ENERGY that the player has not turned since the World loaded (`macro_set` marks it) goes to the variation's default, else to the World's DEFAULTS; one the player turned stays. Playing, the positions move on the main loop's next pass and the overlay glides there (each slot at its smoothing class, no snap); ENERGY's band follows with its own timing | "Respect what the player touched" decided as: sticky until the next World load, so a variation never undoes the player's hands, and ORIGINAL brings the World's defaults back for the others. |
+| Identity (key, scale, harmony, tempo, groove) | already structural in the format (root and scale fixed, swing NOVAR, the rest structural, no progression or drum pattern in VARS). `worldc` adds: the schema's `x-refused` names `tempo`, `key`, `scale`, `progression`, `swing`, `beat`, `patterns`, `smart_keys` with the reason; a `swap` keeps the length class (the same length, or whole bars of which one divides the other); a warning when a variation changes more than two tracks of the groove (swapped patterns plus the drum kit) | The keys track's sound may still change (instrumentation); its structure and the KEYS section cannot. |
+| Curated sets | every factory World keeps ORIGINAL + 4, at least one tone or space variation and one rhythm or arrangement one; macro defaults where they help (DREAMY/AIRY: SPACE up, DARK: COLOR down, PULSING/DRIVING/FLOATING: MOTION up, DUSTY CAFE's SPARSE: MOTION down); MIDNIGHT DRIVE's DREAMY / DARK / HEAVY and FROZEN LAKE's DARK lowered (they were up to +8.3 LU over ORIGINAL). Every variation within 3 LU of ORIGINAL in each scene (`world_render --var all`) | Spec: "same World, new feel", not louder. |
+| A variation change while playing | on the next bar line, the clock running on (Phase 11); ORIGINAL ↔ a variation and back returns exactly to ORIGINAL's parameters, patterns, positions and progression | — |
+| Flash | image 555,328 B (+320 B with the factory data) | — |
+
 ---
 
 ## 8. PLAY MODE UI

@@ -348,7 +348,7 @@ What a scene cannot change:
 ```json
 "variations": {
   "ORIGINAL": {},
-  "AIRY":    {"params": {"pad.rev": 80}, "fx": {"rsize": 110}, "energy_bias": -0.1},
+  "AIRY":    {"params": {"pad.rev": 80}, "fx": {"rsize": 110}, "energy_bias": -0.1, "macros": {"SPACE": 0.7}},
   "PULSING": {"swap": {"bass_main": "bass_drive"}, "energy_bias": 0.1},
   "HEAVY":   {"sounds": {"pad": "DARK STR", "drums": "909"}, "params": {"bass.DRV": 40}}
 }
@@ -360,8 +360,14 @@ Variations are ordered. The first must be `"ORIGINAL": {}`, and there may be up 
 | --- | --- |
 | `sounds` | per track: another preset of the same engine, or another drum kit |
 | `params`, `fx` | as in scenes. A variation cannot set `swing`. |
-| `swap` | `{from: to}`: wherever a scene plays synth pattern `from`, play `to` (a pattern of the same track). Drum grooves are not swapped (use the BEATs). |
+| `swap` | `{from: to}`: wherever a scene plays synth pattern `from`, play `to` (a pattern of the same track and length class: the same length, or whole bars of which one divides the other). Drum grooves are not swapped (use the BEATs). |
 | `energy_bias` | −0.25..0.25, added to the ENERGY knob for the band (not for its parameter mappings) |
+| `macros` | `{COLOR, MOTION, SPACE, ENERGY: 0..1}`: where the variation puts the four macros. When it lands, each macro the player has not turned since the World loaded goes there (a macro it does not name: to the World's `defaults.macros`), and the sound glides there; a macro the player turned stays. |
+
+A variation keeps the World's identity (UI spec §6): it cannot change the tempo, key, scale, progressions, swing, the
+drum grooves, the scenes' patterns (beyond `swap`) or the Smart Keys. `worldc` refuses `tempo`, `key`, `scale`,
+`progression`, `swing`, `beat`, `patterns` and `smart_keys` in a variation with that reason, and warns when one changes
+more than two tracks of the groove at once (swapped patterns and the drum kit).
 
 ---
 

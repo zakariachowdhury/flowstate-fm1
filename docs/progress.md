@@ -663,3 +663,68 @@ while playing, a key held across two changes, then a switch to the next World, S
   request loads at once, as before).
 
 **Next.** Phase 12: variations.
+
+## Phase 12: Variations (2026-10-05)
+
+**Done.** Curated variations that keep the World's identity, now with their own macro defaults. As built: design §7.2.
+
+**Macro defaults.** A variation can carry positions for COLOR, MOTION, SPACE and ENERGY: `"macros": {"SPACE": 0.7}`.
+- In the blob they are VARS pairs of a new scope (`WF_SCOPE_CTL`: the macro, a `u8` position). Old blobs stay valid.
+- When a variation lands (or a World loads), each macro the player has not turned since the World loaded goes to the
+  variation's default, or to the World's default when the variation names none. A macro the player turned stays.
+- While playing, the overlay glides there; nothing snaps.
+- ORIGINAL therefore brings back the World's defaults for the untouched macros.
+
+**Identity** (`worldc`). The format already left a variation no tempo, key, scale, progression, swing, drum groove or
+Smart Keys setting. The compiler now also:
+- refuses `tempo`, `key`, `scale`, `progression`, `swing`, `beat`, `patterns` and `smart_keys` in a variation, with the
+  reason (the schema's `x-refused`);
+- requires a `swap` to keep the length class: the same length, or whole bars of which one divides the other;
+- warns when a variation changes more than two tracks of the groove at once (swapped patterns plus the drum kit).
+
+**Factory Worlds.** Each keeps ORIGINAL + 4, with at least one tone or space variation and one rhythm or arrangement
+one. ORIGINAL and the defaults are unchanged.
+
+| World | Tone / space | Rhythm / arrangement | Macro defaults added |
+| --- | --- | --- | --- |
+| NEON RAIN | DREAMY, DARK | PULSING (pad and bass patterns), HEAVY | DREAMY SPACE .70, DARK COLOR .35, PULSING MOTION .65 |
+| MIDNIGHT DRIVE | DREAMY, DARK | DRIVING (16th bass), HEAVY | DRIVING MOTION .62, DREAMY SPACE .68, DARK COLOR .35 |
+| FROZEN LAKE | AIRY, FLOATING, DARK | SPARSE | AIRY SPACE .66 COLOR .58, FLOATING MOTION .65 SPACE .60, DARK COLOR .35 |
+| DUSTY CAFE | DREAMY, AIRY, DARK | SPARSE (sparse keys, root bass) | DREAMY SPACE .68, AIRY COLOR .58 SPACE .60, DARK COLOR .38, SPARSE MOTION .40 |
+
+Some variations were far louder than ORIGINAL: MIDNIGHT DRIVE's DREAMY and DARK put the chords at level 100 (up to
++8.3 LU), and FROZEN LAKE's DARK reached +4.2 LU. Their levels are lowered (chords 84, HEAVY's chords 74; FROZEN LAKE's
+DARK pad 78, texture 84). Every variation now sits within 2.5 LU of ORIGINAL in every scene. Blobs: 1,315–1,801 B.
+
+**UI.** VARIATION n already follows the list order, and the Studio's VAR selector shows the names; nothing changed.
+
+**Verified.**
+- `./tests/run_tests.sh` passes all 38 groups.
+- `worldc_test`: macro defaults (encoding, round trip, errors), the refused fields, the fixed and structural
+  parameters, the swap's length class, the groove warning.
+- `world_render --var all` now checks each variation within 3 LU of ORIGINAL per scene: at most +2.43 LU.
+- `scene_test` has 145 checks (+40). Its new `variations` scenario covers every factory World with ORIGINAL / each
+  variation / ORIGINAL / each on the bars while playing:
+  - each change on the next bar line, the clock running on;
+  - the same tempo and progression throughout;
+  - every sequencer note in the World's scale;
+  - the macros at the variation's defaults, gliding in (no table snaps);
+  - back to ORIGINAL's parameters, patterns, positions and progression exactly, eight times per World;
+  - a macro the player turned left alone;
+  - nothing left after STOP.
+- Clicks at variation changes: 0.46×, 0.46×, 0.80× and 1.06× the largest step elsewhere. DUSTY CAFE's DARK brings the
+  BOOMBAP kit, and its first downbeat sounds before the darker filter and COLOR have glided in. A kit changed straight in
+  at a bar line shows no excess, and the lone-note smoothing test finds no click, so the tolerance here is 1.25×.
+- `ui_play_test`: the restored session's COLOR is now AIRY's default minus the player's three detents.
+- Both regression builds match the 83 goldens.
+
+**Sizes.** Image 555,328 B (+320 B, with the factory data). **26.2 KB** of the app slot is left. RAM `.data` + `.bss`
+71,104 B (+16 B).
+
+**Deviations.**
+- "Untouched" means since the last World load. A restored session counts as the player's.
+- The macro defaults cover the four macros only, not SOUND SHAPE or MOVEMENT.
+- `guard_sweep` needed no change: it sets the positions itself, and `world_render` renders every variation at its own
+  defaults with the clean checks.
+
+**Next.** Phase 13.
