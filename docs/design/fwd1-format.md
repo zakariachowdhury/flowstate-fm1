@@ -339,7 +339,7 @@ The controls and their home positions:
 | 12 | FILTER | 500 |
 | 13–15 | ECHO, CRUSH, FREEZE | 0 |
 
-Records for controls 4–15 replace that control's built-in mappings (`controls` in the source). Phase 7 evaluates the mappings (design §5.2).
+Records for controls 4–15 replace that control's built-in mappings (`controls` in the source). `firmware/src/macro.c` evaluates the mappings (design §5.2–5.5).
 
 A CURVES record is a LUT9: `u8 y[9]`, the values at x = 0, 1/8, …, 1, in units of 1/255. `y[0] = 0` and `y[8] = 255`, so the centre is the authored sound and the end is the full offset.
 
@@ -370,7 +370,7 @@ Each table is `u16 density_lanes, u8 nbands` (1–4), then 12-byte bands:
 | 4 | 2 | dens_steps | a 16-step mask applied to `density_lanes` |
 | 6 | 6 | play[3] | per synth track, a 16-step mask: a NOTE step whose bit is clear plays as REST |
 
-All masks are neutral when all ones. worldc requires the Smart Keys track in every band's layers, and the firmware never mutes it. Phase 11 applies the bands (design §5.7).
+All masks are neutral when all ones. worldc requires the Smart Keys track in every band's layers, and the firmware never mutes it. `firmware/src/arrange.c` applies the bands (design §5.7); BEAT joins them in Phase 11.
 
 ### GUARD
 

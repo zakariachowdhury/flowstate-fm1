@@ -86,12 +86,12 @@ flowchart TB
 | File | Owns | Context | Phase |
 | --- | --- | --- | --- |
 | `src/world_rt.h` | Types and ISR-shared state: `wrt` (active, keys track, mode flags, `mute`), harmony runtime, overlay slot tables, arrangement masks, stage buffer, `wvm_cut[3]`/`wvm_shape[3]`. No code except inline accessors. | both | 5 |
-| `src/guard_limits.h` | Hard safety limits as `#define`s. `tools/worldc.py` parses this file, so the limits exist in one place only. | both | 8 |
+| `src/guard_limits.h` | Hard safety limits as `#define`s. `tools/worldc.py` parses this file, so the limits exist in one place only. | both | 7 (the slot clamp), 8 |
 | `src/harmony.c` | Chord-quality tables, `harm_block()` (current chord per block), chord-tone and safe-tone masks | ISR | 6 |
 | `src/smartkeys.c` | Key-map building (main loop, per chord), `sk_note(k)` and `sk_midi_*` (ISR), SMART CHORDS/BASS/DRUMS later | both | 6 |
 | `src/guard.c` | Note guard (range fold, polyphony cap, loop snap), sound rules (combo evaluation into slot ranges), arrangement timing, CPU guard | both | 8 |
 | `src/macro.c` | Control positions, mapping evaluation, cross-macro rules, target-table publication; ISR overlay `world_fx_pre/post`; engine role table | both | 7 |
-| `src/arrange.c` | ENERGY bands, BEAT, fills, quantised application of masks | ISR (requests from main) | 11 |
+| `src/arrange.c` | ENERGY bands, BEAT, fills, quantised application of masks | ISR (requests from main) | 7 (bands, masks, fills), 11 |
 | `src/play_rec.c` | PLAY REC state machine, loop close, overdub, undo ring, micro-timing | both | 10 |
 | `src/world.c` | Blob check and parse, working World (pattern pool, overrides), stage builder, `world_block()`/commit, World load/reset, user-World encoder | main (+ ISR commit) | 5, 11, 14 |
 | `src/ui_play.c` | PLAY MODE state machine, screens, LEDs, Advanced dialog | main | 9 |
@@ -132,7 +132,7 @@ Every hook is inert while `wrt.active == 0`. That is the bit-identity argument, 
 | H1 | `core.h:270-274` `trk_silent` | `\|\| ((wrt.mute >> i) & 1u)`: ENERGY layers reuse the 8-block mute fade and note blocking | `wrt.mute == 0` |
 | H2 | `voice.c:318-365`, `:367-401`, `:403`, `:451` | Pitch reference count ([§4.4](#44-pitch-reference-counting-r1)) | `wrt.refcount == 0` |
 | H3 | `voice.c:564-567` | `m.cutoff += wvm_cut[pi]; m.shape += wvm_shape[pi];` | both 0 |
-| H4 | `fx.c:380` (after `events_block`, before `duck_block`) | `world_fx_pre()`: smoothing and overlay apply | early return |
+| H4 | `fx.c:380` (before `events_block`; as built, [§5.8](#58-as-built-phase-7)) | `world_fx_pre()`: smoothing and overlay apply | early return |
 | H5 | `fx.c:394` (after `djf_process`) | `world_fx_post()`: restore the base values | early return |
 | H6 | `fx.c:132,134` | `G_DFDBK` and `G_RSIZE` clamped to `GL_*` at the point of reading (hard invariants, [§6.3](#63-hard-invariants)) | in-range values pass unchanged |
 | H7 | `seq.c:1006` in `key_down` | `n = sk_active(t) ? sk_note(k) : kb_map(t, k)` | `kb_map` |
@@ -676,7 +676,7 @@ Enum parameters are **structural** and can never be macro targets:
 ### 5.5 The effective-value pass (ISR, H4/H5)
 
 ```c
-static void world_fx_pre(void)                         /* fx.c:380, after events_block */
+static void world_fx_pre(void)                         /* fx.c:380, before events_block (as built: §5.8) */
 {
     if (!wrt.active) return;
     if (ov_pub != ov_seen) ov_take();                  /* carry cur[] by 'from', zero for new slots */
@@ -699,7 +699,7 @@ static void world_fx_post(void)                        /* fx.c:394, after djf_pr
 Why this is safe:
 - The main loop cannot run inside the ISR, so outside the window `p[]`/`g[]` always hold base values. That keeps the UI, the editor, presets, autosave and the Advanced-edit diff correct.
 - Between H4 and H5 no code writes `p[]`, except the engine-fade swap (`voice.c:514-518`, `:571-574`), which saves and restores the effective values symmetrically.
-- `events_block` (which may commit a scene into `p[]`) runs before H4.
+- `events_block` (which may commit a scene into `p[]`) runs inside the window (as built, §5.8): the commit takes the overlay out, writes the new bases and puts it back.
 - With no slots, nothing is touched.
 
 Smoothing classes, at a block rate of 1378 Hz:
@@ -715,7 +715,7 @@ Smoothing classes, at a block rate of 1378 Hz:
 
 Gain compensation is data only: `*.level`, `g.drlvl` and `g.dmix` mappings on ENERGY and SPACE, plus negative `add` actions in rules. There is no new master trim; the limiter (`fx.c:92-117`) stays the last safety. The validator checks loudness across the sweep: ENERGY 1.0 at most +4 dB louder than 0.5, and ENERGY 0 at least −9 dB below it ([§12.3](#123-validate-world)).
 
-### 5.7 ENERGY as arrangement (`arrange.c`, Phase 11)
+### 5.7 ENERGY as arrangement (`arrange.c`, Phase 7; BEAT and transitions, Phase 11)
 
 - **Band selection.** The main loop publishes `arr_req_energy = clamp(ctl[ENERGY] + var.energy_bias)`. `arr_block` picks band `k` with ±20 hysteresis around each `from`.
 - **When a change applies** (guard arrangement timing): `layers` (track mutes) at the **next bar**; `lanes`, density and skip masks at the **next beat**.
@@ -733,6 +733,22 @@ Gain compensation is data only: `*.level`, `g.drlvl` and `g.dmix` mappings on EN
 - **BEAT** ([§9.2](#92-pulse-and-beat)) combines with these masks by intersection.
 
 ---
+
+### 5.8 As built (Phase 7)
+
+`firmware/src/macro.c`, `arrange.c` and `guard_limits.h` follow §5.1–5.7, with these differences:
+
+| Here | As built | Why |
+| --- | --- | --- |
+| H4 after `events_block` | **before** it; a commit inside the window (`world_commit` on the bar) takes the overlay out (`ov_restore`), writes the new bases and puts it back (`ov_apply`) | The sequencer reads note-time parameters inside `events_block`: the gate (`P_SGATE`, MIDNIGHT DRIVE's MOTION), glide, unison detune, LFO phase. After it, those mappings did nothing. An engine fade now renders the old engine with the values it was heard with. |
+| ENERGY bands in Phase 11 | the bands, their hysteresis (±20 per mille), GUARD's timing (`mute_change`, `density_change`, `min_band_bars`), the masks (H1 `wrt.mute`, H13 lanes / density / ratchets, H14 play masks) and the fills on phrase ends are built; BEAT stays for Phase 11/13 | ENERGY is the knob's main effect (D9). The variation's bias is added in the ISR from the committed variation, so it changes on the variation's bar. A scene's commit applies its table's band at once. |
+| `guard_limits.h` in Phase 8 | built now, used by the slot clamp: `GL_DFDBK_MAX` 120, `GL_RSIZE_MAX` 127, `GL_LEVEL_MAX` 120, `GL_RESO_MAX` 110 (each engine's RESO role), `GL_VMOD_MAX` 64; H6 and the GUARD soft caps stay Phase 8 | A limit never moves an authored base: a base already past one stays, and the overlay only cannot push it further (no increase past it). |
+| slot class | the slowest class of its mappings; stepped if any is, or if the parameter is an enum; a rule-only slot medium | — |
+| slots | a target gets a slot only while it moves: a non-zero offset, or still on its way home (the live table's offset not yet 0); an idle target costs the ISR nothing, and a target leaving home ramps from 0 | the cost at the defaults (most macros at home): 1–8 instructions a sample instead of about 20 |
+| publication | the main loop writes the spare table only when the ISR has taken the last one (else it stays dirty), at most once in 22 blocks; a World switch empties the overlay (`ov_reset`, IRQs off) and the new World's first table starts at its targets (`snap`) | — |
+| more than 48 slots | the first 48 (in mapping order, then the rules) apply; the rest are counted (`mac.over`) | Phase 8's validator refuses such a World |
+| gain compensation | data, as §5.6; the factory Worlds' `~bright` minimums were tuned (COLOR −36/−32 → −24/−22 on the pads and chords, ENERGY's `~bright` minimum 0) | COLOR 0 and ENERGY 0 summed into a closed filter: 18 LU under the defaults |
+| CPU (§11.3) | measured on the host (`tests/macro_test.c --cost`): about 1.3 instructions per moving slot and sample: 1–8 per sample at the factory defaults, about 30 with every target of a factory World moving (21–24 slots), about 50 at 36; `macro_eval` 14,000–16,000 instructions a run (main loop, at most 60 a second) | at most 1.6 % of the 1,876-instruction heavy mix. If the device needs it: apply and restore once per DMA half (8 blocks) instead of per block. |
 
 ## 6. Musical Guardrail Engine
 
@@ -1257,11 +1273,11 @@ On 8 jobs this is about 10 s per World.
 | 4 Simulator UI | window, LCD, panel, input, LEDs, flash file | §12.1 |
 | 5 World format + 4 demo Worlds | `world_rt.h`, `world.c` (check, parse, pool, stage, commit-while-stopped), `worldc.py`, `gen_worlds.py`, schema, `FELUCCA_WORLD`, H2/H15/H18 (fence)/H21/H22/H25; demo Worlds: FROZEN LAKE (ambient), MIDNIGHT DRIVE (synthwave), DUSTY CAFE (lo-fi), NEON RAIN (cinematic), per UI spec §11 | §1, §2, §10.4 (fence only) |
 | 6 Smart Keys | `harmony.c`, `smartkeys.c`, refcount (H2), H7–H9, H16 | §3, §4 |
-| 7 Macro engine | `macro.c`, H3–H5, role table | §5.1–5.6 |
+| 7 Macro engine | `macro.c`, H3–H5, role table; `guard_limits.h` (slot clamp); `arrange.c` bands, masks and fills (H1, H13, H14, H16) | §5.1–5.8 |
 | 8 Guardrails + sweeps | `guard.c`, `guard_limits.h`, H6, `world_sweep`, Python model | §6, §12.3 (sweeps) |
 | 9 PLAY MODE UI | `ui_play.c`, H17, H19, H20, H24; `world_store.c` with `OBJ_WSESSION` (playstate only) and H23 | §8, §10.1, §10.4 |
 | 10 Record / overdub | `play_rec.c`, H10, H14 (micro), session PATCHES for the loop | §9.1 |
-| 11 Scene system | ISR commit on the bar, `arrange.c` (ENERGY bands, fills), H1, H13, H14 | §5.7, §7 |
+| 11 Scene system | ISR commit on the bar, `arrange.c` (BEAT with the ENERGY masks, fills in transitions) | §5.7, §7 |
 | 12 Variations | VARS decode, `swap`, bias | §7 |
 | 13 Beginner FX | controls 4–15, PULSE (H11), BEAT, LIVE FX | §9.2–9.4 |
 | 14 Advanced + user Worlds | mode switching, override diff, encoder, `OBJ_UWORLD*`, RESET, H26 | §8.3, §10 |

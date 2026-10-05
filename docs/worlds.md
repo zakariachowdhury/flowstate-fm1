@@ -55,11 +55,15 @@ build/host/world_render --scene all --var all /tmp/neon.wblob          # a table
 build/host/world_render --keys --sequence /tmp/neon.wav /tmp/neon.wblob  # A B C D, with a player's phrase
 build/host/world_render --bands /tmp/neon.wblob                        # each ENERGY band of each scene
 build/host/world_render --macros /tmp/neon.wblob                       # every mapping at 0 and 1, per scene
+build/host/world_render --extremes /tmp/neon.wblob                     # each macro at 0 and 1, all at 0, all at 1
+build/host/world_render --ctl COLOR=0.2,ENERGY=0.9 --wav /tmp/x.wav /tmp/neon.wblob   # the macros somewhere
 build/host/world_render --mute 234 /tmp/neon.wblob                     # track 1 alone (gain staging)
 ```
 
-It emulates the ENERGY band at the World's default position until Phase 11 plays the bands (`--raw` plays every
-pattern of the scene, as the Phase 5 firmware does). Macros are Phase 7: every render is the authored sound.
+The macros start at the World's `defaults` and play through the firmware's own macro engine and ENERGY arrangement
+(`firmware/src/macro.c`, `arrange.c`): `--energy X` and `--ctl` move them. `--raw` plays every pattern of the scene,
+with no ENERGY arrangement. The simulator plays Worlds too ([simulator.md](simulator.md)), and `sloop-render --world
+NAME --ctl COLOR=0.2 --sweep ENERGY` renders one with the macros set or turning.
 
 How Worlds reach the firmware:
 - Factory Worlds live in `worlds/factory/<id>.world.json`.
@@ -328,7 +332,7 @@ All four scenes are required.
 | `transition` | 1, 2 or 4 bars (default 1): how a change to this scene is quantised (Phase 11) |
 | `patterns` | per track: a pattern name, or `null` (absent). A track not listed is absent too. |
 | `patterns.<drums>` | a pattern name (the GROOVE), `null`, or `{BEAT: name}` for `MINIMAL GROOVE BUSY BREAK`. A BEAT without a pattern plays the GROOVE. |
-| `fill` | a drum pattern, played on phrase ends when an ENERGY band allows fills (Phase 11) |
+| `fill` | a drum pattern, played on the last bar of each phrase when the ENERGY band allows fills |
 | `params` | `track.param`, `*.param` (every synth track; common parameters only) or `g.name` → value |
 | `fx` | globals → value |
 
@@ -357,7 +361,7 @@ Variations are ordered. The first must be `"ORIGINAL": {}`, and there may be up 
 | `sounds` | per track: another preset of the same engine, or another drum kit |
 | `params`, `fx` | as in scenes. A variation cannot set `swing`. |
 | `swap` | `{from: to}`: wherever a scene plays synth pattern `from`, play `to` (a pattern of the same track). Drum grooves are not swapped (use the BEATs). |
-| `energy_bias` | −0.25..0.25, added to the ENERGY knob (Phase 11) |
+| `energy_bias` | −0.25..0.25, added to the ENERGY knob for the band (not for its parameter mappings) |
 
 ---
 
@@ -373,6 +377,10 @@ Variations are ordered. The first must be `"ORIGINAL": {}`, and there may be up 
 "curves": {"knee": {"points": [[0, 0], [0.5, 0.2], [1, 1]]}}
 ```
 
+The four knobs have fixed meanings: **COLOR** dark to bright, **MOTION** still to alive, **SPACE** close to huge,
+**ENERGY** sparse to intense. What each one moves is the World's: its mappings, curves and rules. The player never
+sees a parameter; the simulator's inspector (Option+I) shows them.
+
 A **mapping** moves one target by an offset from the authored value.
 
 **The knob position.** A macro sits at 50 % (home):
@@ -380,39 +388,65 @@ A **mapping** moves one target by an offset from the authored value.
 - turned up, it runs to `max`;
 - at home the sound is exactly what the World says.
 
-Controls that rest at 0 (SOFT, SHORT, BODY, TAIL, DRIFT, WOBBLE, PULSE, ECHO, CRUSH, FREEZE) use only `max`. RATE and FILTER rest at 50 %. Phase 7 evaluates the mappings; this phase compiles them.
+So 100 % is the largest value you chose, never "every parameter at its maximum". Controls that rest at 0 (SOFT,
+SHORT, BODY, TAIL, DRIFT, WOBBLE, PULSE, ECHO, CRUSH, FREEZE) use only `max`. RATE and FILTER rest at 50 %. The
+`defaults` set every position when the World loads (`macros`, `shape`, `movement`).
 
-**Targets:**
+**Targets**, and what each does when the World plays:
 
-| Form | Meaning |
-| --- | --- |
-| `pad.CUT`, `bass.rev` | a track's parameter |
-| `*.level` | the parameter on every synth track (common parameters only) |
-| `pad+bass.chor` | on these tracks |
-| `keys.@RESO` | the engine role: `@BRIGHT @RESO @DRIVE @SHAPE @DETUNE @AIR @MOVE @BODY`. On an engine without that role the mapping does nothing, and worldc warns. `worldc.py names ENGINE` lists the roles. |
-| `pad.~bright`, `pad.~shape` | the smooth brightness / timbre offset every engine has |
-| `g.dfdbk` | a World global (not `dtime` or `swing`) |
-| `drums.level` | the same as `g.drlvl` |
+| Form | Meaning | At runtime |
+| --- | --- | --- |
+| `pad.CUT`, `bass.rev` | a track's parameter | the parameter itself, in its own steps: the engines, effects and the sequencer (gate, glide) hear base + offset |
+| `*.level` | the parameter on every synth track (common parameters only) | one offset per track |
+| `pad+bass.chor` | on these tracks | as above |
+| `keys.@RESO` | the engine role: `@BRIGHT @RESO @DRIVE @SHAPE @DETUNE @AIR @MOVE @BODY` | the parameter that plays the role on the engine the track runs (ANALOG `@BRIGHT` is CUT, DIGITAL's is IDX, ...: `worldc.py names ENGINE`); none on that engine: nothing (worldc warns). Another engine on the track later (Advanced): the role follows it |
+| `pad.~bright`, `pad.~shape` | the smooth brightness / timbre offset every engine has | an offset for every voice of the track on the engine's cutoff (or what it uses as brightness) and shape, in 1/256 steps: no zipper, the authored parameter untouched; at most ±64 steps |
+| `g.dfdbk` | a World global (not `dtime` or `swing`) | the global |
+| `drums.level` | the same as `g.drlvl` | the global |
+
+Several mappings (and rules) on one target **add up** into one offset. A World has room for **48 targets** (a
+`*` mapping counts once per track); past 48 the rest are dropped (Phase 8's validator will refuse it).
 
 **Mapping keys:**
 - `min` and `max`: −128..127 in the target's units.
-- `curve`:
-  - `lin` (the default), `exp` (slow start), `log` (fast start), `s` (smoothstep), `late` (nothing until halfway);
+- `curve`, the shape of the way from home to the end (x is how far the knob is from home, 0..1):
+  - `lin` (the default) x; `exp` x², a slow start; `log` √x, a fast start; `s` 3x² − 2x³ (smoothstep); `late`
+    nothing until halfway, then linear;
   - a name from `curves`;
   - an inline 9-value curve.
-- `smooth`: `fast medium slow stepped`, default `medium`. Enum targets are always stepped.
+- `smooth`: how fast the parameter follows the knob: `fast` (10 ms), `medium` (60 ms, the default), `slow`
+  (250 ms), `stepped` (at once). Enum targets (WHEEL's ROTR) are always stepped. A target several mappings move
+  takes the slowest of their classes; a target only a rule moves, medium. Every parameter glides to its new value
+  (one pole at 1378 steps a second), so a knob turned fast never clicks.
 - `saturate`: for Phase 8's "100 % is never all-max" check.
 
-**Limits.** There are at most 40 mappings in all, counting `controls`.
+**Limits** that no mapping passes, whatever it says (`firmware/src/guard_limits.h`):
+- every value stays inside its parameter's range;
+- delay feedback (`g.dfdbk`) at most 120 and reverb size (`g.rsize`) 127: the echo and the reverb always die away;
+- a track's `level` at most 120 (+4 dB) and a filter's resonance (each engine's `@RESO`) at most 110;
+- `~bright` / `~shape` at most ±64 steps.
 
-**Controls** (`SOFT SHORT BODY TAIL DRIFT WOBBLE PULSE RATE FILTER ECHO CRUSH FREEZE`) replace that control's built-in mappings with yours.
+A limit never changes what you authored: a base value above one stays, and the macros only cannot push it further.
+Phase 8 adds the `guard.sound` caps and ranges inside these.
+
+**At most 40 mappings** in all, counting `controls`.
+
+**Controls** (`SOFT SHORT BODY TAIL DRIFT WOBBLE PULSE RATE FILTER ECHO CRUSH FREEZE`) replace that control's built-in
+mappings with yours. They are evaluated as the macros are; the PLAY screens that turn them, and their built-in
+mappings, come with Phase 13.
 
 **Curves.** Each curve is one of:
 - 9 values 0..1 (at x = 0, 1/8, …, 1);
 - `{"points": [[x, y], …]}`, from x = 0 to x = 1, interpolated;
 - `{"lut": [9 integers 0..255]}`.
 
-A curve must start at 0 and end at 1. There are at most 8.
+A curve must start at 0 and end at 1, and is linear between its 9 points. There are at most 8.
+
+**Gain compensation is yours.** A macro that adds (more reverb, drive, a brighter filter, ENERGY's layers) also makes
+the World louder. Give ENERGY and SPACE level mappings that take some of it back (`*.level` down as ENERGY rises,
+`drums.level`), and cut levels in the rules. ENERGY should make the World denser, not louder: `tests/run_tests.sh`
+checks every factory World at ENERGY 0, 0.5 and 1 (at most 4 LU over 0.5, 6 LU over 0), and that no corner of the
+macros is more than 12 LU under the defaults.
 
 ---
 
@@ -425,8 +459,16 @@ A curve must start at 0 and end at 1. There are at most 8.
 ]
 ```
 
-When every named control is above its threshold, each action adds up to `add` to its target, scaled by how far
-past the thresholds the controls are (design §5.4).
+A rule is a cross-macro constraint: when every named control is above its threshold, each action adds up to `add` to
+its target. How much is the rule's **strength**: 0 at the thresholds, 1 when the controls are at 100 %, and with two
+controls the lesser of the two (one at 0.9 of the way and one at 0.5: 0.5). So a rule fades in as the knobs pass
+their thresholds, and never jumps.
+
+Use them for combinations that would sound wrong, as the factory Worlds do:
+- SPACE and ENERGY high: less reverb on the bass and drums, lower delay feedback, a little less level (the mix stays
+  clear instead of turning to mud);
+- COLOR and ENERGY high: less resonance;
+- MOTION and ENERGY high: one modulation layer less (chorus depth, LFO depth).
 
 Limits:
 - one or two conditions, each with a threshold below 1;
@@ -446,17 +488,28 @@ Limits:
   {"from": 0.90, "layers": "all", "fills": true, "ratchets": true}]}}
 ```
 
-There are up to 4 tables. Each scene names one. A table has 1–4 bands. The ENERGY knob (plus the variation's
-bias) picks the band. Phase 11 makes them sound.
+ENERGY is mostly arrangement. There are up to 4 tables; each scene names one. A table has 1–4 bands. The ENERGY knob
+plus the variation's `energy_bias` picks the band (`firmware/src/arrange.c`); its parameter mappings (gain
+compensation, drive, brightness) play on top.
 
 | Key | What |
 | --- | --- |
 | `from` | where the band starts: 0 for the first, then ascending |
-| `layers` | the tracks heard, or `"all"`. The Smart Keys track must be in every band. |
+| `layers` | the tracks heard, or `"all"`. The others are silent (with the same short fade as a mute). The Smart Keys track must be in every band, and is never silenced. |
 | `drums` | the drum lanes allowed, or `"all"` (the default) |
 | `density` | 16 steps of `x`/`.` applied to `density_lanes`: a hit there sounds only on an `x` |
-| `<synth track>` | 16 steps of `x`/`.`: that track's notes play only on an `x` |
-| `fills`, `ratchets` | allow the scene's fill, and ratchets |
+| `<synth track>` | 16 steps of `x`/`.`: that track's notes play only on an `x` (a note on a `.` rests); never the Smart Keys track's |
+| `fills` | the scene's `fill` plays on the last bar of every phrase: `guard.arrangement.fills_every` bars, else the length of the scene's progression |
+| `ratchets` | the drums' ratchets play (without: each hit once) |
+
+**When a band changes**, following `guard.arrangement`:
+- the band moves only 0.02 past its edge (hysteresis), so a knob resting on an edge does not flip between two bands;
+- the layers change on the next bar (`mute_change: "2bars"`: every second bar);
+- the lanes, density and play masks on the next beat (`density_change: "bar"`: the bar);
+- a change begins at least `min_band_bars` bars after the one before;
+- stopped, at once; a scene change brings its own table, on its bar.
+
+Phase 11 adds BEAT (MINIMAL, GROOVE, BUSY, BREAK) on top of these masks, and the fills' place in scene transitions.
 
 ---
 
@@ -522,7 +575,8 @@ track. `max_poly`, `loop_follow` and `avoid` apply to the Smart Keys track only.
 | `max_dist_tracks` | 0–3 |
 | `ceiling` | a fraction of the audio interrupt's time |
 
-Phase 8 applies the guard.
+The arrangement fields (`mute_change`, `density_change`, `fills_every`, `min_band_bars`) time the ENERGY bands
+([§12](#12-energy)); Phase 8 applies the rest of the guard.
 
 ---
 
@@ -620,6 +674,13 @@ because a step that repeats the previous note costs 2 B.
 - **Releases hold voices.** A released voice sounds until its envelope is 72 dB down, about 1.8 × its REL time. At
   each chord change the old chord's voices overlap the new one's, and the three synth tracks share 8 voices: keep a
   World's own patterns to about 6 voices so the player's keys never take a held note (`world_render` counts it).
+- **Darkening adds up.** Every mapping on `~bright` (COLOR, and ENERGY when it darkens) adds into one offset. COLOR 0
+  with a sparse ENERGY band can leave a single pad behind a nearly closed filter, 20 dB down: the engines' filters also
+  turn gritty near the bottom of their range. Let COLOR's `min` stop where the sound is dark but present (the factory
+  Worlds keep −22..−24 on their pads), and let ENERGY brighten (`min` 0) rather than darken. `world_render --extremes`
+  measures every corner.
+- **ENERGY moves two things.** Its band (the arrangement) and its parameter mappings. A band edge passes as the knob
+  does; levels glide. Measure ENERGY 0, 0.5 and 1 (`--extremes`): denser, not louder.
 - **Keep ENERGY band edges away from the defaults.** The default position plus each variation's `energy_bias` should
   sit clearly inside a band (the factory Worlds keep 0.05 or more), or a variation drops a layer by accident.
 - **Long echoes need room.** A `1/4` delay at 66–72 BPM repeats every ~0.85 s; with SPACE at 100 % the feedback
@@ -637,7 +698,8 @@ because a step that repeats the previous note costs 2 B.
 
 ## 19. Factory Worlds
 
-The four demo Worlds of the UI spec (§11). Each starts on scene B with ORIGINAL, the macros at home and PULSE off.
+The four demo Worlds of the UI spec (§11). Each starts on scene B with ORIGINAL, the macros at home (ENERGY at 0.55
+in NEON RAIN and MIDNIGHT DRIVE) and PULSE off.
 Every scene × variation is rendered by `tests/run_tests.sh` ([§1](#1-quick-start)).
 
 | World | Category | BPM | Key, Smart Keys | Tracks: 1 · 2 · 3 (Smart Keys) · drums | Scenes A · B · C · D | Variations | Blob |
@@ -662,6 +724,21 @@ eighth hats under the pulse (sixteenths, open hats and fills from 0.75), C the s
 D chords + bass; FROZEN LAKE A the pad, B and C pad + texture + the soft percussion (C with fills), D the pad; DUSTY
 CAFE A the Rhodes, B kick, snare, rim and eighth hats (ghost sixteenths, shaker and fills from 0.75), C everything
 with fills, D Rhodes + bass. Lower ENERGY removes the drums, then the bass; the bands only ever add.
+
+**Macros** (what each knob moves; every World also has the three cross-macro rules of [§11](#11-rules), at 0.75):
+
+| World | COLOR | MOTION | SPACE | ENERGY (besides its bands) |
+| --- | --- | --- | --- | --- |
+| NEON RAIN | pad and lead brightness, delay colour | pad LFO shape, filter and rate, lead vibrato, chorus depth | pad and lead reverb, reverb size, delay feedback, lead echo, drum reverb, pad release | pad level down, drums up, bass drive, pad brighter |
+| MIDNIGHT DRIVE | chords and bass brightness, lead tone, delay colour | chords and bass gate, chords LFO filter, lead vibrato, chorus depth | chords and lead reverb, reverb size, delay feedback, lead and chords echo, drum reverb | chords level down, drums up, bass drive, chords brighter |
+| FROZEN LAKE | pad, texture and bell brightness, delay colour | pad LFO shape and pitch, grain spread and detune, chorus depth | every reverb, reverb size, delay feedback, bell echo, pad release, drum reverb | drums and texture up, pad down, pad brighter |
+| DUSTY CAFE | Rhodes and piano tone, delay colour, less dust | Rhodes tremolo and its rate, chorus rate and depth | Rhodes and piano reverb and echo, reverb size, delay feedback, drum reverb | Rhodes level down, drums and bass up, ducking |
+
+At their extremes (`world_render --extremes`, scene B, 4 bars): every one clean (peaks −3.1 dBFS at most, nothing
+at full scale, 6 s after STOP the tails at −65.7 dBFS or lower); ENERGY 0 / 0.5 / 1 measure −15.8 / −16.3 / −17.0 LUFS
+(NEON RAIN), −21.9 / −17.2 / −17.1 (MIDNIGHT DRIVE), −15.8 / −16.4 / −16.3 (FROZEN LAKE) and −18.0 / −16.8 / −17.0
+(DUSTY CAFE), while the notes and hits a bar grow 2.7 to 8.6 times; the quietest corner (every macro at 0) is 2–7 LU
+under the defaults.
 
 **Gain staging.** The levels follow one plan, measured with `world_render` (BS.1770 loudness):
 - the default scene at about −16.5 LUFS (the four Worlds within 1 LU of each other), RMS −17.5 to −18.5 dBFS;

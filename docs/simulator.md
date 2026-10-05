@@ -9,13 +9,13 @@ goes to the default output. The window has two views (Tab switches):
   the performance buttons, the tracks and the keys, with the device's screen beside them.
 - **ADVANCED**, the FM-1 itself: the LCD at twice its size and the whole panel.
 
-![FLOWSTATE STUDIO: NEON RAIN playing on scene B, scene C and the variation DREAMY asked for, a chord held](images/studio.png)
+![FLOWSTATE STUDIO: NEON RAIN playing on scene B with its macros turned, scene C and the variation DREAMY asked for, a chord held](images/studio.png)
 
 The simulator is the host layer of Phase 2: `host/core.c` and `host/hal_host.h`, used through `host/host.h`. The host
 core is built as the device's firmware is, Musical Worlds included (`FELUCCA_WORLD 1`, `world.c`). Nothing in
 `host/sim/` synthesises, sequences or draws the LCD itself. Phase 3 of the plan built the real-time core, Phase 4 the
-Studio, and Phase 6 (part A) made the Worlds playable in it ([progress.md](progress.md), design §1.7, §2.8, §12.1
-and §16).
+Studio, Phase 6 (part A) made the Worlds playable in it, and Phase 7 made its four knobs the Worlds' macros
+([progress.md](progress.md), design §1.7, §2.8, §5, §12.1 and §16).
 
 ## Build and run
 
@@ -96,7 +96,7 @@ from the Studio's model of what plays (`studio_t` in `host/sim/sim.h`), which th
 | Top | `FLOWSTATE STUDIO`, playing or stopped, the tempo; the World, `· SCENE B`, its category, key and tempo, its blurb (or a message: `RELOADED`, `WORLD ERROR …`); the device's screen at its own size |
 | Choosing a World | `<` `>`, the title, or Option+W highlight an entry of `CHOOSE WORLD`: the four factory Worlds (in the firmware's order, by category), the World file when there is one, then `SLOOP PROJECTS`. The current one plays on. LOAD (or a second click, or Option+Return) confirms: at once while stopped, **on the next bar** while playing (design D10). CANCEL, a click outside or Esc forgets it |
 | Middle | A B C D with the World's scene names; the one playing filled, the one asked for marked `NEXT BAR`, then `CHANGES NEXT BAR: C LIFT · DREAMY`. `VAR < DREAMY >`: the variation, `n/N`; a click on its left or right half (or the wheel, or Option+V) asks for the previous or next one, on the next bar |
-| Controls | COLOR MOTION SPACE ENERGY, 0–100, with DARK/BRIGHT, STILL/ALIVE, CLOSE/HUGE, SPARSE/INTENSE. **Stand-ins until Phase 7**: positions that turn SLOOP's KNOB 1–4 by the same steps; what that changes is on the device's screen, and the line under them says so |
+| Controls | COLOR MOTION SPACE ENERGY, 0–100, with DARK/BRIGHT, STILL/ALIVE, CLOSE/HUGE, SPARSE/INTENSE. With a World they are its **macros** (`firmware/src/macro.c`, `host_macro_set`; the World's defaults when it loads): what each moves is the World's, and the line under them names the World and the ENERGY band playing (`ENERGY band 3/4: PAD BASS LEAD DRUMS`). With a SLOOP project they turn SLOOP's KNOB 1–4 by the same steps, and the line says so |
 | Performance | PLAY · REC · PULSE · BEAT · FX, with their LEDs: the FM-1's PLAY, REC, ARP, SEQ and FX buttons, held while the mouse is down (FX is a hold), right-click latches |
 | Tracks | Four strips named by the World's roles (PAD CHORDS BASS LEAD KEYS TEXTURE DRUMS), with a mute box, a level (LVL; the drum track's GLO > DRUMS level) and the sound; the track the keys play is underlined. A mute stays through scene changes (it is the player's) |
 | Input | `KEYS: SMART MELODY` once Smart Keys map the keys (`wrt.keys_on`, Phase 6 part B); until then `KEYS: SLOOP` with the track, key, scale and snap the keys use. `CHORD Dm` when the harmony runtime names the chord playing. The 27 keys with their LEDs and computer keys |
@@ -106,8 +106,14 @@ B MAIN all, C LIFT all with the drums +16 and the synth tracks' echo sends +24, 
 B plays; a scene brings its own mutes, as on the device. Loading one leaves the World (back to SLOOP's paths).
 
 **ADVANCED** is the raw panel, as in Phase 3. Advanced Mode on the device comes in Phase 14; here it means every SLOOP
-control with nothing in between. **The inspector** (Option+I, for developers) shows the selected track's raw
-parameters with their EDIT labels and values. In Phase 7 it will show the macros' hidden mappings.
+control with nothing in between. **The inspector** (Option+I, for developers) shows what the beginner UI never does:
+with a World, each macro's hidden mappings (`pad.brightness −24..+28 s`, `fx.delay_feedback −30..+8 lin`) with the
+parameter's effective value now on its range (`0.64`, with a bar in the knob's colour), then the cross-macro rules
+with their strength (0 at the thresholds, 1 at 100 %) and their actions, and the ENERGY band (`band 3/4 at 0.55`, the
+tracks it plays, FILL on a fill bar, the slots used of 48). Without a World, the selected track's raw parameters with
+their EDIT labels and values.
+
+![The inspector: NEON RAIN with COLOR at 20, SPACE and ENERGY at 90](images/inspector.png)
 
 ## Musical Worlds on the host
 
@@ -123,7 +129,9 @@ it includes, or their order, differ from `felucca.c`'s (hardware-only files apar
 | `host_world_request(scene, var)` | a scene and variation (`world_request`); −1 keeps one |
 | `host_world_reload_blob` | the World being authored, changed (`world_hot_reload`) |
 | `host_world(&w)` | what is loaded: name, category, blurb, tempo, scene and variation names, the committed and the asked-for ones, roles, the keys track, Smart Keys on, the chord |
-| `host_world_service()` | the main loop's part of a switch (`world_service`); `host_ui_frame` calls it, and the simulator before every block |
+| `host_world_service()` | the main loop's part of a switch (`world_service`) and of the macros (`macro_service`: a new target table when a knob moved, at most once a pass); `host_ui_frame` calls it, and the simulator before every block |
+| `host_macro_set(ctl, 0..1000)`, `host_macro(ctl)`, `host_macro_snap()` | a World's controls: COLOR MOTION SPACE ENERGY (and the later ones); home 500; `snap`: the table now, without the ramp (a renderer's start) |
+| `host_macro_slots`, `host_macro_mappings`, `host_macro_rules`, `host_energy` | the inspector's view: each parameter the macros move (name, base, offset, effective, normalised 0..1, class, which controls), each mapping and its share, each rule's strength, the ENERGY band |
 
 What happens while playing (`firmware/src/world.c`, "requests and accessors"):
 
@@ -139,13 +147,17 @@ What happens while playing (`firmware/src/world.c`, "requests and accessors"):
 
 **Rendering a World.** `sloop-render --world NAME|FILE [--scene A..D] [--var NAME|N] [--bars N] OUT.wav` renders a World
 (default: its scene and variation, 8 bars) through the real `world.c`; `--world-sequence` plays scenes A, B, C, D,
-`--bars` each, asking for each next scene in the last bar of the one before, as a player would. The macros
-(`--ctl`) come with Phase 7.
+`--bars` each, asking for each next scene in the last bar of the one before, as a player would. `--ctl
+COLOR=0.2,ENERGY=0.9` sets the macros before PLAY (0..1, or 0..100 above 1; any of COLOR MOTION SPACE ENERGY and the
+later controls), at once; `--sweep ENERGY` turns one from 0 to 1 over the bars played, as a hand would (smoothed).
+The World's defaults given with `--ctl` render the same bytes as none.
 
 ```
 build/host-bin/sloop-render --world "NEON RAIN" --dump --check build/renders/worlds/neon_rain-studio.wav
 build/host-bin/sloop-render --world 0x4ec4271e --scene C --var DREAMY --bars 4 build/renders/md-c.wav
 build/host-bin/sloop-render --world "NEON RAIN" --world-sequence --bars 2 build/renders/neon-abcd.wav
+build/host-bin/sloop-render --world "NEON RAIN" --ctl COLOR=0.2,SPACE=90 --check build/renders/neon-dark-huge.wav
+build/host-bin/sloop-render --world "MIDNIGHT DRIVE" --sweep ENERGY --bars 8 build/renders/md-energy.wav
 ```
 
 ### Authoring: hot reload
@@ -170,7 +182,8 @@ old World playing, and worldc's message, which names the place, shows on the sta
 - **Commands:** `play`, `stop`, `scene A..D`, `store A..D`, `mute N [on|off]`, `level N V|±S`, `bpm|swing|filter|dust|duck V|±S`,
   `master V`, `key K [down|up]` (a tap without down / up), `button NAME [down|up]`, `turn ENC STEPS`, `print`, `quit`.
   The Studio: `world NAME|N|next|prev` (choose), `confirm`, `cancel`, `var NAME|N|next|prev`,
-  `macro COLOR..ENERGY|1..4 V|±S`, `select N`. A name with spaces takes `_`: `world MIDNIGHT_DRIVE`.
+  `macro COLOR..ENERGY|1..4 V|±S` (0..100: a World's macro, or a project's KNOB 1–4), `select N`. A name with spaces
+  takes `_`: `world MIDNIGHT_DRIVE`.
 - **Expectations:** `expect FIELD OP VALUE`. The numeric fields are `playing scene next bpm filter mute1..4 level1..4
   macro1..4 sel voices gated rms peak time master`; `rms` and `peak` are the output's last 0.5 s, in dBFS; `voices`
   counts the synth voices sounding and `gated` those still held (0 right after STOP: no stuck note). `world`,
@@ -325,8 +338,8 @@ The group takes about 7 s.
 - **Output level.** The DAC's −6 dB is applied, and the MASTER pot starts fully up (on the device it is wherever the
   knob is). CoreAudio resamples when the output does not run at 44.1 kHz.
 - **Worlds.** A scene or variation change is quantised to one bar (a scene's 2- and 4-bar transitions, fills and
-  held-note continuity are Phase 11). Another World while playing restarts on the bar. The macros are stand-ins until
-  Phase 7, and the keys are SLOOP's until Smart Keys (Phase 6 part B). The device has no World UI yet (Phase 9).
+  held-note continuity are Phase 11). Another World while playing restarts on the bar. The macros are a World's own
+  (Phase 7); the device has no World UI to turn them yet (Phase 9: K1–K4 on HOME).
 
 ## What later phases add
 
@@ -335,6 +348,6 @@ The Studio's model (`studio_t`) and `host_world` are where later phases show up;
 | Field | Now | Later |
 | --- | --- | --- |
 | `keys`, `keys_smart`, `chord` | SLOOP's keys; the chord when the harmony runtime gives it | `SMART MELODY` and the chord (Phase 6 part B: `wrt.keys_on`, `harm_chord_name`) |
-| `macro[]`, `macro_live` | positions turning KNOB 1–4 | the control positions (Phase 7); the inspector shows the mappings |
+| `macro[]`, `macro_live` | a World's macro positions (Phase 7), a project's KNOB 1–4 | SOUND SHAPE, MOVEMENT and LIVE FX on the same controls (Phase 13) |
 | `pending`, scene changes | a commit on the next bar, a World switch by a restart | transitions of 2 and 4 bars, seamless World switches (Phase 11) |
 | `w[]` | the factory Worlds, a World file, SLOOP projects | user Worlds from the World store (Phase 14) |
