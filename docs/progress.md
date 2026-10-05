@@ -1098,3 +1098,51 @@ Studio's four knobs, the wheel and Shift+Z/X … M/, turn the device's KNOB 1–
   come.
 
 **Next.** Phase 17 (hardware, which needs the owner's FM-1) and Phase 18 (the factory library).
+
+## Phase 17: Hardware integration — prepared, awaiting the FM-1 session (2026-10-05)
+
+**Status.** Prepared, **not run**. The owner's FM-1 was not connected. Nothing was installed or flashed, and no USB or
+MIDI device was touched. Running the session is the owner's step.
+
+**Ready for the session.**
+
+- **[hardware-test-plan.md](hardware-test-plan.md).** A printable plan:
+  - backups, and the path back to stock (M-UPGRADE);
+  - build and install, via the local web installer or `tools/fm1_install.py`;
+  - a recovery table:
+    - OCT− at power-on: USB rescue;
+    - OCT− + OCT+ for 5 s: UBOOT;
+    - FM-1-transporter.
+
+    Careful: OCT− + OCT+ *at power-on* is HARDWARE CALIBRATION, not recovery.
+  - tests T1–T17: boot and FIRST screen, display, encoders, buttons, keys and Smart Keys, audio, CPU, RAM/flash
+    (including the user-World region surviving an update), effects, scenes, recording, guardrails, Advanced Mode,
+    SLOOP regression, the five-minute beginner test, and a simulator-versus-hardware sheet.
+- **Console command `flow`.** One line: mode, World, scene, variation, macros, ENERGY band, voices, `cpu_q8`, the
+  guard's CPU estimate/load/hold, `max_us`, `late`, `shed`. Read-only, +728 B.
+- **`tools/fm1_monitor.py`** (stdlib only):
+  - logs `flow` and `status` to CSV with a live summary;
+  - `--fit` proposes `GL_CPU_FULL` and `GL_CPU_BUDGET` from the device's `cpu_q8`;
+  - `--dump-flash` for the before/after loader check;
+  - `--cmd` sends read-only commands.
+
+  It is tested without hardware against a pseudo-terminal console (`tests/fm1_monitor_test.py`, now in
+  `run_tests.sh`).
+- **[hardware-calibration.md](hardware-calibration.md).** CPU guard calibration, display timings, the loader and the
+  `0xE5000–0xFBFFF` region, key-to-sound latency.
+
+**To do in the session.**
+- Run T1–T17.
+- Fit and apply the CPU constants (the placeholders are 2,700 / 2,300 host instructions/sample).
+- Confirm the update loader and rescue leave `0xE5000–0xFBFFF` alone.
+- Record display timings and latency.
+- Run the beginner test with someone new.
+
+**Image:** 561,296 B.
+
+**Commits:** `a092b40`. Phase 15 (`b8e22ff`–`e5ebefc`) is logged above.
+
+**Next.** Phase 18: the factory library.
+- Free flash first: the large font drawn as the small one doubled, pixel-identical, about 24 KB; then possibly
+  compressed factory blobs.
+- Then 26 new Worlds across CINEMATIC, AMBIENT, SYNTHWAVE, LO-FI and GROOVE.
