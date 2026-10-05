@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/flowstate-fm1/worlds/schema/world.schema.json",
+  "title": "Flowstate Musical World (source)",
+  "description": "A Musical World source, worlds/<factory|user>/<id>.world.json. Normative with docs/design/fwd1-format.md and docs/worlds.md. Names of engines, presets, parameters, kits and lanes are checked by tools/worldc.py against worlds/schema/sloop-params.json; the enums below are checked against firmware/src/world_fmt.h by tests/worldc_test.py.",
+  "type": "object",
+  "required": ["format", "id", "name", "category", "tempo", "key", "tracks", "progressions", "scenes", "smart_keys"],
+  "additionalProperties": false,
+  "properties": {
+    "notes": {"$ref": "#/$defs/notes"},
+    "format": {"const": "flowstate-world/1"},
+    "id": {"type": "string", "pattern": "^[a-z0-9_]{1,24}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 14, "pattern": "^[A-Z0-9 &'.-]+$"},
+    "category": {"type": "string", "minLength": 1, "maxLength": 10, "pattern": "^[A-Z0-9 &'.-]+$"},
+    "blurb": {"type": "string", "maxLength": 24},
+    "tempo": {
+      "type": "object", "required": ["bpm"], "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "bpm": {"type": "integer", "minimum": 40, "maximum": 240},
+        "min": {"type": "integer", "minimum": 40, "maximum": 240},
+        "max": {"type": "integer", "minimum": 40, "maximum": 240}
+      }
+    },
+    "key": {
+      "type": "object", "required": ["root", "scale"], "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "root": {"type": "string", "pattern": "^[A-G][#b]?$"},
+        "scale": {"$ref": "#/$defs/scale"}
+      }
+    },
+    "swing": {"type": "integer", "minimum": 0, "maximum": 100},
+    "tracks": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/track"}},
+    "fx": {"$ref": "#/$defs/fx"},
+    "patterns": {
+      "type": "object", "maxProperties": 64,
+      "propertyNames": {"pattern": "^[A-Za-z0-9_]{1,24}$"},
+      "additionalProperties": {"$ref": "#/$defs/pattern"}
+    },
+    "progressions": {
+      "type": "object", "minProperties": 1, "maxProperties": 16,
+      "propertyNames": {"pattern": "^[A-Za-z0-9_]{1,24}$"},
+      "additionalProperties": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"type": "string"}}
+    },
+    "scenes": {
+      "type": "object", "required": ["A", "B", "C", "D"], "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "A": {"$ref": "#/$defs/scene"}, "B": {"$ref": "#/$defs/scene"},
+        "C": {"$ref": "#/$defs/scene"}, "D": {"$ref": "#/$defs/scene"}
+      }
+    },
+    "variations": {
+      "type": "object", "minProperties": 1, "maxProperties": 8,
+      "propertyNames": {"pattern": "^[A-Z0-9 &'.-]{1,10}$"},
+      "additionalProperties": {"$ref": "#/$defs/variation"}
+    },
+    "macros": {
+      "type": "object",
+      "propertyNames": {"enum": ["COLOR", "MOTION", "SPACE", "ENERGY"]},
+      "additionalProperties": {"type": "array", "items": {"$ref": "#/$defs/mapping"}}
+    },
+    "controls": {
+      "type": "object",
+      "propertyNames": {"enum": ["SOFT", "SHORT", "BODY", "TAIL", "DRIFT", "WOBBLE", "PULSE", "RATE", "FILTER", "ECHO", "CRUSH", "FREEZE"]},
+      "additionalProperties": {"type": "array", "items": {"$ref": "#/$defs/mapping"}}
+    },
+    "curves": {
+      "type": "object", "maxProperties": 8,
+      "propertyNames": {"pattern": "^[A-Za-z0-9_]{1,24}$"},
+      "additionalProperties": {"$ref": "#/$defs/curve"}
+    },
+    "rules": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/rule"}},
+    "energy": {
+      "type": "object", "maxProperties": 4,
+      "propertyNames": {"pattern": "^[A-Za-z0-9_]{1,24}$"},
+      "additionalProperties": {"$ref": "#/$defs/energy"}
+    },
+    "smart_keys": {
+      "type": "object", "required": ["track"], "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "track": {"type": "string"},
+        "mode": {"enum": ["melody", "chords", "bass", "drums"]},
+        "melody_scale": {"anyOf": [{"$ref": "#/$defs/scale"},
+                                   {"type": "array", "minItems": 1, "maxItems": 12, "items": {"type": "integer", "minimum": 0, "maximum": 11}}]},
+        "white": {"enum": ["scale", "safe"]},
+        "black": {"enum": ["chord", "chord+9"]},
+        "tonic": {"$ref": "#/$defs/note"},
+        "range": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/note"}}
+      }
+    },
+    "guard": {"$ref": "#/$defs/guard"},
+    "defaults": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "scene": {"enum": ["A", "B", "C", "D"]},
+        "variation": {"type": "string"},
+        "macros": {"$ref": "#/$defs/four"},
+        "pulse": {"enum": ["OFF", "SLOW", "PULSE", "DRIVE"]},
+        "beat": {"enum": ["MINIMAL", "GROOVE", "BUSY", "BREAK"]},
+        "shape": {"$ref": "#/$defs/four"},
+        "movement": {"$ref": "#/$defs/four"}
+      }
+    }
+  },
+  "$defs": {
+    "notes": {"type": "string", "description": "free text; every object accepts it and the compiler ignores it"},
+    "note": {"type": "string", "pattern": "^[A-G][#b]?(-1|[0-9])$"},
+    "unit": {"type": "number", "minimum": 0, "maximum": 1},
+    "four": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/unit"}},
+    "scale": {"enum": ["CHR", "MAJ", "MIN", "DOR", "MIX", "PEN", "MPEN", "HARM", "PHRY", "LYD", "LOC", "MEL", "BLUES", "WHOLE", "DIMHW", "DIMWH"]},
+    "value": {"type": ["integer", "string"]},
+    "values": {"type": "object", "additionalProperties": {"$ref": "#/$defs/value"}},
+    "fx": {
+      "type": "object",
+      "propertyNames": {"enum": ["swing", "dtime", "dfdbk", "dcolor", "dmix", "rsize", "rdamp", "crate", "cdepth", "drlvl", "drrev", "dust", "duck", "filt"]},
+      "additionalProperties": {"$ref": "#/$defs/value"}
+    },
+    "track": {
+      "type": "object", "required": ["name", "role", "sound"], "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,11}$"},
+        "role": {"enum": ["pad", "chords", "bass", "lead", "keys", "texture", "drums"]},
+        "register": {"$ref": "#/$defs/note"},
+        "sound": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "notes": {"$ref": "#/$defs/notes"},
+            "engine": {"type": "string"},
+            "preset": {"type": ["string", "integer"]},
+            "kit": {"type": ["string", "integer"]},
+            "params": {"$ref": "#/$defs/values"}
+          }
+        }
+      }
+    },
+    "pattern": {
+      "type": "object", "required": ["track"], "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "track": {"type": "string"},
+        "div": {"enum": ["1/4", "1/8", "1/16", "1/32", "8T", "16T"]},
+        "steps": {"type": "string", "minLength": 1},
+        "lanes": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "pattern": "^[.xXsg234|]+$"}}
+      }
+    },
+    "scene": {
+      "type": "object", "required": ["name", "role", "progression"], "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 10, "pattern": "^[A-Z0-9 &'.-]+$"},
+        "role": {"enum": ["intro", "main", "lift", "breakdown"]},
+        "progression": {"type": "string"},
+        "energy": {"type": ["string", "null"]},
+        "transition": {"enum": [1, 2, 4]},
+        "fill": {"type": ["string", "null"]},
+        "patterns": {
+          "type": "object",
+          "additionalProperties": {"anyOf": [
+            {"type": ["string", "null"]},
+            {"type": "object", "propertyNames": {"enum": ["MINIMAL", "GROOVE", "BUSY", "BREAK"]},
+             "additionalProperties": {"type": ["string", "null"]}}]}
+        },
+        "params": {"$ref": "#/$defs/values"},
+        "fx": {"$ref": "#/$defs/fx"}
+      }
+    },
+    "variation": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "sounds": {"type": "object", "additionalProperties": {"type": ["string", "integer"]}},
+        "params": {"$ref": "#/$defs/values"},
+        "fx": {"$ref": "#/$defs/fx"},
+        "swap": {"type": "object", "additionalProperties": {"type": "string"}},
+        "energy_bias": {"type": "number", "minimum": -0.25, "maximum": 0.25}
+      }
+    },
+    "curve": {"anyOf": [
+      {"type": "array", "minItems": 9, "maxItems": 9, "items": {"$ref": "#/$defs/unit"}},
+      {"type": "object", "required": ["points"], "additionalProperties": false,
+       "properties": {"points": {"type": "array", "minItems": 2,
+                                 "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/unit"}}}}},
+      {"type": "object", "required": ["lut"], "additionalProperties": false,
+       "properties": {"lut": {"type": "array", "minItems": 9, "maxItems": 9, "items": {"type": "integer", "minimum": 0, "maximum": 255}}}}
+    ]},
+    "mapping": {
+      "type": "object", "required": ["to"], "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "to": {"type": "string"},
+        "min": {"type": "integer", "minimum": -128, "maximum": 127},
+        "max": {"type": "integer", "minimum": -128, "maximum": 127},
+        "curve": {"anyOf": [{"type": "string"}, {"$ref": "#/$defs/curve"}]},
+        "smooth": {"enum": ["fast", "medium", "slow", "stepped"]},
+        "saturate": {"type": "boolean"}
+      }
+    },
+    "rule": {
+      "type": "object", "required": ["if", "then"], "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "if": {"type": "object", "minProperties": 1, "maxProperties": 2, "additionalProperties": {"type": "number", "minimum": 0, "maximum": 0.996}},
+        "then": {"type": "array", "minItems": 1, "maxItems": 4,
+                 "items": {"type": "object", "required": ["to", "add"], "additionalProperties": false,
+                           "properties": {"to": {"type": "string"}, "add": {"type": "integer", "minimum": -128, "maximum": 127},
+                                          "notes": {"$ref": "#/$defs/notes"}}}}
+      }
+    },
+    "energy": {
+      "type": "object", "required": ["bands"], "additionalProperties": false,
+      "properties": {
+        "notes": {"$ref": "#/$defs/notes"},
+        "density_lanes": {"anyOf": [{"const": "all"}, {"type": "array", "items": {"type": "string"}}]},
+        "bands": {"type": "array", "minItems": 1, "maxItems": 4, "items": {
+          "type": "object", "required": ["from"],
+          "properties": {
+            "notes": {"$ref": "#/$defs/notes"},
+            "from": {"$ref": "#/$defs/unit"},
+            "layers": {"anyOf": [{"const": "all"}, {"type": "array", "items": {"type": "string"}}]},
+            "drums": {"anyOf": [{"const": "all"}, {"type": "array", "items": {"type": "string"}}]},
+            "density": {"type": "string", "pattern": "^[.xX|]+$"},
+            "fills": {"type": "boolean"},
+            "ratchets": {"type": "boolean"}
+          },
+          "additionalProperties": {"type": "string", "pattern": "^[.xX|]+$"}
+        }}
+      }
+    },
+    "guard": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "notes": {"description": "note rules per synth track (not a comment here)", "type": "object",
+                  "additionalProperties": {"type": "object", "additionalProperties": false, "properties": {
+                    "notes": {"$ref": "#/$defs/notes"},
+                    "range": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/note"}},
+                    "max_poly": {"type": "integer", "minimum": 1, "maximum": 4},
+                    "loop_follow": {"enum": ["off", "snap"]},
+                    "avoid": {"enum": ["classic", "none", "strict"]}}}},
+        "record": {"type": "object", "additionalProperties": false, "properties": {
+          "notes": {"$ref": "#/$defs/notes"},
+          "quantize": {"$ref": "#/$defs/unit"}, "max_notes": {"type": "integer", "minimum": 1, "maximum": 4}}},
+        "sound": {"type": "object", "additionalProperties": false, "properties": {
+          "notes": {"$ref": "#/$defs/notes"},
+          "ranges": {"type": "object", "additionalProperties": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}},
+          "max_level": {"type": "integer"}, "max_reso": {"type": "integer"}, "max_dfdbk": {"type": "integer"},
+          "max_rsize": {"type": "integer"}, "max_dist": {"type": "integer"}, "max_dust": {"type": "integer"}}},
+        "arrangement": {"type": "object", "additionalProperties": false, "properties": {
+          "notes": {"$ref": "#/$defs/notes"},
+          "mute_change": {"enum": ["bar", "2bars", 1, 2]}, "density_change": {"enum": ["beat", "bar"]},
+          "fills_every": {"type": "integer", "minimum": 1, "maximum": 32},
+          "min_band_bars": {"type": "integer", "minimum": 1, "maximum": 16}}},
+        "cpu": {"type": "object", "additionalProperties": false, "properties": {
+          "notes": {"$ref": "#/$defs/notes"},
+          "max_unison": {"type": "integer", "minimum": 1, "maximum": 8},
+          "grain_dens": {"type": "integer", "minimum": 0, "maximum": 127},
+          "max_dist_tracks": {"type": "integer", "minimum": 0, "maximum": 3},
+          "ceiling": {"type": "number", "minimum": 0.004, "maximum": 1}}}
+      }
+    }
+  }
+}
