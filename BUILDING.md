@@ -18,6 +18,10 @@ Set `SLOOP_WSL_DISTRO` (default `Ubuntu`) and `SLOOP_TOOLCHAIN` (a Linux path, d
 
 ## Prerequisites (macOS)
 
+`tools/setup-macos.sh` checks all of this and installs what is missing (the toolchain, the SDK
+files, the container image); it is safe to run again. Details, pinned versions and troubleshooting:
+[docs/macos-development.md](docs/macos-development.md).
+
 - Python 3 with Pillow: `pip3 install Pillow`
 - Docker Desktop. The JieLi toolchain is Linux x86-64 only; the build runs each tool in a
   `linux/amd64` `debian:bookworm-slim` container (Rosetta on Apple silicon). Keep the source
@@ -25,7 +29,7 @@ Set `SLOOP_WSL_DISTRO` (default `Ubuntu`) and `SLOOP_TOOLCHAIN` (a Linux path, d
 - The JieLi Linux toolchain (clang 4.0.1 for pi32v2, from JieLi's package server):
 
   ```
-  tools/get_toolchain.sh            # installs to ~/.jieli/toolchain
+  tools/get_toolchain.sh            # installs to ~/.jieli/toolchain (pinned, SHA-256 checked)
   ```
 
 - The JieLi AC79 SDK (Apache-2.0). The package uses three of its files
@@ -35,6 +39,8 @@ Set `SLOOP_WSL_DISTRO` (default `Ubuntu`) and `SLOOP_TOOLCHAIN` (a Linux path, d
   git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
       https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK
   ```
+
+  or only the three files, checked against `tools/build.py`: `tools/fetch_sdk.py`
 
 - Node.js (optional, for the web tests).
 
@@ -48,6 +54,12 @@ On Linux x86-64 the toolchain runs natively and Docker is not needed.
 
 `JIELI_TOOLCHAIN` and `AC79_SDK` override the default locations
 (`~/.jieli/toolchain`, `~/fw-AC79_AIoT_SDK`).
+
+`SOURCE_DATE_EPOCH=<Unix time> ./build.sh` takes the build date on the ABOUT page from that UTC
+time instead of the day of the build, so a rebuild is byte-identical (see docs/macos-development.md).
+
+`python3 tools/build.py --gen-only` makes only the generated headers in `build/gen` (no toolchain,
+Docker or SDK).
 
 `./build.sh --release 0.9-beta` makes a release build: the package identity becomes
 `FM-1_909` and the version string `0.9-BETA`; the package is `build/felucca-0.9-beta.fwsc`.
@@ -78,6 +90,8 @@ Runs the host tests (flash storage, user presets, MIDI parser, update entry, upd
 loader, a DSP render, the 4-track mix, project formats, the SLICER, the regression suite,
 the command-line installer) and, with Node.js, the web page tests. Run it after `./build.sh`
 (it uses `build/` and needs `AC79_SDK` set as for the build).
+`tests/run_tests.sh --host-only` needs no build: it skips the update entry, the update loader and
+the target cost check.
 
 The regression suite (`tests/regress.c`) renders every engine and preset and compares a
 hash of each render with `tests/golden.txt`; it also checks levels, voices and the CPU
