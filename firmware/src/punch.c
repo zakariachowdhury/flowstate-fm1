@@ -141,7 +141,7 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
     for (i = 0; i < n; i++) {
         int32_t x = l[i], y = r[i], wl = x, wr = y, m = (x + y) >> 1;
         int32_t fx = punch.cur;
-        uint32_t target = want == fx ? 32767u : 0u;
+        uint32_t target = want == fx && fx >= 0 ? 32767u : 0u;   /* (none playing: 0, so the next one fades in) */
         punch_ring[punch.w & (PUNCH_N - 1u)] = (int16_t)clamp(m >> 3, -32768, 32767);
         switch (fx) {
         case PX_LPF:
