@@ -264,8 +264,8 @@ Suffixes come after the token (`c1!`, `[1 5]_`, `c9*2`) and can be combined (`c7
 **Chord tokens follow the progression.** They are resolved against the progression of each scene that plays the
 pattern:
 
-- **The chord root.** It is placed in the track's register: within a fifth below to a tritone above the track's tonic. In A minor with a bass register A1, i is A1, VI is F1, III is C2 and VII is G1. The bass and pads therefore move by small steps.
-- **The tones.** `c3`, `c5` and `c7` are the chord's own tones, so `c3` is the minor third on a minor chord. When the chord lacks a tone, the token gives the root an octave up: `c7` on a triad, `c3` on a power chord. On a 6th chord, `c7` is the 6th.
+- **The chord root.** It is placed in the track's register: from a fourth below to a tritone above the track's tonic (a chord root up to 6 semitones above the key's root sits above the tonic, one 7–11 above it below). In A minor with a bass register A1, i is A1, VI is F1, III is C2 and VII is G1. The bass and pads therefore move by small steps.
+- **The tones.** `c3`, `c5` and `c7` are the chord's own tones, so `c3` is the minor third on a minor chord, and the suspended note (the 2nd or the 4th) on a sus chord. When the chord lacks a tone, the token gives the root an octave up: `c7` on a triad, `c3` on a power chord. On a 6th chord, `c7` is the 6th.
 - **The 9th.** `c9` is the major 9th, unless that note is outside the World's scale and the minor 9th is inside it.
 - **Unrolling.** A pattern with chord tokens is unrolled to the shortest repeat of the pattern against the progression: at most `lcm(pattern length, progression length in steps)`, and at most 64 steps. A 16-step bass line over a 16-beat progression at 1/16 becomes 64 steps; over `["i:4", "i:4"]` it stays 16.
 - **One copy per progression.** The pattern is compiled once for each progression it meets, and identical results are shared. This counts against the pool of 16 ([§17](#17-limits)).
@@ -410,7 +410,7 @@ SHORT, BODY, TAIL, DRIFT, WOBBLE, PULSE, ECHO, CRUSH, FREEZE) use only `max`. RA
 | `*.level` | the parameter on every synth track (common parameters only) | one offset per track |
 | `pad+bass.chor` | on these tracks | as above |
 | `keys.@RESO` | the engine role: `@BRIGHT @RESO @DRIVE @SHAPE @DETUNE @AIR @MOVE @BODY` | the parameter that plays the role on the engine the track runs (ANALOG `@BRIGHT` is CUT, DIGITAL's is IDX, ...: `worldc.py names ENGINE`); none on that engine: nothing (worldc warns). Another engine on the track later (Advanced): the role follows it |
-| `pad.~bright`, `pad.~shape` | the smooth brightness / timbre offset every engine has | an offset for every voice of the track on the engine's cutoff (or what it uses as brightness) and shape, in 1/256 steps: no zipper, the authored parameter untouched; at most ±64 steps |
+| `pad.~bright`, `pad.~shape` | the smooth brightness / timbre offset of the engine | an offset for every voice of the track on what the engine uses as brightness and shape, in 1/256 steps: no zipper, the authored parameter untouched; at most ±64 steps. `~bright` is the filter cutoff on ANALOG, TRIO, SAMPLE and GRAIN, LOFI's TONE (upward only), DIGITAL's FM index, PHASE's DCW (not monotonic: [§18](#18-gotchas)), VOICE's vowel; WHEEL has neither (use `@BRIGHT`, its TOP) |
 | `g.dfdbk` | a World global (not `dtime` or `swing`) | the global |
 | `drums.level` | the same as `g.drlvl` | the global |
 
@@ -428,8 +428,10 @@ Several mappings (and rules) on one target **add up** into one offset. A World h
   (250 ms), `stepped` (at once). Enum targets (WHEEL's ROTR) are always stepped. A target several mappings move
   takes the slowest of their classes; a target only a rule moves, medium. Every parameter glides to its new value
   (one pole at 1378 steps a second), so a knob turned fast never clicks.
-- `saturate`: `true` when the mapping is meant to reach its parameter's maximum at 100 % (`worldc check` refuses
-  one that does without it: "100 % is never all-max").
+- `saturate`: `true` in a **user** World when the mapping is meant to reach its parameter's maximum at 100 %
+  (`worldc check` refuses one that does without it: "100 % is never all-max"). A factory World may not say it: the
+  blob carries no such flag, and the factory checks on the real firmware (`world_render --macros`, `macro_test`'s
+  grid) hold every factory mapping short of the maximum.
 
 **Limits** that no mapping passes, whatever it says (`firmware/src/guard_limits.h`):
 - every value stays inside its parameter's range;
@@ -446,9 +448,12 @@ against the C engine by `tests/run_tests.sh`) over every scene × variation and 
 refuses a World where:
 - a mapping alone takes its parameter outside its range, or past a hard limit above (the firmware would clamp it:
   make the mapping smaller);
-- a mapping reaches its parameter's maximum at 100 % without `"saturate": true`;
+- a mapping reaches its parameter's maximum at 100 % without `"saturate": true` (a factory World: at all);
 - more than 48 targets move at once;
-- the Smart Keys range is under an octave.
+- the Smart Keys range is under an octave, or (a factory World) folds any of the 27 keys at OCT 0 ([§13](#13-smart-keys));
+- (a factory World) a LOFI track plays the chip's own arpeggio (`ARP` MAJ or MIN, [§18](#18-gotchas)).
+
+A user World gets the last two as warnings.
 
 Mappings and rules that only together run past the top of a range or a limit are a warning: the firmware holds them there.
 
@@ -575,6 +580,12 @@ What the keys play (SMART MELODY, Phase 6, design §4; `firmware/src/smartkeys.c
   new chord.
 - **Every note** is shifted by OCT−/OCT+ and then folded by octaves into `range`. A range under an octave is widened
   upward to one.
+- **The range holds all 27 keys at OCT 0.** The white keys span from a 6th or 7th below the tonic to two octaves and a
+  2nd or 3rd above it; the black keys climb one chord tone a key, so over a triad they reach about two octaves and a
+  7th above the tonic (tonic D4, MPEN: F3..C7). `worldc` works the span out over every chord the scenes play: a factory
+  World whose range folds any key back fails (the keyboard would stop climbing in order, and OCT would not move the
+  end keys by an octave), a user World is warned. Put the tonic where the instrument sits (the default is the root
+  nearest C4), then set `range` to the span: with a tonic above D4 the black keys climb past C7.
 - **A held note never moves.** It sounds until its key is released, whatever the chord, scene or octave is by then.
 - `guard.notes.<keys track>.max_poly` caps the keys held at once. A key over the cap stays silent.
 
@@ -596,7 +607,9 @@ MIDI in on the keys track plays the same map, with MIDI note 60 as the C4 key.
 ```
 
 Every field is optional. An unset field takes the firmware default (design §6.1). `guard.notes` is keyed by synth
-track. `max_poly`, `loop_follow` and `avoid` apply to the Smart Keys track only.
+track. `max_poly`, `loop_follow` and `avoid` apply to the Smart Keys track only. A note `range` folds only what the
+player plays (the Smart Keys and MIDI in); the patterns sound as written, and `world_render` holds them to their
+role's register: bass E1–G3, pad, chords and keys E2–E6, lead and texture C3–C7.
 
 `sound.ranges` keys are targets as in [§10](#10-macros-controls-curves): the macros keep each one's effective value
 inside `[lo, hi]` (a base the World put outside stays). `sound.combos` are sound combinations: while every `when`
@@ -686,7 +699,8 @@ The globals follow the same order: SLOOP defaults, then `swing`, `fx`, the varia
 
 The design's §2.4 example compiles to 930 B, and `worlds/test/full.world.json` to 1,158 B. Most of a World's
 bytes are its patterns: a chord-token bass line unrolled to 64 steps is about 80–140 B. Repeated notes are cheap,
-because a step that repeats the previous note costs 2 B.
+because a step that repeats the previous note costs 2 B. A soft, ghost or hard step (`_`, or a ratchet) costs 2 B more
+than a plain one; an accent (`!`) and a slide (`~`) are free (flag bits).
 
 ---
 
@@ -714,6 +728,17 @@ because a step that repeats the previous note costs 2 B.
   (96), soft (72) −2.5 dB, ghost (42) −7 dB; drum hits are 100, hard 127, soft 72, ghost 42.
 - **Sine basses are loud.** A sustained `SUB BASS` at level 96 alone measured −11 LUFS, louder than a whole backing
   should be. Measure each part alone (`world_render --mute`).
+- **Sounds differ widely in loudness** at the same `level`. VOICE's CHOIR AAH and SOUL OOH are very loud, and more so
+  in POLY when the player mashes chords (give them a low level); PHASE's RESO PLUCK and CZ BASS are quiet; GRAIN's FLUTE
+  DUST is about 6 LU louder than LOFI CLOUD. The sampled kits DUST and DEEP are 6–7 dB louder than the synthesised
+  kits, and JAZZ and VINTAGE very soft: set `drums.level` per kit (a variation that swaps the kit, too).
+- **The limiter starts at about −5.2 dBFS** (`fx.c` `LIM_T`). Peaky material drives it: short stabs, several drum hits
+  on one step, a stab on every kick. `world_render` fails a render where it takes more than 6 dB over 5 % of the
+  time; lower the stab or move it off the kick rather than lowering everything.
+- **Loudness is gated** (BS.1770, as `world_render` measures it): silence does not count. Adding a quiet layer to a
+  sparse band can lower the measured LUFS, because blocks that were gated out now count; and `--bands` fails a band
+  that plays fewer notes or hits than the one below it, so a fill with fewer hits than the groove it replaces fails
+  too.
 - **Fill toms hit like kicks.** The synthesised kits' toms peak as high as the kick: write fills with soft toms.
 - **`c9` follows the scale.** On a chord whose major ninth is outside the World's scale (iii and vii in a major key,
   ii and v in a natural minor), `c9` is the minor ninth: a rootless voicing with `c9` turns harsh there. Keep such
@@ -732,29 +757,105 @@ because a step that repeats the previous note costs 2 B.
   sit clearly inside a band (the factory Worlds keep 0.05 or more), or a variation drops a layer by accident.
 - **Long echoes need room.** A `1/4` delay at 66–72 BPM repeats every ~0.85 s; with SPACE at 100 % the feedback
   must still let the tail fall below −60 dBFS within 6 s of STOP (design 12.3). The factory Worlds keep the base
-  `dfdbk` at 60 or below there and SPACE adds at most +8.
+  `dfdbk` at 60 or below there and SPACE adds at most +8. Releases count too: a long `rel` that SPACE lengthens
+  further (`*.rel` with `rev` and `rsize`) can fail the same tail check (`no invalid feedback`).
+- **Swing is per pattern division.** It delays every second step of each pattern's own grid: a `1/4` pattern swings
+  beats 2 and 4, a `1/8` pattern its off-beat eighths, a `1/16` pattern (the drums) its second and fourth
+  sixteenths, so its eighths stay straight. A `1/8` part therefore swings against the drums' straight eighths: write
+  parts that must lock at the same division. Triplet divisions (`8T`, `16T`) swing every second triplet: give a World
+  with triplet patterns swing 0 (a track's `sswing` adds to the World's).
+- **Phrase transitions can be long.** `"transition": "phrase"` waits for the playing progression's length: 32 beats
+  at 60 BPM is 32 s before the scene changes.
 - **A swap is one pattern for one.** A pattern without chord tokens that plays over several progressions is one
   pool entry: it cannot swap to a chord-token pattern, which differs per progression (worldc refuses it). Give that
   scene its own pattern.
 - **Preset transposition is for the keys.** `TRANS` (−24 on SUB BASS, −12 on GB BASS) moves what the keys play;
-  pattern notes sound as written.
+  pattern notes sound as written. SAMPLE's `TUNE` is not a transposition: it retunes the sample, so it moves the
+  pattern notes too.
+- **PHASE's DCW is not a filter.** `@BRIGHT` and `~bright` on PHASE move DCW, the bend of the wave, and what that does
+  depends on the wave: SOFT KEYS darkens as DCW rises, CZ STRING is darkest near its preset's 50 and brighter both
+  ways, the resonant waves of CZ BASS and RESO PLUCK move a resonance the ear hardly hears as brightness, CZ BRASS
+  brightens. The amplitude envelope bends it too (`ENV`). Map COLOR the way that brightens (MEMORY ARCHIVE and TAPE
+  MEMORY turn SOFT KEYS' DCW down as COLOR rises, and the "darker" variation turns it up), or leave the PHASE part out
+  of COLOR; `tests/macro_test.c` checks that the first part COLOR moves through `~bright` gets brighter at 100 %.
+- **WHEEL has no `~bright` or `~shape`**: map `@BRIGHT` (TOP, −8..8) instead. GOSPEL's rotor is FAST: set `"ROTR":
+  "SLOW"` (or `OFF`) for a held organ.
+- **VOICE: the filter moves the vowel.** `ld_flt`, `ed_flt` and `~bright` move the vowel; `ld_shp` and `~shape` move
+  BUZZ (its `@BRIGHT`), which changes the loudness as well as the colour.
+- **GRAIN's TONE is a gentle low-pass**: a wide `@BRIGHT` range moves it only a little. LOFI's `~bright` only opens its
+  TONE (a negative offset does nothing): darken LOFI with `@BRIGHT`.
+- **LOFI's chip arpeggio is out of key.** `ARP` MAJ (the 8BIT ARP preset's own) or MIN plays every note as a fast
+  triad, a major one over the minor degrees too, and no in-key check hears it (the sequencer and the keys play one
+  note). worldc refuses it in a factory World and warns in a user World: set `"ARP": "OFF"` or `"OCT"`, and write
+  arpeggios as patterns (or leave them to PULSE).
+- **SAMPLE's VIBES opens `CUT` at 127**, so COLOR's `@BRIGHT` has nowhere to go (100 % is never all-max): lower it in
+  the track's params (TAPE MEMORY: 108).
+- **A player mashing the keys** (`world_render --mash`, every scene × variation in `tests/run_tests.sh`): one or two
+  keys most eighths, held up to half a bar, every note in key and in range and nothing left after STOP. With a
+  polyphonic Smart Keys sound, `max_poly` decides how many stack up over the World's own voices: keep it at 2–3 for
+  long releases, or play MONO / LEGATO.
 - **The Smart Keys reach past the top white key.** The black keys climb to chord tones above the highest white key
-  (design 4.1): with the tonic D4 and MPEN the 27 keys reach C7. `range` must hold all of them.
+  (design 4.1): with the tonic D4 and MPEN the 27 keys reach C7. `range` must hold all of them, and worldc refuses a
+  factory World whose range folds one ([§13](#13-smart-keys)). A tonic above about D4 takes them past C7: of the
+  Phase 18 Worlds, four moved their tonic down an octave to keep the top of their range, and ARCADE '89 kept G4
+  (its chip lead an octave down swung the pulse wave at full scale) with the range up to G7.
 
 ---
 
 ## 19. Factory Worlds
 
-The four demo Worlds of the UI spec (§11). Each starts on scene B with ORIGINAL, the macros at home (ENERGY at 0.55
-in NEON RAIN and MIDNIGHT DRIVE) and PULSE off.
-Every scene × variation is rendered by `tests/run_tests.sh` ([§1](#1-quick-start)).
+Thirty Worlds in five categories (Phase 18): the four demo Worlds of the UI spec (§11) and 26 more. CHOOSE WORLD
+lists them by category, then name; a first boot opens NEON RAIN (by its id). Each starts on scene B with ORIGINAL,
+the macros at home (ENERGY at 0.55 in NEON RAIN and every GROOVE and SYNTHWAVE World), PULSE off and BEAT on GROOVE.
+Every one validates clean (`tools/validate-world`, 17 of 17), and `tests/run_tests.sh` plays every scene × variation
+of each World it chooses ([§1](#1-quick-start); `WORLDS=all` for all 30). At their defaults they measure −17.3 to
+−16.3 LUFS, within 1.1 LU of each other.
 
-| World | Category | BPM | Key, Smart Keys | Tracks: 1 · 2 · 3 (Smart Keys) · drums | Scenes A · B · C · D | Variations | Blob |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| NEON RAIN `neon_rain` | CINEMATIC | 72 | D minor; MPEN from D4 | pad: ANALOG WARM PAD · bass: ANALOG SUB BASS · lead: ANALOG G-FUNK LD · 808 | INTRO · MAIN · LIFT · BREAKDOWN | ORIGINAL DREAMY DARK PULSING HEAVY | 1,356 B |
-| MIDNIGHT DRIVE `midnight_drive` | SYNTHWAVE | 100 | A minor; MPEN from A3 | chords: ANALOG SYN BRASS · bass: TRIO FAT BASS · lead: LOFI GAME LEAD · SYNTHWV | IGNITION · CRUISE · OVERDRIVE · TUNNEL | ORIGINAL DRIVING DREAMY DARK HEAVY | 1,786 B |
-| FROZEN LAKE `frozen_lake` | AMBIENT | 66 | E major; PEN from E4 | pad: ANALOG ATMOS PAD · texture: GRAIN VIBE HAZE · bell: DIGITAL MUSIC BOX · AMBIENT | FIRST ICE · STILLNESS · AURORA · DEEP ICE | ORIGINAL AIRY FLOATING DARK SPARSE | 1,297 B |
-| DUSTY CAFE `dusty_cafe` | LO-FI | 82, swing 34 | F major; PEN from F4 | keys: DIGITAL RHODES · bass: SAMPLE UP BASS · piano: SAMPLE LOFI KEYS · LO-FI | STEAM · WARM CUP · SUNLIGHT · LAST CALL | ORIGINAL DREAMY AIRY DARK SPARSE | 1,428 B |
+| World | Category | Key | BPM | Smart Keys: sound; melody scale, tonic, range | Blob |
+| --- | --- | --- | --- | --- | --- |
+| DEEP SPACE `deep_space` | AMBIENT | C# phrygian | 52 | VOICE CHOIR AAH; MPEN from C#3, E2–C#6 | 1,034 B |
+| FLOATING GLASS `floating_glass` | AMBIENT | A mixolydian | 72 | ANALOG TRAP PLUCK; PEN from A3, B2–A6 | 1,269 B |
+| FROZEN LAKE `frozen_lake` | AMBIENT | E major | 66 | DIGITAL MUSIC BOX; PEN from E4, F#3–C7 | 1,315 B |
+| LOST SIGNAL `lost_signal` | AMBIENT | B dorian | 84 | DIGITAL WURLI; MPEN from B3, D3–A6 | 1,149 B |
+| MORNING HAZE `morning_haze` | AMBIENT | G lydian | 76, swing 14 | DIGITAL MARIMBA; PEN from G3, A2–D6 | 1,375 B |
+| SLOW ORBIT `slow_orbit` | AMBIENT | F minor | 60 | SAMPLE STRING STB; MPEN from F3, Ab2–Eb6 | 1,115 B |
+| DISTANT TOWERS `distant_towers` | CINEMATIC | C phrygian | 58 | PHASE CZ BRASS; MPEN from C4, Eb3–C7 | 1,224 B |
+| MEMORY ARCHIVE `memory_archive` | CINEMATIC | Eb lydian | 80 | SAMPLE LOFI FLUTE; PEN from Eb4, F3–C7 | 1,352 B |
+| NEON RAIN `neon_rain` | CINEMATIC | D minor | 72 | ANALOG G-FUNK LD; MPEN from D4, F3–C7 | 1,365 B |
+| NIGHT SIGNAL `night_signal` | CINEMATIC | E dorian | 120 | ANALOG SUB BASS; MPEN from E3, G2–E6 | 1,370 B |
+| OFF-WORLD `off_world` | CINEMATIC | B harmonic minor | 86 | VOICE TALKBOX; own from B3, C#3–G6 | 1,296 B |
+| SYNTHETIC DAWN `synthetic_dawn` | CINEMATIC | A mixolydian | 94 | TRIO SYNC LEAD; PEN from A3, B2–A6 | 1,343 B |
+| CIRCUIT FUNK `circuit_funk` | GROOVE | E dorian | 108, swing 6 | VOICE TALKBOX; MPEN from E3, G2–E6 | 1,370 B |
+| LATE SHIFT `late_shift` | GROOVE | Bb major | 116, swing 8 | TRIO SYNC LEAD; PEN from Bb3, C3–Bb6 | 1,455 B |
+| MAGNETIC `magnetic` | GROOVE | G minor | 126, swing 32 | DIGITAL TRAP BELL; MPEN from G3, Bb2–G6 | 1,401 B |
+| METRO BEAT `metro_beat` | GROOVE | A phrygian | 128 | PHASE RESO PLUCK; MPEN from A3, C3–A6 | 1,183 B |
+| NIGHT PULSE `night_pulse` | GROOVE | F minor | 122, swing 14 | VOICE SOUL OOH; MPEN from F3, Ab2–F6 | 1,170 B |
+| SOFT MACHINE `soft_machine` | GROOVE | D lydian | 96, swing 22 | DIGITAL MARIMBA; PEN from D4, E3–C7 | 1,304 B |
+| DUSTY CAFE `dusty_cafe` | LO-FI | F major | 82, swing 34 | SAMPLE LOFI KEYS; PEN from F4, G3–A6 | 1,443 B |
+| LATE TRAIN `late_train` | LO-FI | E dorian | 90, swing 12 | DIGITAL WURLI; own from E4, F#3–B6 | 1,429 B |
+| RAINY STUDY `rainy_study` | LO-FI | C minor | 74, swing 42 | SAMPLE LOFI FLUTE; MPEN from C4, Eb3–G6 | 1,407 B |
+| SOFT STATIC `soft_static` | LO-FI | Eb lydian | 78, swing 48 | DIGITAL DX RHODES; PEN from Eb4, F3–Bb6 | 1,200 B |
+| SUNDAY EVENING `sunday_evening` | LO-FI | Bb major | 68, swing 60 | DIGITAL RHODES; PEN from Bb3, C3–G6 | 1,272 B |
+| TAPE MEMORY `tape_memory` | LO-FI | D major | 86, swing 24 | SAMPLE VIBES; PEN from D4, E3–E7 | 1,433 B |
+| ARCADE '89 `arcade_89` | SYNTHWAVE | G dorian | 128 | LOFI GAME LEAD; MPEN from G4, Bb3–G7 | 1,205 B |
+| CASSETTE DREAM `cassette_dream` | SYNTHWAVE | Bb major | 82, swing 28 | ANALOG G-FUNK LD; PEN from Bb3, C3–F6 | 1,072 B |
+| MIDNIGHT DRIVE `midnight_drive` | SYNTHWAVE | A minor | 100 | LOFI GAME LEAD; MPEN from A3, C3–A6 | 1,801 B |
+| NEON HIGHWAY `neon_highway` | SYNTHWAVE | F# minor | 116 | TRIO SYNC LEAD; MPEN from F#3, A2–F#6 | 1,373 B |
+| SPACE STATION `space_station` | SYNTHWAVE | C lydian | 106 | VOICE TALKBOX; PEN from C4, D3–A6 | 1,313 B |
+| VHS SUNSET `vhs_sunset` | SYNTHWAVE | D major | 92, swing 10 | PHASE CZ BRASS; PEN from D4, E3–A6 | 1,238 B |
+
+The 30 blobs take 39,276 B (1,034–1,801 B, 1,309 B on average); in the image, with their 4-byte alignment and index
+entries, 39,564 B of the 42,296 B the factory set may take ([validation.md §3](validation.md#3-the-budgets)). Each
+file's `notes` say what it plays, scene by scene.
+
+### The four demo Worlds
+
+| World | Tracks: 1 · 2 · 3 (Smart Keys) · drums | Scenes A · B · C · D | Variations |
+| --- | --- | --- | --- |
+| NEON RAIN | pad: ANALOG WARM PAD · bass: ANALOG SUB BASS · lead: ANALOG G-FUNK LD · 808 | INTRO · MAIN · LIFT · BREAKDOWN | ORIGINAL DREAMY DARK PULSING HEAVY |
+| MIDNIGHT DRIVE | chords: ANALOG SYN BRASS · bass: TRIO FAT BASS · lead: LOFI GAME LEAD · SYNTHWV | IGNITION · CRUISE · OVERDRIVE · TUNNEL | ORIGINAL DRIVING DREAMY DARK HEAVY |
+| FROZEN LAKE | pad: ANALOG ATMOS PAD · texture: GRAIN VIBE HAZE · bell: DIGITAL MUSIC BOX · AMBIENT | FIRST ICE · STILLNESS · AURORA · DEEP ICE | ORIGINAL AIRY FLOATING DARK SPARSE |
+| DUSTY CAFE | keys: DIGITAL RHODES · bass: SAMPLE UP BASS · piano: SAMPLE LOFI KEYS · LO-FI | STEAM · WARM CUP · SUNLIGHT · LAST CALL | ORIGINAL DREAMY AIRY DARK SPARSE |
 
 **Harmony per scene** (A · B · C · D):
 
@@ -788,7 +889,8 @@ at full scale, 6 s after STOP the tails at −65.7 dBFS or lower); ENERGY 0 / 0.
 under the defaults.
 
 **Gain staging.** The levels follow one plan, measured with `world_render` (BS.1770 loudness):
-- the default scene at about −16.5 LUFS (the four Worlds within 1 LU of each other), RMS −17.5 to −18.5 dBFS;
+- the default scene at about −16.5 LUFS (the four within 1 LU of each other; the 30 within 1.1 LU), RMS −17.5 to
+  −18.5 dBFS;
 - A and D (without drums at the default ENERGY) 0.5–3.5 LU under B, C level with B or up to 1.5 LU above;
 - each variation within about 2 LU of ORIGINAL in the same scene (a preset swap gets a `level` to match), unless
   its ENERGY bias changes the band: MIDNIGHT DRIVE's DRIVING and HEAVY bring the bass into A (+3 LU);

@@ -255,9 +255,13 @@ Notes for authors:
 model of the macros and the guard over every scene × variation and the 3⁴ grid of the four macros. The checker
 refuses a World when:
 - a mapping alone takes its parameter outside its range, or past a hard limit;
-- a mapping reaches the parameter's maximum at 100 % without `"saturate": true`;
+- a mapping reaches the parameter's maximum at 100 % without `"saturate": true` (a user World only: a factory World
+  may not say it, the blob carries no flag and the factory checks on the firmware hold it short of the maximum);
 - more than 48 targets move at once;
-- the Smart Keys range is under an octave.
+- the Smart Keys range is under an octave, or (a factory World) folds one of the 27 keys at OCT 0;
+- (a factory World) a LOFI track plays its chip arpeggio (`ARP` MAJ or MIN: out of key where no check hears it).
+
+A user World gets the last two as warnings.
 
 Mappings and rules that only together run past the top of a range are warnings.
 
@@ -297,7 +301,7 @@ parallel. Every render has a player: a recorded phrase on the Smart Keys track. 
 - per scene, the corners of controls 4..15 (Phase 13) with the four macros at 100 %: SOUND SHAPE and MOVEMENT all at
   100 % (RATE at 100 % and at 0), and LIVE FX FILTER at 0 and at 100 % with ECHO and CRUSH at 100 % (their tail is
   judged after 10 s: LIVE ECHO at a slow tempo);
-- 1,488 points for the four factory Worlds.
+- 372 points a World (1,488 for the four demo Worlds; 11,160 for the library of 30).
 
 The full sweep:
 - every scene × variation, over the 3⁴ grid with the player and again without;

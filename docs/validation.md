@@ -69,15 +69,15 @@ path of the message. The checks themselves are [worlds.md](worlds.md)'s rules.
 | Item | Checks | If it fails, fix |
 | --- | --- | --- |
 | `metadata` | JSON that parses, a JSON object, `format`, `id` (`a-z0-9_`, up to 24), `name`, `category` and `blurb` (charset, length), `tempo` (40–240, `min`/`max` within ±20 %), `swing`, keys the format does not know | the field the message names |
-| `presets` | each synth track's `preset` exists for its engine; the drum `kit` exists; the values of the track's `params` are inside their descriptors; the global `fx` values | spell the preset as `worldc.py names ENGINE` prints it |
+| `presets` | each synth track's `preset` exists for its engine; the drum `kit` exists; the values of the track's `params` are inside their descriptors; the global `fx` values; (a factory World) no LOFI track with the chip's own arpeggio (`ARP` MAJ or MIN, as 8BIT ARP sets it) | spell the preset as `worldc.py names ENGINE` prints it; `"ARP": "OFF"` or `"OCT"` |
 | `engines` | exactly four tracks with unique names, the fourth the drums; each engine exists; a register is a note name | the `tracks` list |
 | `patterns` | lanes, step tokens, lengths (16, 32 or 64 drum steps; 1–64 melodic, also after unrolling), the drum track's 1/16 | the pattern the message names |
 | `scenes` | scenes A, B, C and D, each complete; the progressions, patterns and ENERGY tables they name exist; `transition`, `fill`; `defaults` (scene, PULSE, BEAT) | add the missing scene; fix the name |
 | `variation` | at most 8, `ORIGINAL` first and empty; `sounds`, `params`, `swap`, `macros`, `energy_bias`; a variation cannot change the tempo, key, scale, progressions, swing, drum grooves or Smart Keys | move the change to a scene, or drop it |
 | `scale` | the key's root and scale exist; the Smart Keys melody scale holds the root and stays inside the World scale | choose a melody scale that is a subset (`PEN`, `MPEN`) |
 | `harmony` | progressions parse (roman numerals, suffixes); 1–16 chords; 4, 8, 16 or 32 beats in all; at most 8 used | make the beats add up |
-| `Smart Keys` | the track exists and is a synth track; the tonic is the key's root; the range is an octave at least; the Smart Keys track is in every ENERGY band | widen the range; put `keys` in each band's `layers` |
-| `macro ranges` | every mapping, control, curve and rule is well formed (at most 40 mappings); the model: for every scene × variation, a mapping at 0 % and at 100 % keeps its parameter inside the descriptor's range, and a mapping that reaches the maximum at 100 % says `"saturate": true` ("100 % is never all-max") | make the mapping smaller, or `saturate` if it is meant |
+| `Smart Keys` | the track exists and is a synth track; the tonic is the key's root; the range is an octave at least and (a factory World) holds the 27 keys at OCT 0 over every chord; the Smart Keys track is in every ENERGY band | widen the range (or move the tonic an octave); put `keys` in each band's `layers` |
+| `macro ranges` | every mapping, control, curve and rule is well formed (at most 40 mappings); the model: for every scene × variation, a mapping at 0 % and at 100 % keeps its parameter inside the descriptor's range, and a mapping that reaches the maximum at 100 % says `"saturate": true` ("100 % is never all-max"), which only a user World may | make the mapping smaller, or (a user World) `saturate` if it is meant |
 | `Guardrails` | the `guard` section is well formed (ranges, combinations, caps); a mapping, or an authored value, past a hard limit of `guard_limits.h` (delay feedback 120, reverb size 127, a track's level 120, resonance 110). After the sweep: the World is audible (RMS over -45 dBFS, no silence over 2 s while a layer besides the keys is up), and a half turn of one macro moves the loudness by at most 9 LU with a player, 12 LU without | lower the base or the mapping; fix the cutoff or level that falls silent |
 
 The render items come from `tests/guard_sweep.c`. Each failure message names the scene, the variation and the macro
@@ -174,6 +174,10 @@ Phase 18 freed the room first: FONT_L is drawn as FONT_S doubled (24,736 B) and 
 of 30 then has about 42,270 B: **about 1,400 B a World, a blob of about 1,390 B** on average (the four average 1,481 B).
 One World may still be up to 3,072 B: the budget is the set's.
 
+With the library of 30 (Phase 18) the image is 570,640 B and 10,924 B of the slot are free. The 30 blobs are
+39,276 B (1,309 B on average), 39,564 B in the image with their alignment and index entries, of a budget of
+42,296 B: 2,732 B to spare, about two more Worlds of the average size.
+
 The reserve is `CODE_RESERVE` in `tools/validate_world.py`. Compressing the blobs was measured and left out: LZ4
 saves 21–25 % on the four Worlds (24.8 % with an optimal parse), under the 25 % that would pay for a decoder and for
 decoding the World playing into RAM instead of reading it in place.
@@ -243,7 +247,7 @@ Worlds peak at 21–24 targets, 32–36 with every control up.
 | `✗ harmony  5 beats in all` | a progression's beats are not 4, 8, 16 or 32 | adjust the `:n` counts |
 | `✗ Smart Keys  under an octave` | the keys' `range` spans less than 12 semitones | widen it; the range is also `guard.notes.<track>.range` |
 | `✗ macro ranges  base 60 +100 = 160: outside 0..127` | a mapping's offset takes the value past its descriptor | reduce `max` (or `min`); the firmware would clamp it |
-| `✗ macro ranges  127 at 100 %: the parameter's maximum` | 100 % of a macro would be "everything at its maximum" | reduce the top by one, or `"saturate": true` if intended |
+| `✗ macro ranges  127 at 100 %: the parameter's maximum` | 100 % of a macro would be "everything at its maximum" | reduce the top by one, or (a user World) `"saturate": true` if intended |
 | `✗ Guardrails  past the hard limit 120` | a mapping or an authored value beyond `GL_DFDBK_MAX`, `GL_RSIZE_MAX`, `GL_LEVEL_MAX` or `GL_RESO_MAX` | lower it |
 | `✗ Guardrails  silent(rms ...)` | at some macro position only a quiet layer plays (a dark pad with the cutoff closed) | raise that track's level or cutoff, or keep ENERGY from muting everything else |
 | `✗ Guardrails  loudness moves 13.5 LU` | a half turn of one macro changes the level too much | check the mapping's gain compensation (`*.level` in ENERGY) and cutoff floor |
@@ -289,7 +293,8 @@ passes. Each was derived from `worlds/test/minimal.world.json` and says in its `
 | `feedback_runaway` | `no invalid feedback`: the one World that passes every static item and fails only the render: the echo at the hard limit in a 127 room |
 
 `tests/validate_test.py` (a group of `tests/run_tests.sh`, about 20 s) checks that:
-- the four factory Worlds pass all 17 items from the command line, with a quick sweep each;
+- the factory Worlds `tests/run_tests.sh` chooses (`tests/world_sample.py`: the four demo Worlds and two more; `WORLDS=all`:
+  all 30) pass all 17 items from the command line, with a quick sweep each;
 - every file above fails exactly the item in its row and no other, and the fixtures and the table are the same set;
 - the JSON schema is stable (keys, the item order, the status words) and the exit status follows the failures;
 - `guard_sweep`'s every failure keyword (clipping, garbage, DC, limiter, feedback, silence, parameters, voices, CPU, a

@@ -136,9 +136,14 @@ checked with a toolchain and SDK files freshly installed by the scripts above, a
 ## Tests
 
 ```
-./tests/run_tests.sh               # all 32 groups; run ./build.sh first (about 2 minutes)
+./tests/run_tests.sh               # all 43 groups; run ./build.sh first (about 6 minutes)
 ./tests/run_tests.sh --host-only   # no ./build.sh, toolchain, Docker or SDK needed
+WORLDS=all ./tests/run_tests.sh    # every factory World in every per-World group (about 12 minutes)
 ```
+
+The per-World groups play the four demo Worlds and two more drawn from a hash of the library
+(`tests/world_sample.py`, printed at the top of the run); `WORLDS="late_train magnetic"` plays the
+demo four and those. Each group prints its time, and `FAILED` when it fails.
 
 `--host-only` creates `build/gen` with `tools/build.py --gen-only` if it is missing. It skips the
 three groups that need the target build, marked "skip" below. The web tests run only when `node` is

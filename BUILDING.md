@@ -92,7 +92,9 @@ loader, a DSP render, the 4-track mix, project formats, the SLICER, the regressi
 the command-line installer) and, with Node.js, the web page tests. Run it after `./build.sh`
 (it uses `build/` and needs `AC79_SDK` set as for the build).
 `tests/run_tests.sh --host-only` needs no build: it skips the update entry, the update loader and
-the target cost check.
+the target cost check. The groups that play each factory World play the four demo Worlds and two
+more drawn from the library (`tests/world_sample.py`); `WORLDS=all tests/run_tests.sh` plays all
+of them, `WORLDS="late_train magnetic"` the demo four and those.
 
 The regression suite (`tests/regress.c`) renders every engine and preset and compares a
 hash of each render with `tests/golden.txt`; it also checks levels, voices and the CPU
