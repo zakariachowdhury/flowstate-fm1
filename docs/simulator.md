@@ -97,7 +97,7 @@ from the Studio's model of what plays (`studio_t` in `host/sim/sim.h`), which th
 | Choosing a World | `<` `>`, the title, or Option+W highlight an entry of `CHOOSE WORLD`: the four factory Worlds (in the firmware's order, by category), the World file when there is one, then `SLOOP PROJECTS`. The current one plays on. LOAD (or a second click, or Option+Return) confirms: at once while stopped, **on the next bar** while playing (design D10). CANCEL, a click outside or Esc forgets it |
 | Middle | A B C D with the World's scene names; the one playing filled, the one asked for marked `NEXT BAR`, then `CHANGES NEXT BAR: C LIFT · DREAMY`. `VAR < DREAMY >`: the variation, `n/N`; a click on its left or right half (or the wheel, or Option+V) asks for the previous or next one, on the next bar |
 | Controls | COLOR MOTION SPACE ENERGY, 0–100, with DARK/BRIGHT, STILL/ALIVE, CLOSE/HUGE, SPARSE/INTENSE. With a World they are its **macros** (`firmware/src/macro.c`, `host_macro_set`; the World's defaults when it loads): what each moves is the World's, and the line under them names the World and the ENERGY band playing (`ENERGY band 3/4: PAD BASS LEAD DRUMS`). With a SLOOP project they turn SLOOP's KNOB 1–4 by the same steps, and the line says so |
-| Performance | PLAY · REC · PULSE · BEAT · FX, with their LEDs: the FM-1's PLAY, REC, ARP, SEQ and FX buttons, held while the mouse is down (FX is a hold), right-click latches |
+| Performance | PLAY · REC · PULSE · BEAT · FX, with their LEDs: the FM-1's PLAY, REC, ARP, SEQ and FX buttons, held while the mouse is down (FX is a hold), right-click latches. REC is PLAY MODE's recorder (Phase 10, below), as is the panel's REC (`Return`) |
 | Tracks | Four strips named by the World's roles (PAD CHORDS BASS LEAD KEYS TEXTURE DRUMS), with a mute box, a level (LVL; the drum track's GLO > DRUMS level) and the sound; the track the keys play is underlined. A mute stays through scene changes (it is the player's) |
 | Input | `KEYS: SMART MELODY` once Smart Keys map the keys (`wrt.keys_on`, Phase 6 part B); until then `KEYS: SLOOP` with the track, key, scale and snap the keys use. `CHORD Dm` when the harmony runtime names the chord playing. The 27 keys with their LEDs and computer keys |
 
@@ -180,14 +180,29 @@ old World playing, and worldc's message, which names the place, shows on the sta
   time runs at the same moment as the step before. Steps run before the audio block they fall in, so the same script
   always gives the same audio.
 - **Commands:** `play`, `stop`, `scene A..D`, `store A..D`, `mute N [on|off]`, `level N V|±S`, `bpm|swing|filter|dust|duck V|±S`,
-  `master V`, `key K [down|up]` (a tap without down / up), `button NAME [down|up]`, `turn ENC STEPS`, `print`, `quit`.
+  `master V`, `key K [down|up]` (a tap without down / up), `button NAME [down|up]`, `turn ENC STEPS`, `rec` and `undo`
+  (REC and EDIT tapped: PLAY REC, below), `print`, `quit`.
   The Studio: `world NAME|N|next|prev` (choose), `confirm`, `cancel`, `var NAME|N|next|prev`,
   `macro COLOR..ENERGY|1..4 V|±S` (0..100: a World's macro, or a project's KNOB 1–4), `select N`. A name with spaces
   takes `_`: `world MIDNIGHT_DRIVE`.
 - **Expectations:** `expect FIELD OP VALUE`. The numeric fields are `playing scene next bpm filter mute1..4 level1..4
-  macro1..4 sel voices gated rms peak time master`; `rms` and `peak` are the output's last 0.5 s, in dBFS; `voices`
-  counts the synth voices sounding and `gated` those still held (0 right after STOP: no stuck note). `world`,
-  `browse`, `pending`, `var` and `varnext` compare a name (or `-`) with `=` or `!=`.
+  macro1..4 sel voices gated rec loop rms peak time master`; `rms` and `peak` are the output's last 0.5 s, in dBFS;
+  `voices` counts the synth voices sounding and `gated` those still held (0 right after STOP: no stuck note); `rec` is
+  PLAY REC's state (0 empty, 1 armed, 2 recording the take, 3 a loop, 4 overdub) and `loop` the notes in the keys
+  loop. `world`, `browse`, `pending`, `var` and `varnext` compare a name (or `-`) with `=` or `!=`.
+
+**Recording a phrase headlessly** (NEON RAIN; `key` takes 1–27 or F3–G5):
+
+```
+build/host-bin/flowstate-sim --demo --headless 18 --fast --mute-output --script '1 play; 3 rec; 3.5 expect rec = 2;
+  4 key C4; 4.5 key E4; 5 key G4; 6.5 key A4; 7 rec; 10 expect rec = 3; 10 expect loop >= 3; 11 rec; 11.5 key D5;
+  12 rec; 12.5 expect loop >= 5; 13 undo; 13.5 expect loop >= 3; 14 stop; 16 expect gated = 0; 17 quit'
+```
+
+PLAY, then `rec` starts the take; the keys are recorded from the first one's bar; the second `rec` closes it on the
+next bar line and it loops (`rec = 3`); `rec` again overdubs (`rec = 4`) and the next `rec` stops that; `undo` takes the
+last layer back. The firmware does all of it (`firmware/src/play_rec.c`), so the Studio's REC, the panel's REC and a
+script are the same presses.
 
 ## How it works
 
@@ -354,3 +369,4 @@ The Studio's model (`studio_t`) and `host_world` are where later phases show up;
 | `macro[]`, `macro_live` | a World's macro positions (Phase 7), a project's KNOB 1–4 | SOUND SHAPE, MOVEMENT and LIVE FX on the same controls (Phase 13) |
 | `pending`, scene changes | a commit on the next bar, a World switch by a restart | transitions of 2 and 4 bars, seamless World switches (Phase 11) |
 | `w[]` | the factory Worlds, a World file, SLOOP projects | user Worlds from the World store (Phase 14) |
+| `rec`, `loop` (`host_state`) | PLAY REC's state and the keys loop's notes (Phase 10) | — |

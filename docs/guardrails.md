@@ -88,7 +88,7 @@ reads unchanged, so SLOOP renders bit for bit as before.
 | Polyphony of the keys track | `max_poly` | 4 |
 | Loop follow: a keys-loop note that is an avoid note over the sounding chord (or out of the scale) plays the nearest chord tone, a tie below. The loop itself never changes. | `loop_follow` | `snap` |
 | Avoid notes (a scale tone a semitone above a chord tone; strict: also below) | `avoid` | `classic` |
-| Record guard (PLAY REC, Phase 10): a safe note in range, no duplicate in a step, a length inside the loop, notes a step, quantise | `record.max_notes`, `record.quantize` | 4, 0.75 |
+| Record guard (PLAY REC, `play_rec.c`): a note in key (the World scale or a tone of the sounding chord, as every Smart Keys note is) is recorded as it sounded, one out of key as the nearest safe tone; folded into the range; never the same note twice in a step or half a step from itself; at most `max_notes` and `max_poly` notes a step; a held note ties on but never round onto itself; gentle quantise: the nearest step, the leftover timing scaled by 1 − `quantize` kept as micro-timing (eighths of a step) | `record.max_notes`, `record.quantize`, `max_poly` | 4, 0.75 |
 
 ### 2.4 Sound guard
 
@@ -309,7 +309,6 @@ within 3 LU of each other at their defaults.
 
 ## 7. Not covered yet
 
-- The PLAY REC record guard is built and tested, but nothing calls it until Phase 10.
 - A scene's 2- and 4-bar transitions, and seamless World switches, arrive in Phase 11.
 - LIVE ECHO's feedback limit (`GL_ECHO_DFDBK`) applies once LIVE FX exists (Phase 13).
 - `GL_CPU_FULL` and the CPU budget need recalibrating against the device's `cpu_q8` (Phase 17).
