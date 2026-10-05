@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 """Checks of tools/validate-world (Phase 16; run by tests/run_tests.sh, from the repo root):
-  - every factory World validates clean in quick mode, through the command line (the real host sweep of
-    tests/guard_sweep.c): all 17 items, no failure, the sweep's numbers in the JSON report;
+  - every factory World of tests/run_tests.sh's choice (FACTORY_WORLDS, tests/world_sample.py) validates clean in quick
+    mode, through the command line (the real host sweep of tests/guard_sweep.c): all 17 items, no failure, the
+    sweep's numbers in the JSON report;
   - every Worlds in worlds/test/bad is broken in exactly one way: it fails exactly the item named in EXPECT below
     (and no other), the compiler's and the model's findings reaching the right item; the one fixture that only a
     render can catch (feedback_runaway) is swept for real; every fixture is in the table and the other way round;
@@ -14,6 +15,7 @@
 """
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -21,11 +23,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
 import validate_world as vw  # noqa: E402
+import world_sample  # noqa: E402
 
 FAILS = []
 BAD = ROOT / "worlds" / "test" / "bad"
-FACTORY = ["neon_rain", "midnight_drive", "frozen_lake", "dusty_cafe"]
+# tests/run_tests.sh's choice of factory Worlds (tests/world_sample.py: the demo four and two more; WORLDS=all)
+FACTORY = os.environ.get("FACTORY_WORLDS", "").split() or world_sample.choose()[0]
 ITEMS = ["metadata", "presets", "engines", "patterns", "scenes", "variation", "scale", "harmony", "Smart Keys",
          "macro ranges", "Guardrails", "CPU budget", "RAM budget", "flash budget", "no clipping",
          "no invalid feedback", "no invalid parameter IDs"]
@@ -71,7 +76,7 @@ def test_factory():
     r = cli("--json", *FACTORY, check_rc=0)
     rep = json.loads(r.stdout)
     check(rep["schema"] == "validate-world/1" and rep["mode"] == "quick" and rep["ok"], "factory: report header")
-    check([w["id"] for w in rep["worlds"]] == FACTORY, "factory: four Worlds in the order given")
+    check([w["id"] for w in rep["worlds"]] == FACTORY, f"factory: the {len(FACTORY)} Worlds in the order given")
     for w in rep["worlds"]:
         st = {i["item"]: i["status"] for i in w["items"]}
         check(list(st) == ITEMS, f"{w['id']}: the 17 items in the checklist's order")

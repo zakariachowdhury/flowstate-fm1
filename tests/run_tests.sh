@@ -19,6 +19,13 @@
 # After an intended change of the sound: GOLDEN_UPDATE=1 sh tests/run_tests.sh, review the diff
 # of tests/golden.txt, commit it with the change. After an intended change of the cost (or a new
 # compiler): BUDGET_UPDATE=1 (rewrites cpu_baseline.txt and target_budget.txt). VERBOSE=1: every render.
+#
+# The factory Worlds (Phase 18: a library of 30): every one is compiled, checked (worldc check), budgeted and built
+# into the firmware on every run; the per-World groups (renders, Smart Keys, macros, guard sweeps, scenes, LIVE FX,
+# validate-world, the simulator's renders) play tests/world_sample.py's choice, exported as FACTORY_WORLDS:
+#   (default)          the four demo Worlds and two more drawn from the library's hash (they rotate as it changes)
+#   WORLDS=all         every factory World in every group (about 3 times as long)
+#   WORLDS="id id .."  the demo four and those (e.g. WORLDS="late_train magnetic")
 set -e
 export AC79_SDK="${AC79_SDK:-$HOME/fw-AC79_AIoT_SDK}"
 cd "$(dirname "$0")/.."
@@ -26,7 +33,11 @@ OUT=build/host
 mkdir -p "$OUT"
 CC="${CC:-cc} -O1 -Wall -Wno-unused-function"
 fail=0
-run() { echo "== $1"; shift; "$@" || fail=1; }
+run() {                                          # a group: its title, its time, FAILED when it fails
+    g_=$1; shift; echo "== $g_"; t0=$(date +%s)
+    if "$@"; then echo "   ($(($(date +%s) - t0)) s)"; else fail=1; echo "   FAILED ($(($(date +%s) - t0)) s): $g_"; fi
+}
+t_start=$(date +%s)
 
 host_only=0
 case "$1" in
@@ -41,6 +52,10 @@ if [ $host_only = 1 ]; then
 else
     [ -f build/felucca.fwsc ] || { echo "run ./build.sh first"; exit 1; }
 fi
+WORLD_IDS=$(python3 tests/world_sample.py --line) || exit 2
+FACTORY_WORLDS=$WORLD_IDS
+export FACTORY_WORLDS
+echo "worlds: $(python3 tests/world_sample.py --why)"
 
 $CC -o "$OUT/storage_test" tests/storage_test.c
 run "flash storage (A/B, torn writes)" "$OUT/storage_test"
@@ -139,8 +154,8 @@ run "host renderer: example projects, 16 bars each, clean and deterministic (slo
 # mute and back, a level, a macro, the knobs while FX / ENV are held turning the device's KNOB 1..4 (LIVE FX's FILTER,
 # home again on release; SOUND SHAPE's SHORT, kept; the macros untouched: Phase 15), STOP with no note left held or
 # sounding, a SLOOP project; the Studio and
-# ADVANCED drawn (--shot). Then sloop-render: every factory World clean (build/renders/worlds), and a scene
-# sequence whose changes land on the bars
+# ADVANCED drawn (--shot). Then sloop-render: each factory World of tests/world_sample.py's choice clean
+# (build/renders/worlds), and a scene sequence whose changes land on the bars
 SIM_SCRIPT='0.95 expect world = NEON_RAIN; 1 play; 2.5 expect playing = 1; 2.5 expect scene = B; 2.5 expect rms > -35
     2.6 scene C; 2.7 expect next = C; 4.30 expect scene = B; 4.40 expect next = C
     4.45 mute 4; 4.5 expect mute4 = 1; 4.55 mute 4; 4.6 expect mute4 = 0
@@ -190,9 +205,8 @@ sim_test() {
     echo "simulator: FLOWSTATE STUDIO: variation and scene on the bar, a World switched on the bar, the knobs on the" \
          "FX / ENV pages while held, no note left after STOP, a SLOOP project; $OUT/sim-studio.bmp, $OUT/sim-advanced.bmp"
     mkdir -p build/renders/worlds
-    for w in FROZEN_LAKE NEON_RAIN DUSTY_CAFE MIDNIGHT_DRIVE; do
-        id=$(echo $w | tr 'A-Z' 'a-z')
-        build/host-bin/sloop-render --world "$(echo $w | tr _ ' ')" --bars 4 --check \
+    for id in $WORLD_IDS; do
+        build/host-bin/sloop-render --world "worlds/factory/$id.world.json" --bars 4 --check \
             "build/renders/worlds/$id-studio.wav" > "$OUT/render-$id.txt" || { cat "$OUT/render-$id.txt"; return 1; }
         echo "render: $(grep '^rendered' "$OUT/render-$id.txt" | sed 's/^rendered //'); $(grep 'peak' "$OUT/render-$id.txt" | tr -s ' ')"
     done
@@ -231,21 +245,21 @@ $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/regress_world" tests/regress_worl
 run "regression with FELUCCA_WORLD=1 (world.c built in, no World loaded): the same golden renders" \
     env -u GOLDEN_UPDATE -u BUDGET_UPDATE "$OUT/regress_world" tests/golden.txt tests/cpu_baseline.txt
 
-# the factory Worlds (worlds/factory, docs/worlds.md "Factory Worlds") through the real firmware with
-# tests/world_render.c (wb_check, world_load, world_apply, PLAY; the macros at the World's defaults and its ENERGY
-# band through arrange.c, Phase 7): each compiles within the factory limit (3,072 B; above 2,048 B a warning); every
+# the factory Worlds (worlds/factory, docs/worlds.md "Factory Worlds"; tests/world_sample.py's choice) through the real
+# firmware with tests/world_render.c (wb_check, world_load, world_apply, PLAY; the macros at the World's defaults and
+# its ENERGY band through arrange.c, Phase 7): each compiles within the factory limit (3,072 B; above 2,048 B a warning); every
 # scene x variation, 4 bars and a 6 s tail, is heard, peaks at most -1 dBFS, has no full-scale sample and no DC,
 # leaves no voice and no echo above -60 dBFS after STOP, stays in the voice budget with no held note stolen, keeps
 # its notes in the scale and their registers; also with no ENERGY arrangement (--raw: every pattern plays) and with
 # a player's phrase on the Smart Keys; ENERGY bands only add notes and hits; no macro mapping leaves its range or
 # saturates at 100 %; the Worlds sit within 3 LU of each other at their defaults; every variation (at its own macro
-# defaults) within 3 LU of ORIGINAL in each scene
+# defaults) within 3 LU of ORIGINAL in each scene. "saturate" (a mapping meant to reach its maximum at 100 %): worldc
+# refuses it in a factory World (the blob carries no flag), world_render --macros lets a user World's through
 factory_worlds_test() {
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/world_render" tests/world_render.c -lm || return 1
     : > "$OUT/worlds-loudness.txt"
-    for f in worlds/factory/*.world.json; do
-        [ -f "$f" ] || continue
-        id=$(basename "$f" .world.json)
+    for id in $WORLD_IDS; do
+        f=worlds/factory/$id.world.json
         python3 tools/worldc.py compile "$f" -o "$OUT/$id.wblob" > "$OUT/$id.txt" 2>&1 || { cat "$OUT/$id.txt"; return 1; }
         n=$(wc -c < "$OUT/$id.wblob" | tr -d ' ')
         [ "$n" -le 3072 ] || { echo "$id: $n B, above the factory limit of 3,072 B"; return 1; }
@@ -262,7 +276,15 @@ factory_worlds_test() {
     done
     awk '{ if (NR == 1 || $2 < lo) lo = $2; if (NR == 1 || $2 > hi) hi = $2 }
          END { printf "loudness at the defaults: %.2f .. %.2f LUFS (%.2f LU apart)\n", lo, hi, hi - lo; exit (hi - lo > 3) }' \
-        "$OUT/worlds-loudness.txt"
+        "$OUT/worlds-loudness.txt" || return 1
+    python3 -c 'import json, sys; w = json.load(open(sys.argv[1])); w["macros"]["SPACE"][0]["saturate"] = True
+json.dump(w, open(sys.argv[2], "w"))' worlds/test/bad/macro_saturates.world.json "$OUT/saturate.world.json" || return 1
+    ! python3 tools/worldc.py compile "$OUT/saturate.world.json" -o "$OUT/saturate.wblob" > "$OUT/saturate.txt" 2>&1 &&
+        grep -q '"saturate" is for user Worlds' "$OUT/saturate.txt" || { cat "$OUT/saturate.txt"; echo "saturate in a factory World"; return 1; }
+    python3 tools/worldc.py compile --user "$OUT/saturate.world.json" -o "$OUT/saturate.wblob" > /dev/null 2>&1 &&
+        "$OUT/world_render" --macros --check "$OUT/saturate.wblob" > "$OUT/saturate.txt" ||
+        { cat "$OUT/saturate.txt"; echo "a user World's saturating mapping refused by world_render --macros"; return 1; }
+    echo "saturate: refused in a factory World by worldc; a user World's mapping to the maximum passes world_render --macros"
 }
 run "worlds: the factory Worlds, every scene x variation rendered clean (world_render), ENERGY, macros, loudness" \
     factory_worlds_test
@@ -283,10 +305,8 @@ smartkeys_test() {
         -Ifirmware/src -o "$OUT/smartkeys_test" tests/smartkeys_test.c -lm || return 1
     "$OUT/smartkeys_test" "$OUT/sk-minimal.wblob" "$OUT/sk-full.wblob" || return 1
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/world_render" tests/world_render.c -lm || return 1
-    for f in worlds/factory/*.world.json; do
-        [ -f "$f" ] || continue
-        id=$(basename "$f" .world.json)
-        python3 tools/worldc.py compile "$f" -o "$OUT/sk-$id.wblob" >/dev/null 2>&1 || return 1
+    for id in $WORLD_IDS; do
+        python3 tools/worldc.py compile "worlds/factory/$id.world.json" -o "$OUT/sk-$id.wblob" >/dev/null 2>&1 || return 1
         "$OUT/world_render" --mash --scene all --var all --bars 4 --check "$OUT/sk-$id.wblob" > "$OUT/mash-$id.txt" ||
             { cat "$OUT/mash-$id.txt"; return 1; }
         echo "mash: $id: $(tail -1 "$OUT/mash-$id.txt" | sed 's/;.*//')"
@@ -321,10 +341,8 @@ macros_test() {
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/macro_cost" tests/macro_test.c -lm || return 1
     "$OUT/macro_cost" --cost || return 1
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/world_render" tests/world_render.c -lm || return 1
-    for f in worlds/factory/*.world.json; do
-        [ -f "$f" ] || continue
-        id=$(basename "$f" .world.json)
-        python3 tools/worldc.py compile "$f" -o "$OUT/mt-$id.wblob" >/dev/null 2>&1 || return 1
+    for id in $WORLD_IDS; do
+        python3 tools/worldc.py compile "worlds/factory/$id.world.json" -o "$OUT/mt-$id.wblob" >/dev/null 2>&1 || return 1
         "$OUT/world_render" --extremes --bars 4 --check "$OUT/mt-$id.wblob" > "$OUT/extremes-$id.txt" ||
             { cat "$OUT/extremes-$id.txt"; return 1; }
         sed -n 's/^extremes: //p' "$OUT/extremes-$id.txt"
@@ -366,10 +384,11 @@ guard_tests() {
     "$OUT/guard_test" "$OUT/gt-minimal.wblob" "$OUT/gt-full.wblob" "$OUT/gt-extreme.wblob" "$OUT/gt-guard.wblob" ||
         return 1
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/guard_sweep" tests/guard_sweep.c -lm || return 1
-    for f in worlds/factory/*.world.json; do
-        [ -f "$f" ] || continue
-        id=$(basename "$f" .world.json)
-        python3 tools/worldc.py compile "$f" -o "$OUT/gt-$id.wblob" >/dev/null 2>&1 || return 1
+    for b in "$OUT"/gt-*.wblob; do                   # (another run's choice of Worlds)
+        case "$b" in "$OUT"/gt-minimal.wblob|"$OUT"/gt-full.wblob|"$OUT"/gt-extreme.wblob|"$OUT"/gt-guard.wblob) ;; *) rm -f "$b" ;; esac
+    done
+    for id in $WORLD_IDS; do
+        python3 tools/worldc.py compile "worlds/factory/$id.world.json" -o "$OUT/gt-$id.wblob" >/dev/null 2>&1 || return 1
     done
     n=0
     for b in "$OUT"/gt-*.wblob; do
@@ -447,9 +466,11 @@ run "PLAY REC: the take, gentle quantise and micro-timing, record guard, layers,
 # through A->B, B->C, C->D, D->A and 12 random requests (some replaced on their way): each commit on the first block
 # of its transition's bar line (1, 2, 4 bars or the phrase, from the section start; a variation the next line), the
 # last request the one that lands, a scene from step 0 once, a variation phase-locked, the held key sounding on, the
-# keys loop in phase, no sample step at a commit beyond the render's largest elsewhere, the wet bus never 6 dB down in
-# the 12 ms after one, nothing left after STOP; fills on the bar before a scene's line (not without drums, muted or
-# MINIMAL); 4 World switches while playing (no stop, on the next line, the new tempo and keys track, the loop cleared,
+# keys loop in phase, no sample step at a commit beyond 1.5 x the render's largest elsewhere (the new scene's downbeat
+# may stand over the rest: CLICK_MIX), the wet bus never 6 dB down in the 12 ms after one (or 3 dB under the render's
+# own bar lines, at most 9), nothing left after STOP; fills on the bar before a scene's line (not without drums, muted
+# or MINIMAL); a World switch to each next World while playing (no stop, on the next line, the new tempo and keys
+# track, the loop cleared,
 # old voices released, no silence gap, the tails going on, the macros ramping in from neutral, one replaced on its
 # way); BEAT masks on the bar; ADVANCED's immediate commits; a "phrase" transition and the SCENES footer; the commit
 # glides; the click detector against unsmoothed jumps on a lone note (level, pan, delay mix; a delay time) and
@@ -483,7 +504,7 @@ run "scenes: transitions on their lines, fills, World switches without a stop, B
 # instructions a sample with everything of Phase 13 at 1, under GL_CPU_BUDGET, guard.c's estimate not under it
 livefx_test() {
     b=""
-    for id in neon_rain midnight_drive frozen_lake dusty_cafe; do
+    for id in $WORLD_IDS; do
         python3 tools/worldc.py compile worlds/factory/$id.world.json -o "$OUT/lf-$id.wblob" >/dev/null 2>&1 || return 1
         b="$b $OUT/lf-$id.wblob"
     done
@@ -522,8 +543,9 @@ run "ADVANCED edits and user Worlds: capture, scenes, SAVE AS / SAVE / RESET / D
     userworld_test
 
 # validate-world (Phase 16: tools/validate-world, tools/validate_world.py; design 12.3; docs/validation.md): tests/validate_test.py.
-# The four factory Worlds validate clean from the command line (the checklist of 17 items; the quick sweep of
-# tests/guard_sweep.c, built into build/host/validate on first use, plays each); every World of worlds/test/bad is broken
+# The factory Worlds of tests/world_sample.py's choice validate clean from the command line (the checklist of 17
+# items; the quick sweep of tests/guard_sweep.c, built into build/host/validate on first use, plays each); every World
+# of worlds/test/bad is broken
 # in one way and fails exactly its item (worldc's and the model's messages reaching the right item; a feedback tail that
 # only a render catches); the JSON report's schema and the exit status; guard_sweep's every failure keyword (and its volume
 # jumps) reaching its item, from made-up output; ids, directories, --user, files that are not Worlds
@@ -544,4 +566,6 @@ run "authoring tool: the API (files, check, model, harmony, patterns, validate, 
 # against a pseudo-terminal playing the console (no hardware)
 run "hardware monitor: flow / status parsing, CSV, --fit, a pseudo-terminal console (no FM-1)" python3 tests/fm1_monitor_test.py
 
-[ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }
+t_all=$(($(date +%s) - t_start))
+[ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED ($t_all s; worlds: $WORLD_IDS)" ||
+    { echo "HOST TESTS FAILED ($t_all s)"; exit 1; }

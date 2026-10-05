@@ -74,9 +74,10 @@ typedef struct {
 
 static pt_t *pts;
 static uint32_t npts;
-static const char *wpath[8];
-static uint8_t *wblob[8];
-static uint32_t wlen[8], nworld;
+#define SW_MAXW 64                               /* Worlds a run (the factory library of 30: WORLDS=all) */
+static const char *wpath[SW_MAXW];
+static uint8_t *wblob[SW_MAXW];
+static uint32_t wlen[SW_MAXW], nworld;
 static uint32_t sw_bars = 2;
 static double sw_tail = 6;
 static int sw_list;                      /* --list: every point's numbers */
@@ -532,8 +533,8 @@ static void jumps(uint32_t w, uint32_t *bad, double *worst)   /* worst[0]: with 
     for (i = 0; i < npts; i++) {
         if (pts[i].w != w || !pts[i].grid)
             continue;
-        for (j = i + 1; j < npts; j++) {
-            if (pts[j].w != w || !pts[j].grid || pts[j].s != pts[i].s || pts[j].v != pts[i].v ||
+        for (j = i + 1; j < npts && pts[j].w == w; j++) {   /* (a World's points are contiguous) */
+            if (!pts[j].grid || pts[j].s != pts[i].s || pts[j].v != pts[i].v ||
                 pts[j].keys != pts[i].keys)
                 continue;
             for (k = 0, diff = 0; k < 4; k++)
@@ -673,7 +674,7 @@ int main(int argc, char **argv)
             sw_var = atoi(argv[++i]);
         else if (!strcmp(a, "--calib"))
             sw_calib = 1, setvbuf(stdout, 0, _IOLBF, 0);
-        else if (a[0] == '-' || nworld >= 8u)
+        else if (a[0] == '-' || nworld >= SW_MAXW)
             usage_sweep();
         else {
             if (!read_all(a))

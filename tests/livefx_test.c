@@ -58,8 +58,8 @@ static void check(int ok, const char *fmt, ...)
     fails += !ok;
 }
 
-static const uint8_t *wb[8];
-static uint32_t wn[8], nw, nfactory;
+static const uint8_t *wb[64];
+static uint32_t wn[64], nw, nfactory;
 static uint16_t defpos[WF_NCTL];
 static void load(uint32_t w)
 {
@@ -815,7 +815,7 @@ int main(int argc, char **argv)
             do_cost = 1;
             continue;
         }
-        if (nw >= 8 || !read_all(argv[i]))
+        if (nw >= 64 || !read_all(argv[i]))
             return 2;
         wb[nw] = blob;
         wn[nw] = blob_n;

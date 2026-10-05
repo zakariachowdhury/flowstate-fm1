@@ -105,6 +105,15 @@ static uint32_t lit(int x, int y, int w, int h)  /* pixels not black in a rectan
 }
 static int fidx(const char *name) { return host_world_factory_find(name); }
 static uint32_t wid(const char *name) { return WORLD_INDEX[fidx(name)].id; }
+static const char *wrow(int i, char *nm, char *cat)   /* factory World i as CHOOSE WORLD writes it, and its category */
+{
+    char n0[32];
+    uint32_t bpm;
+    nm[0] = cat[0] = 0;
+    if (i >= 0 && !world_factory_info((uint32_t)i, n0, cat, &bpm))
+        pl_title_case(nm, n0, WF_NAME_LEN);
+    return nm;
+}
 static void wait_bar(void)                       /* to just after the next bar line */
 {
     uint32_t b = clk_beat >> 2;
@@ -231,18 +240,26 @@ static void sc_screens(void)
     check(pl.scr == PS_MACRO, "MACRO: still up 1.4 s after the last detent");
     wait_ms(200);
     check(pl.scr == PS_HOME, "MACRO: back to HOME 1.5 s after it");
-    /* CHOOSE WORLD */
+    /* CHOOSE WORLD (the factory Worlds by category, then name; five rows, scrolling with the highlight) */
     cost_begin();
     turn(EN_PRESET, 1);
     cost_end("CHOOSE WORLD opens (full body)");
     check(pl.scr == PS_WORLDS && pl.browse == (uint32_t)fidx("NEON RAIN") + 1u, "PRESETS: CHOOSE WORLD, one detent moves");
     redraw();
-    check(seen("CHOOSE WORLD") && seen("Neon Rain") && seen("Frozen Lake") && seen("Dusty Cafe") && seen("LO-FI") &&
-          seen("PRESS PLAY"), "CHOOSE WORLD: the Worlds, the highlighted one's category, PRESS PLAY");
-    shot("worlds");
-    cost_begin();
-    turn(EN_PRESET, 1);
-    cost_end("CHOOSE WORLD, one detent (two rows, the category)");
+    {
+        char nm[2][32], cat[2][32];
+        wrow(fidx("NEON RAIN") + 1, nm[0], cat[0]);
+        wrow(fidx("NEON RAIN") + 2, nm[1], cat[1]);
+        check(seen("CHOOSE WORLD") && seen("Neon Rain") && nm[0][0] && seen(nm[0]) && seen(cat[0]) && seen("PRESS PLAY"),
+              "CHOOSE WORLD: the Worlds (NEON RAIN, the next highlighted), the highlighted one's category, PRESS PLAY");
+        shot("worlds");
+        cost_begin();
+        turn(EN_PRESET, 1);
+        cost_end("CHOOSE WORLD, one detent (the rows that changed, the category)");
+        redraw();
+        check(pl.browse == (uint32_t)fidx("NEON RAIN") + 2u && seen(nm[1]) && seen(cat[1]),
+              "CHOOSE WORLD: another detent, the next World and its category");
+    }
     check(wrt.id == PL_FIRST_WORLD && song.playing, "CHOOSE WORLD: the World playing plays on");
     tap(B_HOME);
     check(pl.scr == PS_HOME && wrt.id == PL_FIRST_WORLD && !wreq.sw, "HOME: the choice is forgotten");
@@ -251,8 +268,10 @@ static void sc_screens(void)
     check(pl.scr == PS_WORLDS, "CHOOSE WORLD: still up 3.9 s after");
     wait_ms(200);
     check(pl.scr == PS_HOME && wrt.id == PL_FIRST_WORLD, "CHOOSE WORLD: 4 s idle cancels");
-    turn(EN_PRESET, 3);                          /* MIDNIGHT DRIVE (the last) */
-    check(pl.browse == (uint32_t)fidx("MIDNIGHT DRIVE"), "CHOOSE WORLD: clamps at the list's end");
+    turn(EN_PRESET, (int32_t)WORLD_NFACTORY + 2);   /* past the last */
+    check(pl.browse == WORLD_NFACTORY - 1u, "CHOOSE WORLD: clamps at the list's end");
+    turn(EN_PRESET, fidx("MIDNIGHT DRIVE") - (int32_t)pl.browse);
+    check(pl.browse == (uint32_t)fidx("MIDNIGHT DRIVE"), "CHOOSE WORLD: back to MIDNIGHT DRIVE");
     tap(B_PLAY);
     check(wreq.sw == 1 && wrt.id == PL_FIRST_WORLD && song.playing, "PLAY: playing, the switch waits for the bar");
     wait_bar();
@@ -260,7 +279,7 @@ static void sc_screens(void)
     check(wrt.id == wid("MIDNIGHT DRIVE") && song.playing && song.g[G_BPM] == 100 && wrt.mode == WM_PLAY,
           "PLAY: MIDNIGHT DRIVE from the next bar, still playing, its tempo");
     stop_quiet();
-    turn(EN_PRESET, -3);
+    turn(EN_PRESET, fidx("FROZEN LAKE") - fidx("MIDNIGHT DRIVE"));   /* (the list opens on the World playing) */
     tap(B_PLAY);
     frames(2);
     check(wrt.id == wid("FROZEN LAKE") && song.playing, "stopped: PLAY loads the World at once and starts it");
@@ -684,7 +703,7 @@ static void sc_persist(void)
         uint32_t c0, i;
         boot(1, NULL);
         tap(B_PLAY);
-        turn(EN_PRESET, 1);                      /* DUSTY CAFE (after NEON RAIN by category) */
+        turn(EN_PRESET, fidx("DUSTY CAFE") - fidx("NEON RAIN"));   /* DUSTY CAFE (the list opens on NEON RAIN) */
         tap(B_PLAY);
         wait_bar();
         frames(3);

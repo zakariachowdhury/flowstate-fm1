@@ -2,8 +2,9 @@
 /* Host test of the Musical Guardrail Engine (PLAY MODE, Phase 8: firmware/src/guard.c, the H6 read-site clamps in
  * fx.c and voice.c, H12 in seq.c; docs/guardrails.md), built as tests/macro_test.c is (FELUCCA_WORLD=1 on
  * tests/hostsim.c, -fsanitize=address,undefined) and run by tests/run_tests.sh:
- *   build/host/guard_test [WORLD.wblob ...]      (the factory Worlds are built in; the test Worlds as arguments, one
- *                                                 of them worlds/test/guard.world.json: every guard rule engaged)
+ *   build/host/guard_test [WORLD.wblob ...]      (the factory Worlds are built in, those FACTORY_WORLDS names when
+ *                                                 set (tests/world_pick.h); the test Worlds as arguments, one of them
+ *                                                 worlds/test/guard.world.json: every guard rule engaged)
  *
  *  1. inert: with no World the guard does nothing: no hold, a UNISON part keeps its voices, no loop follow;
  *  2. H6: every value inside its descriptor reads unchanged (the bus globals, DIST, every engine's EDIT values);
@@ -38,6 +39,7 @@ static uint32_t trk_def_engine(uint32_t i)
 }
 #include "../firmware/src/project.c"
 #include "../firmware/src/world.c"
+#include "world_pick.h"                         /* (FACTORY_WORLDS: tests/run_tests.sh's choice) */
 static void arrangement_apply(uint32_t s) { (void)s; }
 static uint32_t arrangement_ready(void) { return 0; }
 static void song_backup(void) {}
@@ -115,7 +117,7 @@ typedef struct {
     uint32_t n;
     int factory;
 } tworld_t;
-static tworld_t worlds[32];
+static tworld_t worlds[64];
 static uint32_t nworlds;
 static int guard_world = -1;                     /* worlds/test/guard.world.json, when given */
 
@@ -784,9 +786,11 @@ static void test_timing(void)
 int main(int argc, char **argv)
 {
     uint32_t i;
-    for (i = 0; i < WORLD_NFACTORY && nworlds < 32; i++) {
+    for (i = 0; i < WORLD_NFACTORY && nworlds < 64; i++) {
         const uint8_t *b;
         uint32_t n;
+        if (!world_picked(WORLD_INDEX[i].id))
+            continue;
         world_factory(i, &b, &n);
         worlds[nworlds].b = malloc(n);
         memcpy(worlds[nworlds].b, b, n);
@@ -797,7 +801,7 @@ int main(int argc, char **argv)
         snprintf(worlds[nworlds].name, sizeof worlds[nworlds].name, "%s", world_name());
         nworlds++;
     }
-    for (i = 1; i < (uint32_t)argc && nworlds < 32; i++) {
+    for (i = 1; i < (uint32_t)argc && nworlds < 64; i++) {
         worlds[nworlds].b = t_read(argv[i], &worlds[nworlds].n);
         snprintf(worlds[nworlds].name, sizeof worlds[nworlds].name, "%s",
                  strrchr(argv[i], '/') ? strrchr(argv[i], '/') + 1 : argv[i]);

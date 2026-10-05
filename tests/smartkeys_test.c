@@ -2,7 +2,8 @@
 /* Host test of the harmony and Smart Keys (PLAY MODE, Phase 6: firmware/src/harmony.c, smartkeys.c, the H2 pitch
  * reference count in voice.c and the hooks H7 / H8 / H9 / H11 / H16 in seq.c), built as tests/world_test.c is
  * (FELUCCA_WORLD=1 on tests/hostsim.c, -fsanitize=address,undefined) and run by tests/run_tests.sh:
- *   build/host/smartkeys_test [WORLD.wblob ...]   (the factory Worlds are built in; the test Worlds as arguments)
+ *   build/host/smartkeys_test [WORLD.wblob ...]   (the factory Worlds are built in, those FACTORY_WORLDS names
+ *                                                 when set (tests/world_pick.h); the test Worlds as arguments)
  *
  *  1. maps: every key of the 27, every chord of every progression of every World (the factory Worlds, the test
  *     Worlds, and variants of each with white: safe, black: chord+9 / chord, every avoid policy, the full scale as
@@ -43,6 +44,7 @@ static uint32_t trk_def_engine(uint32_t i)       /* (project.c's PROJ_HOST part 
 }
 #include "../firmware/src/project.c"
 #include "../firmware/src/world.c"
+#include "world_pick.h"                         /* (FACTORY_WORLDS: tests/run_tests.sh's choice) */
 static void arrangement_apply(uint32_t s) { (void)s; }
 static uint32_t arrangement_ready(void) { return 0; }
 static void song_backup(void) {}
@@ -188,7 +190,7 @@ typedef struct {
     uint32_t n;
     int factory;
 } tworld_t;
-static tworld_t worlds[32];
+static tworld_t worlds[64];
 static uint32_t nworlds;
 
 static uint8_t *t_read(const char *path, uint32_t *n)
@@ -1340,9 +1342,11 @@ int main(int argc, char **argv)
         t_rs = (uint32_t)strtoul(getenv("SK_SEED"), 0, 0);
     if (getenv("SK_FUZZ"))
         fuzz_blocks = (uint32_t)strtoul(getenv("SK_FUZZ"), 0, 0);
-    for (i = 0; i < WORLD_NFACTORY && nworlds < 32; i++) {
+    for (i = 0; i < WORLD_NFACTORY && nworlds < 64; i++) {
         const uint8_t *b;
         uint32_t n;
+        if (!world_picked(WORLD_INDEX[i].id))
+            continue;
         world_factory(i, &b, &n);
         worlds[nworlds].b = malloc(n);
         memcpy(worlds[nworlds].b, b, n);
@@ -1353,7 +1357,7 @@ int main(int argc, char **argv)
         snprintf(worlds[nworlds].name, sizeof worlds[nworlds].name, "%s", world_name());
         nworlds++;
     }
-    for (i = 1; i < (uint32_t)argc && nworlds < 32; i++) {
+    for (i = 1; i < (uint32_t)argc && nworlds < 64; i++) {
         worlds[nworlds].b = t_read(argv[i], &worlds[nworlds].n);
         snprintf(worlds[nworlds].name, sizeof worlds[nworlds].name, "%s", strrchr(argv[i], '/') ? strrchr(argv[i], '/') + 1 : argv[i]);
         nworlds++;

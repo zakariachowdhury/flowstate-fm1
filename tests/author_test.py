@@ -208,8 +208,9 @@ def api_checks(srv, worlds, tmp):
     check(r["sim"]["missing"] and "make -C host" in r["sim"]["build"], f"state reports the missing simulator: {r['sim']}")
     st, r, *_ = srv.get("/api/list")
     fac = [d for d in r["dirs"] if d["key"] == "factory"][0]
-    check(sorted(f["name"] for f in fac["files"]) == ["DUSTY CAFE", "FROZEN LAKE", "MIDNIGHT DRIVE", "NEON RAIN"],
-          f"list: the factory Worlds: {[f.get('name') for f in fac['files']]}")
+    want = sorted(json.loads(f.read_text())["name"] for f in (ROOT / "worlds" / "factory").glob("*.world.json"))
+    check(sorted(f["name"] for f in fac["files"]) == want and "NEON RAIN" in want,
+          f"list: the {len(want)} factory Worlds: {[f.get('name') for f in fac['files']]}")
     st, r, *_ = srv.get("/api/load?ref=factory/neon_rain.world.json")
     neon = factory("neon_rain")
     check(st == 200 and r["world"] == neon and r["writable"] is False, "load: a factory World, read-only")

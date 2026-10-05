@@ -2,7 +2,8 @@
 /* Host test of the performance macros and ENERGY as arrangement (PLAY MODE, Phase 7: firmware/src/macro.c,
  * arrange.c, guard_limits.h and the hooks H1, H3, H4, H5, H13, H14, H16), built as tests/smartkeys_test.c is
  * (FELUCCA_WORLD=1 on tests/hostsim.c, -fsanitize=address,undefined) and run by tests/run_tests.sh:
- *   build/host/macro_test [WORLD.wblob ...]      (the factory Worlds are built in; the test Worlds as arguments)
+ *   build/host/macro_test [WORLD.wblob ...]      (the factory Worlds are built in, those FACTORY_WORLDS names when
+ *                                                set (tests/world_pick.h); the test Worlds as arguments)
  *   build/host/macro_test --cost                 (an -O2 build without sanitizers: the overlay's instructions)
  *
  *  1. inert: with no World, and after world_unload, the overlay, the vmod offsets and the ENERGY mutes do nothing:
@@ -32,7 +33,8 @@
  *     two changes at least min_band_bars apart; the Smart Keys track is never muted; what the sequencer plays obeys
  *     the band (drum hits only on allowed lanes and density steps, a masked synth NOTE rests, a muted layer starts
  *     nothing); the fill plays on the phrase's last bar;
- *  8. ~bright reaches the engines (H3): a part held dry is brighter at COLOR 100 % than at home;
+ *  8. ~bright reaches the engines (H3): the first part COLOR moves through ~bright (either way), held dry (PHASE at
+ *     its own sustain: its ENV bends DCW), is brighter at COLOR 100 % than at home;
  *  9. engines and reloads: another engine on a track re-resolves its roles; a hot reload keeps the positions; more
  *     targets than slots: the first 48 apply and restore, the rest are counted.
  * The model includes the built-in mappings of controls 4..15 and the Smart Keys track's windows (Phase 13; their
@@ -52,6 +54,7 @@ static uint32_t trk_def_engine(uint32_t i)       /* (project.c's PROJ_HOST part 
 }
 #include "../firmware/src/project.c"
 #include "../firmware/src/world.c"
+#include "world_pick.h"                         /* (FACTORY_WORLDS: tests/run_tests.sh's choice) */
 static void arrangement_apply(uint32_t s) { (void)s; }
 static uint32_t arrangement_ready(void) { return 0; }
 static void song_backup(void) {}
@@ -127,7 +130,7 @@ typedef struct {
     uint32_t n;
     int factory;
 } tworld_t;
-static tworld_t worlds[32];
+static tworld_t worlds[64];
 static uint32_t nworlds;
 
 static uint8_t *t_read(const char *path, uint32_t *n)
@@ -1188,8 +1191,9 @@ static void test_vmod(void)
         macro_set(0, 1000);
         t_publish(1);
         tb = &ovb[ov_live];
-        for (i = 0; i < tb->n && part == WF_NONE; i++)   /* a part COLOR brightens through ~bright */
-            if (tb->s[i].kind == OV_VCUT && tb->s[i].tgt > 4 * 256 && tb->s[i].part != wrt.keys_trk)
+        for (i = 0; i < tb->n && part == WF_NONE; i++)   /* a part COLOR moves through ~bright (either way: on */
+            if (tb->s[i].kind == OV_VCUT && (tb->s[i].tgt > 4 * 256 || tb->s[i].tgt < -4 * 256) &&   /* PHASE's */
+                tb->s[i].part != wrt.keys_trk)          /* SOFT KEYS a lower DCW is brighter) */
                 part = tb->s[i].part;
         if (part == WF_NONE)
             continue;
@@ -1197,7 +1201,9 @@ static void test_vmod(void)
             trk[t].p[P_MUTE] = t != part;
         trk[part].p[P_CHOR] = trk[part].p[P_DLY] = trk[part].p[P_REV] = 0;
         trk[part].p[P_ATK] = trk[part].p[P_REL] = 0;   /* (a steady tone: no slow attack, no tail into the next) */
-        trk[part].p[P_SUS] = 127;
+        if (ENGINES[trk[part].engine] != &ENG_PHASE)   /* (PHASE: its ENV bends DCW by the amplitude envelope, so */
+            trk[part].p[P_SUS] = 127;                  /* its own sustain keeps DCW where the part plays; at 127 DCW
+                                                        * sits near the top, where ~bright moves little) */
         trk[part].p[P_ED_FLT] = trk[part].p[P_LD_FLT] = trk[part].p[P_LD_SHP] = trk[part].p[P_LD_AMP] = 0;
         for (t = 0; t < NTRK; t++)
             steps_clear(&trk[t]);
@@ -1358,9 +1364,11 @@ int main(int argc, char **argv)
 {
     uint32_t i;
     int do_cost = 0;
-    for (i = 0; i < WORLD_NFACTORY && nworlds < 32; i++) {
+    for (i = 0; i < WORLD_NFACTORY && nworlds < 64; i++) {
         const uint8_t *b;
         uint32_t n;
+        if (!world_picked(WORLD_INDEX[i].id))
+            continue;
         world_factory(i, &b, &n);
         worlds[nworlds].b = malloc(n);
         memcpy(worlds[nworlds].b, b, n);
@@ -1371,7 +1379,7 @@ int main(int argc, char **argv)
         snprintf(worlds[nworlds].name, sizeof worlds[nworlds].name, "%s", world_name());
         nworlds++;
     }
-    for (i = 1; i < (uint32_t)argc && nworlds < 32; i++) {
+    for (i = 1; i < (uint32_t)argc && nworlds < 64; i++) {
         if (!strcmp(argv[i], "--cost")) {
             do_cost = 1;
             continue;
