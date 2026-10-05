@@ -1,0 +1,119 @@
+{
+  "notes": "Outrun at night, F# minor, 116 BPM, pumping hard. A saw pluck (ANALOG TRAP PLUCK) runs eighth-note arpeggios up through each chord, a resonant phase-distortion bass (PHASE CZ BASS) gallops in sixteenths (one eighth, two sixteenths), the player's sync lead on the Smart Keys (TRIO SYNC LEAD, with an eighth-note echo), and the 909 kit on four on the floor with offbeat open hats; every kick ducks the synths. Scenes: A idles on i and VI in soft power-chord stabs; B drives i VI III VII; C is a two-bar lift, VI VII into i, with the arpeggio climbing an octave higher; D coasts on iv and VI in a wide room. ENERGY: the arpeggio alone in quarter notes, then kick, bass and eighths, then snare, clap and hats, then sixteenth hats, every note, ratchets and fills. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "neon_highway",
+  "name": "NEON HIGHWAY",
+  "category": "SYNTHWAVE",
+  "blurb": "Full speed, neon night",
+  "tempo": {"bpm": 116, "min": 104, "max": 128},
+  "key": {"root": "F#", "scale": "MIN"},
+  "tracks": [
+    {"name": "pluck", "role": "chords", "register": "C3", "sound": {"engine": "ANALOG", "preset": "TRAP PLUCK",
+      "params": {"level": 99, "CUT": 64, "RES": 18, "dec": 72, "sus": 64, "rel": 40, "sgate": 90, "chor": 40, "dly": 30, "rev": 30, "pan": -8}}},
+    {"name": "bass", "role": "bass", "register": "C2", "sound": {"engine": "PHASE", "preset": "CZ BASS",
+      "params": {"level": 106, "DCW": 34, "glide": 0, "sgate": 70, "rev": 0}}},
+    {"name": "lead", "role": "lead", "register": "F#3", "sound": {"engine": "TRIO", "preset": "SYNC LEAD",
+      "params": {"level": 90, "CUT": 78, "glide": 30, "chor": 20, "dly": 44, "rev": 30, "pan": 6}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "909", "params": {"level": 60, "rev": 22}}}
+  ],
+  "fx": {"dtime": "1/8", "dfdbk": 44, "dcolor": 66, "dmix": 84, "rsize": 96, "rdamp": 52, "crate": 30, "cdepth": 70, "duck": 64},
+  "patterns": {
+    "p_hold": {"track": "pluck", "div": "1/8", "steps": "[c1 c5] . . [c1 c5] . . [c1 c5]_ ."},
+    "p_arp": {"track": "pluck", "div": "1/8", "steps": "c1! c5 c1' c3' c5' c3' c1' c5"},
+    "p_climb": {"track": "pluck", "div": "1/8", "steps": "c1'! c5 c1' c3' c5' c1'' c5' c3'"},
+    "b_gallop": {"track": "bass", "steps": "c1! . c1 c1 c1! . c1 c1 c1! . c1 c1 c1! . c5 c1"},
+    "b_pulse": {"track": "bass", "div": "1/8", "steps": "c1 . c1 . c1 . c1 c5"},
+    "dr_drive": {"track": "drums", "lanes": {
+      "kick":  "x...x...x...x...",
+      "snare": "....s.......s...",
+      "hat":   "x.xsx.xsx.xsx.xs",
+      "open":  "..s...s...s...s."}},
+    "dr_burn": {"track": "drums", "lanes": {
+      "kick":  "x...x...x...x...",
+      "snare": "....x.......x...",
+      "clap":  "....x.......x...",
+      "hat":   "xsxsxsxsxsxsxsxs",
+      "open":  "..x...x...x...x."}},
+    "dr_coast": {"track": "drums", "lanes": {
+      "kick":  "x.......x.......",
+      "hat":   "..s...s...s...s."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":  "x...x...x...x...",
+      "snare": "....x...x.x.xxxx",
+      "hat":   "x.x.x.x.x.x.....",
+      "tomhi": "........s.......",
+      "tomlo": "..........s....."}}
+  },
+  "progressions": {
+    "ramp": ["i:8", "VI:8"],
+    "lane": ["i:4", "VI:4", "III:4", "VII:4"],
+    "burn": ["VI:2", "VII:2", "i:4"],
+    "coast": ["iv:8", "VI:8"]
+  },
+  "scenes": {
+    "A": {"name": "ON-RAMP", "role": "intro", "progression": "ramp", "energy": "e_idle", "params": {"pluck.atk": 30, "pluck.sus": 90, "pluck.rel": 64},
+          "patterns": {"pluck": "p_hold", "bass": "b_pulse", "drums": "dr_coast"}},
+    "B": {"name": "FAST LANE", "role": "main", "progression": "lane", "energy": "e_drive", "fill": "dr_fill",
+          "patterns": {"pluck": "p_arp", "bass": "b_gallop", "drums": "dr_drive"}},
+    "C": {"name": "AFTERBURN", "role": "lift", "progression": "burn", "energy": "e_drive", "fill": "dr_fill",
+          "params": {"pluck.ed_flt": 56}, "fx": {"duck": 72},
+          "patterns": {"pluck": "p_climb", "bass": "b_gallop", "drums": "dr_burn"}},
+    "D": {"name": "REAR VIEW", "role": "breakdown", "progression": "coast", "energy": "e_idle", "transition": 2,
+          "params": {"pluck.atk": 30, "pluck.sus": 90, "pluck.rel": 64, "pluck.rev": 50, "bass.DCW": 22}, "fx": {"rsize": 110, "dfdbk": 52},
+          "patterns": {"pluck": "p_hold", "bass": "b_pulse", "drums": "dr_coast"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "DARKSYNTH": {"sounds": {"drums": "TECHNO"}, "params": {"bass.dist": 30, "pluck.CUT": 54, "lead.CUT": 66, "drums.level": 64},
+                  "fx": {"dcolor": 40, "rdamp": 74}, "macros": {"COLOR": 0.36}},
+    "MIAMI": {"sounds": {"drums": "DISCO"}, "params": {"pluck.chor": 76, "lead.dly": 62, "lead.rev": 44},
+              "fx": {"rsize": 108, "dfdbk": 50, "cdepth": 96}, "energy_bias": -0.04, "macros": {"SPACE": 0.64}},
+    "NITRO": {"params": {"bass.DCW": 46, "pluck.sgate": 50}, "fx": {"duck": 78}, "energy_bias": 0.12,
+              "macros": {"MOTION": 0.64}}
+  },
+  "macros": {
+    "COLOR": [{"to": "pluck.@BRIGHT", "min": -20, "max": 28},
+              {"to": "lead.@BRIGHT", "min": -30, "max": 20},
+              {"to": "g.dcolor", "min": -20, "max": 20}],
+    "MOTION": [{"to": "pluck.sgate", "min": -26, "max": 30},
+               {"to": "pluck.ed_flt", "min": -24, "max": 6},
+               {"to": "g.duck", "min": -16, "max": 18},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "pluck+lead.rev", "min": -24, "max": 28, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 10},
+              {"to": "g.dfdbk", "min": -24, "max": 22},
+              {"to": "pluck+lead.dly", "min": -24, "max": 24},
+              {"to": "drums.rev", "min": -16, "max": 20}],
+    "ENERGY": [{"to": "pluck.level", "min": 2, "max": -6},
+               {"to": "drums.level", "min": -10, "max": 8},
+               {"to": "bass.dist", "min": 0, "max": 16},
+               {"to": "pluck.~bright", "min": 0, "max": 14}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -16}, {"to": "g.dfdbk", "add": -22},
+                                                     {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "pluck.@RESO", "add": -14}, {"to": "lead.@RESO", "add": -12}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.cdepth", "add": -22}, {"to": "g.duck", "add": -10}]}
+  ],
+  "energy": {
+    "e_idle": {"bands": [
+      {"from": 0.00, "layers": ["pluck", "lead"]},
+      {"from": 0.62, "layers": ["pluck", "bass", "lead"]},
+      {"from": 0.82, "layers": "all", "drums": ["kick", "hat"]}]},
+    "e_drive": {"density_lanes": ["hat", "open"], "bands": [
+      {"from": 0.00, "layers": ["pluck", "lead"], "pluck": "x.x.x.x.x.x.x.x."},
+      {"from": 0.25, "layers": "all", "drums": ["kick"], "bass": "x...x...x...x..."},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "snare", "clap", "hat", "open"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.74, "layers": "all", "fills": true, "ratchets": true}]}
+  },
+  "smart_keys": {"track": "lead", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord",
+                 "tonic": "F#3", "range": ["A2", "F#6"]},
+  "guard": {
+    "notes": {"lead": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["E1", "F#3"]}},
+    "record": {"quantize": 0.8},
+    "sound": {"ranges": {"pluck.RES": [0, 70], "lead.RES": [0, 70], "g.dfdbk": [0, 86]}, "max_level": 116, "max_dfdbk": 86},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}

@@ -1,0 +1,117 @@
+{
+  "notes": "Chiptune from a 1989 cabinet, G dorian, 128 BPM, two-bar game loops with a chord every two beats. Every synth is the LOFI chip voice: a pulse arpeggio (8BIT ARP with the chip's octave warble) that runs sixteenth-note broken chords, a triangle bass (GB BASS) bouncing in octaves, and the player's thin 12.5 % pulse lead on the Smart Keys (GAME LEAD on the stepped NES-style envelope, with vibrato), over the CHIP kit's square kick and noise snare. Scenes: A idles on i (insert coin); B runs i III VII IV; C climbs ii III IV and falls to VII with an Alberti arpeggio and four on the floor; D waits on IV and i (continue?). ENERGY opens the arpeggio: quarter notes alone, then kick and bass, then snare, noise hats and eighth-note arps, then every sixteenth, ratchets and fills. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "arcade_89",
+  "name": "ARCADE '89",
+  "category": "SYNTHWAVE",
+  "blurb": "Insert coin, press start",
+  "tempo": {"bpm": 128, "min": 116, "max": 140},
+  "key": {"root": "G", "scale": "DOR"},
+  "tracks": [
+    {"name": "arp", "role": "chords", "register": "C4", "sound": {"engine": "LOFI", "preset": "8BIT ARP",
+      "params": {"level": 95, "ARP": "OCT", "DUTY": 64, "TONE": 100, "sgate": 80, "chor": 0, "dly": 22, "rev": 20, "pan": -10}}},
+    {"name": "bass", "role": "bass", "register": "E1", "sound": {"engine": "LOFI", "preset": "GB BASS",
+      "params": {"level": 100, "TONE": 80, "sgate": 90, "rev": 0}}},
+    {"name": "lead", "role": "lead", "register": "G4", "sound": {"engine": "LOFI", "preset": "GAME LEAD",
+      "params": {"level": 84, "CHIP": "STEP", "DUTY": 0, "VIB": 24, "TONE": 108, "glide": 0, "dly": 30, "rev": 22, "pan": 8}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "CHIP", "params": {"level": 72, "rev": 14}}}
+  ],
+  "fx": {"dtime": "1/16", "dfdbk": 34, "dcolor": 64, "dmix": 74, "rsize": 70, "rdamp": 50, "crate": 40, "cdepth": 40, "duck": 34},
+  "patterns": {
+    "a_pulse": {"track": "arp", "div": "1/8", "steps": "[c1 c3 c5] . . [c1 c3 c5] . . [c1 c3 c5] ."},
+    "a_arp": {"track": "arp", "steps": "c1! c3 c5 c1' c3' c1' c5 c3"},
+    "a_alberti": {"track": "arp", "steps": "c1! c5 c3' c5 c1'! c5 c3' c5"},
+    "b_bounce": {"track": "bass", "div": "1/8", "steps": "c1! c1' c1 c1' c1 c1' c5 c1'"},
+    "b_idle": {"track": "bass", "div": "1/4", "steps": "c1 - - c1'"},
+    "dr_coin": {"track": "drums", "lanes": {
+      "kick":  "x.......x.......",
+      "hat":   "..s...s...s...s."}},
+    "dr_stage": {"track": "drums", "lanes": {
+      "kick":  "x.......x.x.....",
+      "snare": "....x.......x..s",
+      "hat":   "xsxsssxsxsxsssxs"}},
+    "dr_boss": {"track": "drums", "lanes": {
+      "kick":  "x...s...x...s...",
+      "snare": "....x.......x..s",
+      "hat":   "xsxsssxsxsxsssxs",
+      "open":  "..s...s...s...s."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":  "x.......x.......",
+      "snare": "....x...x.x.x222",
+      "tomhi": "......s.........",
+      "tomlo": ".........s.s...."}}
+  },
+  "progressions": {
+    "coin": ["i:8"],
+    "stage": ["i:2", "III:2", "VII:2", "IV:2"],
+    "boss": ["ii:2", "III:2", "IV:2", "VII:2"],
+    "cont": ["IV:4", "i:4"]
+  },
+  "scenes": {
+    "A": {"name": "COIN", "role": "intro", "progression": "coin", "energy": "e_idle", "params": {"arp.level": 90},
+          "patterns": {"arp": "a_pulse", "bass": "b_idle", "drums": "dr_coin"}},
+    "B": {"name": "STAGE 1", "role": "main", "progression": "stage", "energy": "e_play", "fill": "dr_fill",
+          "patterns": {"arp": "a_arp", "bass": "b_bounce", "drums": "dr_stage"}},
+    "C": {"name": "BOSS", "role": "lift", "progression": "boss", "energy": "e_play", "fill": "dr_fill",
+          "params": {"arp.DUTY": 32}, "fx": {"duck": 42},
+          "patterns": {"arp": "a_alberti", "bass": "b_bounce", "drums": "dr_boss"}},
+    "D": {"name": "CONTINUE", "role": "breakdown", "progression": "cont", "energy": "e_idle", "transition": 2,
+          "params": {"arp.level": 90, "arp.rev": 40}, "fx": {"rsize": 96, "dfdbk": 46},
+          "patterns": {"arp": "a_pulse", "bass": "b_idle", "drums": "dr_coin"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "HANDHELD": {"sounds": {"drums": "8BIT"}, "params": {"drums.level": 58, "arp.CRSH": 36, "bass.TONE": 74, "lead.TONE": 90},
+                 "fx": {"filt": 12, "rsize": 50}, "macros": {"COLOR": 0.42}},
+    "FM BOARD": {"sounds": {"drums": "ARCADE"}, "params": {"drums.level": 52, "lead.VIB": 40, "arp.rev": 34, "lead.rev": 36},
+                 "fx": {"rsize": 90, "dfdbk": 42}, "macros": {"SPACE": 0.62}},
+    "TURBO": {"params": {"arp.sgate": 60, "bass.sgate": 70}, "fx": {"duck": 44}, "energy_bias": 0.12,
+              "macros": {"MOTION": 0.62}}
+  },
+  "macros": {
+    "COLOR": [{"to": "arp.@BRIGHT", "min": -40, "max": 16},
+              {"to": "lead.@BRIGHT", "min": -36, "max": 16},
+              {"to": "bass.@BRIGHT", "min": -30, "max": 24},
+              {"to": "g.dcolor", "min": -20, "max": 20}],
+    "MOTION": [{"to": "arp.sgate", "min": -30, "max": 30},
+               {"to": "arp.@SHAPE", "min": -32, "max": 30, "smooth": "slow"},
+               {"to": "lead.@MOVE", "min": -20, "max": 30},
+               {"to": "g.duck", "min": -12, "max": 20}],
+    "SPACE": [{"to": "arp+lead.rev", "min": -20, "max": 30, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 20},
+              {"to": "g.dfdbk", "min": -24, "max": 24},
+              {"to": "lead.dly", "min": -24, "max": 30},
+              {"to": "drums.rev", "min": -12, "max": 20}],
+    "ENERGY": [{"to": "arp.level", "min": 2, "max": -6},
+               {"to": "drums.level", "min": -10, "max": 8},
+               {"to": "arp.~bright", "min": 0, "max": 12}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -14}, {"to": "g.dfdbk", "add": -20},
+                                                     {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "arp.@BRIGHT", "add": -10}, {"to": "lead.@BRIGHT", "add": -8}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "lead.@MOVE", "add": -14}, {"to": "g.duck", "add": -8}]}
+  ],
+  "energy": {
+    "e_idle": {"bands": [
+      {"from": 0.00, "layers": ["arp", "lead"]},
+      {"from": 0.62, "layers": ["arp", "bass", "lead"]},
+      {"from": 0.82, "layers": "all", "drums": ["kick", "hat"]}]},
+    "e_play": {"density_lanes": ["hat", "open"], "bands": [
+      {"from": 0.00, "layers": ["arp", "lead"], "arp": "x...x...x...x..."},
+      {"from": 0.25, "layers": "all", "drums": ["kick"], "arp": "x...x...x...x..."},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "snare", "hat", "open"], "density": "x.x.x.x.x.x.x.x.",
+       "arp": "x.x.x.x.x.x.x.x."},
+      {"from": 0.74, "layers": "all", "fills": true, "ratchets": true}]}
+  },
+  "smart_keys": {"track": "lead", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord",
+                 "tonic": "G4", "range": ["Bb3", "G7"]},
+  "guard": {
+    "notes": {"lead": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["E1", "G3"]}},
+    "record": {"quantize": 0.8},
+    "sound": {"ranges": {"g.dfdbk": [0, 80]}, "max_level": 116, "max_dfdbk": 80},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}

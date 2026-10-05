@@ -1,0 +1,119 @@
+{
+  "notes": "Cosmic electro, C lydian (the raised fourth: wonder, weightlessness), 106 BPM. FM bells (DIGITAL TRAP BELL) arpeggiate major-seventh voicings in eighths through a long quarter-note echo, an FM bass (DIGITAL FM BASS) plays a syncopated electro line, the player's robot voice on the Smart Keys (VOICE TALKBOX, gliding between vowels), and the ELECTRO kit (808 body, 606 hats, FM toms) on a broken electro beat. Scenes: A docks on Imaj7 and II, the lydian shimmer, the bass held long under the bells; B orbits Imaj7 II vii7 vi7; C lifts off on a bass that climbs vi7 vii7 Imaj7 II; D floats on vi7 and II in a huge room. ENERGY: the bells alone, then kick and bass, then clap, snare and hats, then sixteenth hats, every bell note, ratchets and fills. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "space_station",
+  "name": "SPACE STATION",
+  "category": "SYNTHWAVE",
+  "blurb": "Lights of a slow orbit",
+  "tempo": {"bpm": 106, "min": 96, "max": 116},
+  "key": {"root": "C", "scale": "LYD"},
+  "tracks": [
+    {"name": "bells", "role": "keys", "register": "C4", "sound": {"engine": "DIGITAL", "preset": "TRAP BELL",
+      "params": {"level": 94, "IDX": 62, "chor": 30, "dly": 44, "rev": 54, "pan": -10}}},
+    {"name": "bass", "role": "bass", "register": "C2", "sound": {"engine": "DIGITAL", "preset": "FM BASS",
+      "params": {"level": 106, "atk": 6, "FB": 0, "glide": 20, "sgate": 80, "rev": 2}}},
+    {"name": "voice", "role": "lead", "register": "C4", "sound": {"engine": "VOICE", "preset": "TALKBOX",
+      "params": {"level": 86, "chor": 20, "dly": 36, "rev": 36, "pan": 6}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "ELECTRO", "params": {"level": 86, "rev": 30}}}
+  ],
+  "fx": {"dtime": "1/4", "dfdbk": 48, "dcolor": 58, "dmix": 88, "rsize": 108, "rdamp": 48, "crate": 18, "cdepth": 64, "duck": 26},
+  "patterns": {
+    "bl_slow": {"track": "bells", "div": "1/4", "steps": "[c1 c5 c7] . c3' . | c5 . c7 c3'_"},
+    "bl_arp": {"track": "bells", "div": "1/8", "steps": "c1! c5 c7 c3' c5' c3' c7 c5"},
+    "bl_rise": {"track": "bells", "div": "1/8", "steps": "c3! c5 c7 c1' c3' c5' c3' c1'"},
+    "b_electro": {"track": "bass", "steps": "c1! . . . c1 . c1 . . . c1' . c1 c5 . ."},
+    "b_float": {"track": "bass", "div": "1/4", "steps": "c1 - - c5"},
+    "dr_orbit": {"track": "drums", "lanes": {
+      "kick":  "x......x..x.....",
+      "clap":  "....x.......x...",
+      "hat":   "x.xsx.xsx.xsx.xs",
+      "tomhi": "...............s"}},
+    "dr_lift": {"track": "drums", "lanes": {
+      "kick":  "x......x..x...x.",
+      "snare": "....x.......x...",
+      "clap":  "....x.......x...",
+      "hat":   "x.xsx.xsx.xsx.xs",
+      "open":  "..s.......s....."}},
+    "dr_dock": {"track": "drums", "lanes": {
+      "kick":  "x.........x.....",
+      "rim":   "....s.......s..."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":  "x......x..x.....",
+      "clap":  "....x...........",
+      "hat":   "x.x.x.x.x.......",
+      "tomhi": "........s.s.....",
+      "tomlo": "............s.ss"}}
+  },
+  "progressions": {
+    "dock": ["Imaj7:8", "II:8"],
+    "orbit": ["Imaj7:4", "II:4", "vii7:4", "vi7:4"],
+    "lift": ["vi7:4", "vii7:4", "Imaj7:4", "II:4"],
+    "walk": ["vi7:8", "II:8"]
+  },
+  "scenes": {
+    "A": {"name": "DOCKING", "role": "intro", "progression": "dock", "energy": "e_dock", "params": {"bass.level": 96},
+          "patterns": {"bells": "bl_slow", "bass": "b_float", "drums": "dr_dock"}},
+    "B": {"name": "ORBIT", "role": "main", "progression": "orbit", "energy": "e_orbit", "fill": "dr_fill",
+          "patterns": {"bells": "bl_arp", "bass": "b_electro", "drums": "dr_orbit"}},
+    "C": {"name": "LIFTOFF", "role": "lift", "progression": "lift", "energy": "e_orbit", "fill": "dr_fill",
+          "params": {"bells.IDX": 64}, "fx": {"duck": 34},
+          "patterns": {"bells": "bl_rise", "bass": "b_electro", "drums": "dr_lift"}},
+    "D": {"name": "SPACEWALK", "role": "breakdown", "progression": "walk", "energy": "e_dock", "transition": 2,
+          "params": {"bells.rev": 60, "bass.level": 96}, "fx": {"rsize": 118, "dfdbk": 52},
+          "patterns": {"bells": "bl_slow", "bass": "b_float", "drums": "dr_dock"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "DEEP SPACE": {"params": {"bells.rev": 62, "voice.rev": 52, "bells.dly": 56}, "fx": {"rsize": 116, "dfdbk": 54, "rdamp": 40},
+                   "energy_bias": -0.06, "macros": {"SPACE": 0.7}},
+    "ROBOT": {"sounds": {"drums": "606"}, "params": {"voice.TALK": 96, "voice.BUZZ": 112, "bass.sgate": 56, "drums.level": 90},
+              "energy_bias": 0.06, "macros": {"MOTION": 0.62}},
+    "COSMIC": {"sounds": {"bells": "MUSIC BOX"}, "params": {"bells.level": 92, "voice.ld_pit": 4},
+               "fx": {"cdepth": 90}, "macros": {"COLOR": 0.6, "SPACE": 0.6}}
+  },
+  "macros": {
+    "COLOR": [{"to": "bells.@BRIGHT", "min": -36, "max": 8},
+              {"to": "voice.@BRIGHT", "min": -40, "max": 14},
+              {"to": "bass.@BRIGHT", "min": -14, "max": 0},
+              {"to": "g.dcolor", "min": -20, "max": 22}],
+    "MOTION": [{"to": "bells.@SHAPE", "min": -30, "max": 10},
+               {"to": "bass.sgate", "min": -30, "max": 24},
+               {"to": "voice.@MOVE", "min": 0, "max": 40},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "bells+voice.rev", "min": -24, "max": 28, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 6},
+              {"to": "g.dfdbk", "min": -24, "max": 18},
+              {"to": "bells.dly", "min": -24, "max": 26},
+              {"to": "drums.rev", "min": -16, "max": 20}],
+    "ENERGY": [{"to": "bells.level", "min": 2, "max": -6},
+               {"to": "drums.level", "min": -10, "max": 8},
+               {"to": "bass.level", "min": -3, "max": 2}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -16}, {"to": "g.dfdbk", "add": -22},
+                                                     {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "voice.@RESO", "add": -14}, {"to": "bells.@BRIGHT", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.cdepth", "add": -22}, {"to": "voice.@MOVE", "add": -16}]}
+  ],
+  "energy": {
+    "e_dock": {"bands": [
+      {"from": 0.00, "layers": ["bells", "voice"]},
+      {"from": 0.40, "layers": ["bells", "bass", "voice"]},
+      {"from": 0.82, "layers": "all", "drums": ["kick", "rim"]}]},
+    "e_orbit": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["bells", "voice"], "bells": "x.x.x.x.x.x.x.x."},
+      {"from": 0.25, "layers": "all", "drums": ["kick"], "bells": "x.x.x.x.x.x.x.x."},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "snare", "clap", "hat", "open"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.74, "layers": "all", "fills": true, "ratchets": true}]}
+  },
+  "smart_keys": {"track": "voice", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord",
+                 "tonic": "C4", "range": ["D3", "A6"]},
+  "guard": {
+    "notes": {"voice": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["E1", "G3"]}},
+    "record": {"quantize": 0.75},
+    "sound": {"ranges": {"g.dfdbk": [0, 84]}, "max_level": 116, "max_dfdbk": 84},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}

@@ -1,0 +1,123 @@
+{
+  "notes": "Chillwave from a stretched cassette, Bb major, 82 BPM, swung sixteenths. A vocal pad (VOICE SOUL OOH) holds rootless seventh chords that the kick pumps once the drums arrive, a round sine bass (ANALOG SUB BASS) on roots and fifths, the player's soft gliding lead on the Smart Keys (ANALOG G-FUNK LD with a slow vibrato), and the VINTAGE rhythm box (CR-78 style) with a swung shaker. The tape: hiss and crackle (DUST), slow deep chorus wow, a dark triplet echo, a soft room. Scenes: A (SIDE A) plays Imaj7 to iii7; B steps down IVmaj7 iii7 ii7 Imaj7; C climbs IVmaj7 V vi7 Imaj7 with four kicks and a clap; D (SIDE B) floats on iii7 and IVmaj7. ENERGY: the pad alone, unpumped, then kick, bass and the pump, then snare, clap and hats, then the swung shaker, open hats, ratchets and fills. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "cassette_dream",
+  "name": "CASSETTE DREAM",
+  "category": "SYNTHWAVE",
+  "blurb": "Warped tape, warm haze",
+  "tempo": {"bpm": 82, "min": 74, "max": 90},
+  "key": {"root": "Bb", "scale": "MAJ"},
+  "swing": 28,
+  "tracks": [
+    {"name": "pad", "role": "pad", "register": "C3", "sound": {"engine": "VOICE", "preset": "SOUL OOH",
+      "params": {"level": 68, "atk": 50, "rel": 60, "chor": 60, "dly": 16, "rev": 50, "pan": -6}}},
+    {"name": "bass", "role": "bass", "register": "A1", "sound": {"engine": "ANALOG", "preset": "SUB BASS",
+      "params": {"level": 74, "glide": 30, "sgate": 100, "rev": 4}}},
+    {"name": "lead", "role": "lead", "register": "Bb3", "sound": {"engine": "ANALOG", "preset": "G-FUNK LD",
+      "params": {"level": 78, "CUT": 92, "chor": 30, "dly": 40, "rev": 40, "pan": 8}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "VINTAGE", "params": {"level": 118, "rev": 26}}}
+  ],
+  "fx": {"dtime": "8T", "dfdbk": 44, "dcolor": 40, "dmix": 78, "rsize": 100, "rdamp": 70, "crate": 14, "cdepth": 100,
+         "dust": 20, "duck": 44},
+  "patterns": {
+    "v_hold": {"track": "pad", "div": "1/4", "steps": "[c3 c5 c7] - - - | - - - ."},
+    "v_pump": {"track": "pad", "div": "1/8", "steps": "[c3 c5 c7] - - - - - - -"},
+    "b_dream": {"track": "bass", "div": "1/8", "steps": "c1! - - c1 - . c5 ."},
+    "b_long": {"track": "bass", "div": "1/4", "steps": "c1 - - -"},
+    "dr_dream": {"track": "drums", "lanes": {
+      "kick":   "x......x..x.....",
+      "snare":  "....x.......x...",
+      "hat":    "x.x.x.x.x.x.x.x.",
+      "shaker": ".s.s.s.s.s.s.s.s"}},
+    "dr_sun": {"track": "drums", "lanes": {
+      "kick":   "x...x...x...x...",
+      "snare":  "....x.......x...",
+      "clap":   "....s.......s...",
+      "hat":    "x.x.x.x.x.x.x.x.",
+      "open":   "..............s.",
+      "shaker": ".s.s.s.s.s.s.s.s"}},
+    "dr_side": {"track": "drums", "lanes": {
+      "kick":   "x.......x.......",
+      "rim":    "....s.......s...",
+      "conga":  "......s.......s."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.......x.......",
+      "snare":  "....x.....s.s.ss",
+      "hat":    "x.x.x.x.x.x.....",
+      "tomhi":  "........s.......",
+      "tomlo":  "...........s...."}}
+  },
+  "progressions": {
+    "side_a": ["Imaj7:8", "iii7:8"],
+    "daydream": ["IVmaj7:4", "iii7:4", "ii7:4", "Imaj7:4"],
+    "sunbeams": ["IVmaj7:4", "V:4", "vi7:4", "Imaj7:4"],
+    "side_b": ["iii7:8", "IVmaj7:8"]
+  },
+  "scenes": {
+    "A": {"name": "SIDE A", "role": "intro", "progression": "side_a", "energy": "e_side", "params": {"pad.level": 60},
+          "patterns": {"pad": "v_hold", "bass": "b_long", "drums": "dr_side"}},
+    "B": {"name": "DAYDREAM", "role": "main", "progression": "daydream", "energy": "e_tape", "fill": "dr_fill",
+          "patterns": {"pad": "v_pump", "bass": "b_dream", "drums": "dr_dream"}},
+    "C": {"name": "SUNBEAMS", "role": "lift", "progression": "sunbeams", "energy": "e_tape", "fill": "dr_fill",
+          "params": {"pad.level": 72, "pad.BUZZ": 44}, "fx": {"duck": 50},
+          "patterns": {"pad": "v_pump", "bass": "b_dream", "drums": "dr_sun"}},
+    "D": {"name": "SIDE B", "role": "breakdown", "progression": "side_b", "energy": "e_side", "transition": 2,
+          "params": {"pad.level": 58, "pad.rev": 66}, "fx": {"rsize": 112, "dfdbk": 50},
+          "patterns": {"pad": "v_hold", "bass": "b_long", "drums": "dr_side"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "WARPED": {"params": {"pad.ld_pit": 3, "pad.lrate": 18, "lead.ld_pit": 3}, "fx": {"dust": 32, "crate": 8, "cdepth": 112},
+               "macros": {"MOTION": 0.62, "COLOR": 0.42}},
+    "LUCID": {"sounds": {"pad": "CHOIR AAH"}, "params": {"pad.level": 66, "lead.dly": 58, "lead.rev": 54},
+              "fx": {"rsize": 114, "dfdbk": 50, "dust": 10}, "energy_bias": -0.05, "macros": {"SPACE": 0.66}},
+    "NIGHT SWIM": {"params": {"lead.CUT": 70, "pad.BUZZ": 24}, "fx": {"filt": -10, "dcolor": 28, "rdamp": 86},
+                   "energy_bias": 0.06, "macros": {"COLOR": 0.36}}
+  },
+  "macros": {
+    "COLOR": [{"to": "pad.@BRIGHT", "min": -22, "max": 30},
+              {"to": "lead.@BRIGHT", "min": -40, "max": 18},
+              {"to": "g.dcolor", "min": -16, "max": 22},
+              {"to": "g.dust", "min": 10, "max": -10}],
+    "MOTION": [{"to": "g.duck", "min": -20, "max": 20},
+               {"to": "g.cdepth", "min": -30, "max": 14},
+               {"to": "g.crate", "min": -8, "max": 14, "smooth": "slow"},
+               {"to": "pad.ld_pit", "min": 0, "max": 4, "smooth": "slow"}],
+    "SPACE": [{"to": "pad+lead.rev", "min": -24, "max": 26, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 10},
+              {"to": "g.dfdbk", "min": -24, "max": 18},
+              {"to": "lead.dly", "min": -24, "max": 26},
+              {"to": "drums.rev", "min": -16, "max": 18}],
+    "ENERGY": [{"to": "pad.level", "min": 2, "max": -6},
+               {"to": "drums.level", "min": -10, "max": 8},
+               {"to": "bass.level", "min": -2, "max": 2}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -14}, {"to": "g.dfdbk", "add": -20},
+                                                     {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "pad.@RESO", "add": -12}, {"to": "lead.@RESO", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.cdepth", "add": -20}, {"to": "pad.ld_pit", "add": -2}]}
+  ],
+  "energy": {
+    "e_side": {"bands": [
+      {"from": 0.00, "layers": ["pad", "lead"]},
+      {"from": 0.40, "layers": ["pad", "bass", "lead"]},
+      {"from": 0.82, "layers": "all", "drums": ["kick", "rim", "conga"]}]},
+    "e_tape": {"density_lanes": ["hat", "shaker"], "bands": [
+      {"from": 0.00, "layers": ["pad", "lead"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick"]},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "snare", "clap", "hat"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.74, "layers": "all", "fills": true, "ratchets": true}]}
+  },
+  "smart_keys": {"track": "lead", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord+9",
+                 "tonic": "Bb3", "range": ["C3", "F6"]},
+  "guard": {
+    "notes": {"lead": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["E1", "G3"]}},
+    "record": {"quantize": 0.6},
+    "sound": {"ranges": {"g.dust": [0, 40], "g.duck": [0, 70], "g.dfdbk": [0, 80]}, "max_level": 116, "max_dfdbk": 80,
+              "max_dust": 40},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}
