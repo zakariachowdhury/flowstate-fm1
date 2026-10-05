@@ -17,8 +17,10 @@ compile   writes the blob (or, with --c-array, a C array of it); fails on any er
 decompile prints a lowered JSON (absolute notes, generated names) that compiles back to the same bytes.
 check     the static checks (schema, names, ranges, notation, budgets), then the reference model of the macros and
           the guard (design 6.4) over every scene x variation and the 3^4 grid of the macros: no mapping out of its
-          parameter's range or past a hard limit, none at the maximum at 100 % unless "saturate", at most 48 slots,
-          a Smart Keys range of an octave at least; no audio.
+          parameter's range or past a hard limit, none at the maximum at 100 % unless "saturate" (user Worlds
+          only), at most 48 slots, a Smart Keys range of an octave at least; no audio. Also (compile too): the 27
+          Smart Keys inside their range at OCT 0, no LOFI chip arpeggio (ARP MAJ / MIN): errors in a factory World,
+          warnings in a user World.
 model     the model's slot tables at sampled macro positions (the format of tests/guard_sweep.c --dump-slots).
 import    a user World blob (MY WORLDS, Phase 14) as a best-effort source: decompile, its OVERRIDES folded in.
 rename    a blob's display name (and a user World's id, FNV-1a of its name), for the authoring tool (Phase 15).
@@ -1481,9 +1483,15 @@ class Compiler:
                 ctl = CTL_NAMES.index(cn)
                 for i, m in enumerate(lst):
                     r = self.mapping(jp(path, i), ctl, m)
+                    sat = bool(isinstance(m, dict) and m.get("saturate"))
+                    if sat and not self.user:
+                        # the blob carries no such flag: the factory checks on the real stage (tests/world_render.c
+                        # --macros, tests/macro_test.c's grid) hold every factory mapping short of the maximum
+                        self.e(jp(jp(path, i), "saturate"), "a factory World never takes a parameter to its maximum at "
+                               "100 %: stop the mapping short of it (\"saturate\" is for user Worlds)")
                     if r:
                         self.maps.append(r)
-                        self.map_src.append((jp(path, i), bool(isinstance(m, dict) and m.get("saturate"))))
+                        self.map_src.append((jp(path, i), sat))
         if len(self.maps) > F["WF_MAX_MAPS"]:
             self.e("$.macros", f"{len(self.maps)} mappings (with controls); at most {F['WF_MAX_MAPS']}")
 
@@ -3129,6 +3137,94 @@ def hard_limit(md, s):
     return None
 
 
+def keys_span(ir):
+    """smartkeys.c's map before the fold (design 4.1; tests/smartkeys_test.c ref_raw): the lowest and the highest note
+    of the 27 keys at OCT 0 over every chord of the World's progressions"""
+    k, meta = ir["keys"], ir["meta"]
+    root, qm = meta["root"], F["WF_QUAL_MASK"]
+    rot = lambda m, n: ((m << n) | (m >> (12 - n))) & 0xFFF if n % 12 else m & 0xFFF   # noqa: E731
+    sc = rot(PR.scale_mask(meta["scale"]), root)
+    fix = ir["guard"]["fix"] if ir["guard"] else None
+    avoid = fix[F["WF_G_AVOID"]] if fix and fix[F["WF_G_AVOID"]] != NONE else 0
+    tonic = k["tonic"] - (k["tonic"] - root) % 12
+    lo = hi = None
+    for prog in ir["progs"]:
+        for r, q, _ in prog:
+            pc = (root + r) % 12
+            ct = rot(qm[q], pc)
+            safe = 0
+            for x in range(12):
+                in_ct, below, above = ct >> x & 1, ct >> ((x + 11) % 12) & 1, ct >> ((x + 1) % 12) & 1
+                av = not in_ct and (below if avoid == 0 else (below or above) if avoid == 2 else 0)
+                if in_ct or (sc >> x & 1 and not av):
+                    safe |= 1 << x
+            bs, wm = ct, k["mask"] & 0xFFF
+            if k["black"] == 1 and (sc & safe) >> ((pc + 2) % 12) & 1:
+                bs |= 1 << ((pc + 2) % 12)
+            if k["white"] == 1:
+                s = sum(1 << x for x in range(12) if wm >> x & 1 and safe >> ((tonic + x) % 12) & 1)
+                wm = s or wm
+            mel = [n for n in range(tonic - 60, tonic + 96) if wm >> ((n - tonic) % 12) & 1]
+            c4 = next(i for i, n in enumerate(mel) if n >= tonic)
+            lastw = lastb = -1000
+            w = 0
+            for key in range(27):
+                if (53 + key) % 12 in (1, 3, 6, 8, 10):         # a black key: the next chord tone up
+                    n = max(lastw, lastb) + 1
+                    while not bs >> (n % 12) & 1:
+                        n += 1
+                    lastb = n
+                else:                                           # a white key: the melody scale from the tonic
+                    n = lastw = mel[c4 + w - 4]
+                    w += 1
+                lo, hi = (n, n) if lo is None else (min(lo, n), max(hi, n))
+    return lo, hi
+
+
+def keys_check(ir, d, user):
+    """the 27 keys inside the Smart Keys range at OCT 0 (docs/worlds.md 13): else the firmware folds some back by
+    octaves and the keyboard stops climbing in order. A factory World must hold them (tests/smartkeys_test.c);
+    a user World is warned"""
+    if not ir["progs"]:
+        return
+    kt = ir["keys"]["trk"]
+    fix = ir["guard"]["fix"] if ir["guard"] else None
+    if not fix or fix[2 * kt] == NONE or fix[2 * kt + 1] - fix[2 * kt] < 11:
+        return                                          # (no range: the firmware's default; under an octave: model_check)
+    rl, rh = fix[2 * kt], fix[2 * kt + 1]
+    lo, hi = keys_span(ir)
+    if lo is not None and (lo < rl or hi > rh):
+        (d.warn if user else d.err)("$.smart_keys.range", f"{note_name(rl)}..{note_name(rh)}: the 27 keys reach "
+                                    f"{note_name(lo)}..{note_name(hi)} over the progressions at OCT 0, and the range "
+                                    "folds the ones outside back by octaves (the keyboard stops climbing in order): "
+                                    f"widen it to {note_name(min(lo, rl))}..{note_name(max(hi, rh))}, or move the "
+                                    "tonic an octave")
+
+
+def chip_arp_check(ir, d, user):
+    """LOFI's ARP (the 8BIT ARP preset sets MAJ) plays every note as a fast major (MIN: minor) triad: out of key over
+    the scale's other degrees, and no in-key check sees it (the sequencer and the keys play one note). A factory World
+    keeps it OFF or OCT; a user World is warned"""
+    lofi = PR.eng_id["LOFI"]
+    arp = [x["label"] for x in PR.engines[lofi]["edit"]].index("ARP")
+    names = PR.engines[lofi]["edit"][arp].get("names") or []
+    seen = {}
+    for sc in range(len(ir["scenes"])):
+        for v in range(len(ir["vars"])):
+            ps, _, eng = stage_bases(ir, sc, v)
+            for t in range(NTRK - 1):
+                a = ps[t][PR.P_E0 + arp]
+                if eng[t] == lofi and a >= 2 and t not in seen:
+                    seen[t] = (a, sc, v)
+    for t, (a, sc, v) in sorted(seen.items()):
+        nm = names[a] if a < len(names) else a
+        (d.warn if user else d.err)(f"$.tracks[{t}].sound.params", f"LOFI ARP {nm} (scene {SCENE_KEYS[sc]}, "
+                                    f"{ir['vars'][v]['name']}): the chip arpeggiates every note as a "
+                                    f"{'major' if nm == 'MAJ' else 'minor'} triad, out of key on most degrees of "
+                                    "the scale where no in-key check hears it; set \"ARP\": \"OFF\" or \"OCT\" "
+                                    "(arpeggios belong to PULSE or the patterns)")
+
+
 def compile_world(src, user=False):
     """World JSON (dict) -> (blob or None, Diag)"""
     d = Diag()
@@ -3151,7 +3247,11 @@ def compile_world(src, user=False):
         return None, d
     if len(blob) > F["WF_SOFT_LEN"]:
         d.warn("$", f"the blob is {len(blob)} B, above the {F['WF_SOFT_LEN']} B guideline")
-    decode(blob)                        # the compiler's own output passes the structural checks
+    ir = decode(blob)                   # the compiler's own output passes the structural checks
+    keys_check(ir, d, user)
+    chip_arp_check(ir, d, user)
+    if d.errors:
+        return None, d
     return blob, d
 
 

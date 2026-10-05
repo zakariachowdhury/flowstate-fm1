@@ -696,7 +696,8 @@ static result_t render_one(uint32_t s, uint32_t v, double energy, const char *wa
 /* --macros: the static check of design 6.4 on the real stage, one mapping at a time (macro.c sums them live, and
  * tests/macro_test.c checks the sums; tools/worldc.py check owns this check): for every MAPS record, every scene x
  * variation and every track it moves, base + the offset at 0 and at 1 (curves end at 0 and 1) inside the
- * descriptor, and not its maximum at 1 */
+ * descriptor, and not its maximum at 1 (a factory World: worldc refuses "saturate" there, and the blob carries no
+ * such flag; a user World may say it, so its maximum is only reported) */
 static const uint8_t EROLE[NENGINES][WF_NEROLES] = WF_ENG_ROLE;
 static const char *const CTLN[WF_NCTL] = {"COLOR", "MOTION", "SPACE", "ENERGY", "SOFT", "SHORT", "BODY", "TAIL",
                                           "DRIFT", "WOBBLE", "PULSE", "RATE", "FILTER", "ECHO", "CRUSH", "FREEZE"};
@@ -752,7 +753,7 @@ static int macros_check(void)
                         hi = base + at1;
                     if (base + at0 < d->min || base + at0 > d->max || base + at1 < d->min || base + at1 > d->max)
                         clampd = 1;
-                    if (at1 > 0 && base + at1 >= d->max)
+                    if (at1 > 0 && base + at1 >= d->max && !(wctx.b[5] & WF_F_USER))
                         sat = 1;
                 }
             }

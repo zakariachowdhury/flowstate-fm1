@@ -15,6 +15,8 @@
   - GUARD sound combinations round trip, and their errors; the model of the macros and the guard (design 6.4):
     `check` passes the factory Worlds and refuses a mapping out of its range, past a hard limit, at the maximum at
     100 % without "saturate", a Smart Keys range under an octave (the C engine against the model: tests/run_tests.sh);
+    Phase 18: "saturate" refused in a factory World, a range folding one of the 27 keys at OCT 0 and LOFI's chip
+    arpeggio (ARP MAJ / MIN) refused in a factory World and warned in a user one, every factory World's keys in range;
   - user Worlds (Phase 15): the decoder reads OVERRIDES on a USER blob only; `import` folds them into a source that
     compiles (another engine, a parameter, a global, swing, the kit); `rename` rewrites the name, a user World's id
     and the CRC.
@@ -498,8 +500,8 @@ def test_gen_worlds():
             check("the same device id" in str(e), "duplicate id message")
 
 
-def model_errors(src):
-    blob, d = compile_(src)
+def model_errors(src, user=False):
+    blob, d = compile_(src, user)
     if blob is None:
         return None, "\n".join(d.errors)
     worldc.model_check(blob, d, d.map_src)
@@ -548,13 +550,45 @@ def test_model():
     _, err = model_errors(w)
     check("all-max" in err, f"CUT to its maximum refused: {err}")
     w["macros"]["COLOR"][0]["saturate"] = True
+    _, err = model_errors(w, user=True)
+    check("all-max" not in err, f"... unless saturate (a user World): {err}")
     _, err = model_errors(w)
-    check("all-max" not in err, f"... unless saturate: {err}")
+    check("$.macros.COLOR[0].saturate" in err and "factory World" in err,
+          f"saturate refused in a factory World (no flag in the blob: the factory checks hold every mapping short): {err}")
     w = load("minimal")
     w["smart_keys"]["range"] = ["C4", "F4"]
     w["smart_keys"]["tonic"] = "C4"
     _, err = model_errors(w)
     check("under an octave" in err, f"a keys range under an octave refused: {err}")
+    # the 27 keys inside the range at OCT 0 (Phase 18): a factory World refused, a user World warned
+    w = load("minimal")
+    lo, hi = worldc.keys_span(worldc.decode(compile_(w)[0]))
+    w["smart_keys"]["range"] = [worldc.note_name(lo + 2), worldc.note_name(hi)]
+    blob, d = compile_(w)
+    check(blob is None and any("$.smart_keys.range" in e and "the 27 keys reach" in e for e in d.errors),
+          f"keys folding at OCT 0 refused in a factory World: {d.errors}")
+    blob, d = compile_(w, user=True)
+    check(blob is not None and any("the 27 keys reach" in x for x in d.warnings), f"... a warning in a user World: {d.warnings}")
+    w["smart_keys"]["range"] = [worldc.note_name(lo), worldc.note_name(hi)]
+    blob, d = compile_(w)
+    check(blob is not None and not any("27 keys" in x for x in d.errors + d.warnings), f"... and none when they fit: {d.errors}")
+    for p in sorted((ROOT / "worlds" / "factory").glob("*.world.json")):
+        ir = worldc.decode(compile_(json.loads(p.read_text()))[0])
+        kt = ir["keys"]["trk"]
+        lo, hi = worldc.keys_span(ir)
+        check(ir["guard"]["fix"][2 * kt] <= lo and hi <= ir["guard"]["fix"][2 * kt + 1],
+              f"{p.name}: the 27 keys {worldc.note_name(lo)}..{worldc.note_name(hi)} inside the range")
+    # LOFI's chip arpeggio (ARP MAJ / MIN, the 8BIT ARP preset's own) is out of key where no check hears it
+    w = load("minimal")
+    w["tracks"][0]["sound"] = {"engine": "LOFI", "preset": "8BIT ARP"}
+    blob, d = compile_(w)
+    check(blob is None and any("LOFI ARP MAJ" in e for e in d.errors), f"8BIT ARP's chip arpeggio refused: {d.errors}")
+    blob, d = compile_(w, user=True)
+    check(blob is not None and any("LOFI ARP MAJ" in x for x in d.warnings), f"... a warning in a user World: {d.warnings}")
+    for arp in ("OFF", "OCT"):
+        w["tracks"][0]["sound"]["params"] = {"ARP": arp}
+        blob, d = compile_(w)
+        check(blob is not None and not any("LOFI ARP" in x for x in d.errors + d.warnings), f"... ARP {arp} is fine: {d.errors}")
     # more than 48 targets moving at once is refused (17 parameters on the three synth tracks: 51 slots)
     w = load("minimal")
     w["macros"] = {"COLOR": [{"to": f"*.{pn}", "min": -1, "max": 1} for pn in
