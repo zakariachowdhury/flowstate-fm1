@@ -148,3 +148,35 @@ The full table is in [simulator.md](simulator.md).
 
 **Next.** Phase 4: the FLOWSTATE STUDIO simulator UI (UI spec §12). Phase 5 (the World format) is already being
 built in parallel.
+
+## Phase 4: Basic simulator UI (2026-10-05)
+
+**Done.** `flowstate-sim` opens on a **FLOWSTATE STUDIO** view laid out as UI spec §12
+(screenshot: [images/studio.png](images/studio.png)). It contains:
+- **The World card and chooser.** You highlight a World and load it, on the next bar while playing (design D10).
+- **Scene buttons A–D**, with `NEXT BAR` / `CHANGES NEXT BAR` feedback.
+- **The four macro knobs** (COLOR, MOTION, SPACE, ENERGY) with the spec's end words.
+- **Performance buttons:** PLAY, REC, PULSE, BEAT and FX, with their LEDs.
+- **Track strips:** mute, level and sound.
+- **The keys line** and a 27-key keyboard.
+- **The live 240×240 device screen.**
+- **A developer inspector** (Option+I).
+
+Tab switches to the full FM-1 panel (ADVANCED).
+
+All of it runs from one studio model (`host/sim/studio.c`). Until the World runtime is wired in, that model fills
+it with stand-ins:
+- the example projects act as Worlds, and SLOOP sections as scenes;
+- the macro knobs drive KNOB 1–4.
+
+Features that arrive later carry honest labels: VAR shows "PHASE 12", SMART MELODY shows "PHASE 6".
+
+**Verified** on the commit alone, in a clean worktree:
+- A date-pinned build is byte-identical to the published 2.1.
+- `./tests/run_tests.sh` passes all 26 groups. The simulator group now also scripts the Studio: a World chosen while
+  another plays loads on its next bar; then scene, mute, level and macro; the Studio and ADVANCED views are drawn.
+
+**Commits:** `5e31230` to `aaf8663`.
+
+**Next.** Phase 5: Musical World data format. The core (format, compiler, firmware parser) is already built; the
+four demo Worlds are being composed.
