@@ -225,13 +225,13 @@ run "regression with FELUCCA_WORLD=1 (world.c built in, no World loaded): the sa
     env -u GOLDEN_UPDATE -u BUDGET_UPDATE "$OUT/regress_world" tests/golden.txt tests/cpu_baseline.txt
 
 # the factory Worlds (worlds/factory, docs/worlds.md "Factory Worlds") through the real firmware with
-# tests/world_render.c (wb_check, world_load, world_apply, PLAY; the ENERGY band at the World's default emulated
-# until Phase 11): each compiles within the factory limit (3,072 B; above 2,048 B a warning); every scene x
-# variation, 4 bars and a 6 s tail, is heard, peaks at most -1 dBFS, has no full-scale sample and no DC, leaves no
-# voice and no echo above -60 dBFS after STOP, stays in the voice budget with no held note stolen, keeps its notes
-# in the scale and their registers; the same as the Phase 5 firmware plays it (--raw: no ENERGY) and with a
-# player's phrase on the Smart Keys; ENERGY bands only add; no macro mapping leaves its range or saturates at
-# 100 %; the Worlds sit within 3 LU of each other at their defaults
+# tests/world_render.c (wb_check, world_load, world_apply, PLAY; the macros at the World's defaults and its ENERGY
+# band through arrange.c, Phase 7): each compiles within the factory limit (3,072 B; above 2,048 B a warning); every
+# scene x variation, 4 bars and a 6 s tail, is heard, peaks at most -1 dBFS, has no full-scale sample and no DC,
+# leaves no voice and no echo above -60 dBFS after STOP, stays in the voice budget with no held note stolen, keeps
+# its notes in the scale and their registers; also with no ENERGY arrangement (--raw: every pattern plays) and with
+# a player's phrase on the Smart Keys; ENERGY bands only add notes and hits; no macro mapping leaves its range or
+# saturates at 100 %; the Worlds sit within 3 LU of each other at their defaults
 factory_worlds_test() {
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/world_render" tests/world_render.c -lm || return 1
     : > "$OUT/worlds-loudness.txt"
@@ -290,5 +290,50 @@ smartkeys_test() {
 }
 run "smart keys: maps, chord clock, held notes, same pitch, octaves, polyphony, MIDI, fuzz (ASan/UBSan); key mashing" \
     smartkeys_test
+
+# The performance macros and ENERGY as arrangement (Phase 7: firmware/src/macro.c, arrange.c, guard_limits.h; design
+# 5): tests/macro_test.c under ASan/UBSan on the factory Worlds and the test Worlds (extreme: mappings far past every
+# range): no World, nothing moves; 625 positions of the four macros per World against an independent model (curves,
+# roles, sums, rules, ranges, hard limits, 100 % never all-max), every base restored after every block, a scene
+# committed inside the overlay; rules at their thresholds; smoothing per class; ENERGY bands on their beats and bars,
+# with hysteresis, and what the sequencer plays obeying them; ~bright reaching the engines. Then its cost (an -O2
+# build: the overlay's instructions per sample). Then every factory World at its macros' extremes (world_render
+# --extremes: each macro at 0 and 1, ENERGY 0 / 0.5 / 1, all at 0, all at 1): clean, the tails gone within 6 s, ENERGY
+# denser but not louder (gain compensation), no extreme far quieter than the defaults; and sloop-render's --ctl
+# (the World's defaults given explicitly: the same bytes; others: other bytes) and --sweep
+macros_test() {
+    for w in minimal full extreme; do
+        python3 tools/worldc.py compile worlds/test/$w.world.json -o "$OUT/mt-$w.wblob" >/dev/null 2>&1 ||
+            { echo "worldc cannot compile worlds/test/$w.world.json"; return 1; }
+    done
+    $CC -g -w -fsanitize=address,undefined -fno-sanitize=shift-base -fno-sanitize-recover=undefined -Ibuild/gen \
+        -Ifirmware/src -o "$OUT/macro_test" tests/macro_test.c -lm || return 1
+    "$OUT/macro_test" "$OUT/mt-minimal.wblob" "$OUT/mt-full.wblob" "$OUT/mt-extreme.wblob" || return 1
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/macro_cost" tests/macro_test.c -lm || return 1
+    "$OUT/macro_cost" --cost || return 1
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/world_render" tests/world_render.c -lm || return 1
+    for f in worlds/factory/*.world.json; do
+        [ -f "$f" ] || continue
+        id=$(basename "$f" .world.json)
+        python3 tools/worldc.py compile "$f" -o "$OUT/mt-$id.wblob" >/dev/null 2>&1 || return 1
+        "$OUT/world_render" --extremes --bars 4 --check "$OUT/mt-$id.wblob" > "$OUT/extremes-$id.txt" ||
+            { cat "$OUT/extremes-$id.txt"; return 1; }
+        sed -n 's/^extremes: //p' "$OUT/extremes-$id.txt"
+    done
+    r=build/host-bin/sloop-render
+    $r --world "NEON RAIN" --bars 2 --analyze "$OUT/ctl-default.wav" > "$OUT/ctl-default.txt" || return 1
+    $r --world "NEON RAIN" --bars 2 --ctl COLOR=0.5,MOTION=50,SPACE=0.5,ENERGY=0.552 --analyze "$OUT/ctl-same.wav" \
+        > "$OUT/ctl-same.txt" || return 1
+    $r --world "NEON RAIN" --bars 2 --ctl COLOR=0.2,ENERGY=0.9 --check "$OUT/ctl-moved.wav" > "$OUT/ctl-moved.txt" ||
+        { cat "$OUT/ctl-moved.txt"; return 1; }
+    cmp -s "$OUT/ctl-default.wav" "$OUT/ctl-same.wav" ||
+        { echo "sloop-render --ctl at the World's defaults is not the default render"; return 1; }
+    ! cmp -s "$OUT/ctl-default.wav" "$OUT/ctl-moved.wav" || { echo "sloop-render --ctl changed nothing"; return 1; }
+    $r --world "MIDNIGHT DRIVE" --bars 4 --sweep ENERGY --check "$OUT/sweep-energy.wav" > "$OUT/sweep-energy.txt" ||
+        { cat "$OUT/sweep-energy.txt"; return 1; }
+    echo "render: --ctl at the defaults: the same bytes; COLOR=0.2,ENERGY=0.9: other bytes, clean; --sweep ENERGY: clean"
+}
+run "macros: model, limits, restore, rules, smoothing, ENERGY bands (ASan/UBSan); cost; extremes per World; --ctl" \
+    macros_test
 
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }

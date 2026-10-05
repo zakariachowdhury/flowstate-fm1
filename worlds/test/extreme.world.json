@@ -1,0 +1,664 @@
+{
+  "notes": "Test World (tests/macro_test.c): full.world.json with the bass on WHEEL and macro mappings, rules and controls far past every range, so that the overlay clamps to the descriptors and to guard_limits.h, sums several mappings into one slot, steps an enum (WHEEL ROTR) and fills more slots. Never musical.",
+  "format": "flowstate-world/1",
+  "id": "test_extreme",
+  "name": "EXTREME",
+  "category": "SYNTHWAVE",
+  "blurb": "Past every edge",
+  "tempo": {
+    "bpm": 96,
+    "min": 84,
+    "max": 108
+  },
+  "key": {
+    "root": "A",
+    "scale": "MIN"
+  },
+  "swing": 10,
+  "tracks": [
+    {
+      "name": "pad",
+      "role": "pad",
+      "sound": {
+        "engine": "ANALOG",
+        "preset": "WARM PAD",
+        "params": {
+          "CUT": 60,
+          "rev": 50,
+          "level": 92,
+          "WAVE": "SQR",
+          "lwave": "TRI"
+        }
+      }
+    },
+    {
+      "name": "bass",
+      "role": "bass",
+      "register": "A1",
+      "sound": {
+        "engine": "WHEEL",
+        "preset": "DIRTY B3",
+        "params": {
+          "DRV": 20
+        }
+      }
+    },
+    {
+      "name": "keys",
+      "role": "lead",
+      "register": "A3",
+      "sound": {
+        "engine": "TRIO",
+        "preset": "SYNC LEAD",
+        "params": {
+          "dly": 40,
+          "rev": 30
+        }
+      }
+    },
+    {
+      "name": "drums",
+      "role": "drums",
+      "sound": {
+        "kit": "808",
+        "params": {
+          "level": 104,
+          "rev": 12,
+          "pan": -8
+        }
+      }
+    }
+  ],
+  "fx": {
+    "dtime": "1/8",
+    "dfdbk": 50,
+    "dmix": 80,
+    "rsize": 96,
+    "rdamp": 60,
+    "dust": 3
+  },
+  "patterns": {
+    "pad_main": {
+      "track": "pad",
+      "div": "1/16",
+      "steps": "[c1 c3 c5] - - - - - - - - - - - - - - -"
+    },
+    "bass_main": {
+      "track": "bass",
+      "steps": "c1 . c1 . c1 . c5 . c1 . c1 . c1 . c5 ."
+    },
+    "bass_drive": {
+      "track": "bass",
+      "steps": "c1 c1 c1 c1 c1 c1 c1 c1 c1 c1 c1 c1 c5 c5 c5 c5"
+    },
+    "bass_walk": {
+      "track": "bass",
+      "div": "1/8",
+      "steps": "1 . b3 . 5, - #4 . | 1' A1! [1 5]_ . c7~ c9*2 E2 ."
+    },
+    "pad_stab": {
+      "track": "pad",
+      "div": "1/8",
+      "steps": "[C4 E4 G4]! . . . [D4 F4 A4]_ . - ."
+    },
+    "dr_main": {
+      "track": "drums",
+      "lanes": {
+        "kick": "x...x...x...x...",
+        "snare": "....x.......x...",
+        "hat": "x.x.x.x.x.x.x.x."
+      }
+    },
+    "dr_busy": {
+      "track": "drums",
+      "lanes": {
+        "kick": "x...x...x..xx...",
+        "snare": "....x.......x..g",
+        "hat": "xxxxxxxxxxxx2xxx",
+        "open": "..x...x...x...x."
+      }
+    },
+    "dr_break": {
+      "track": "drums",
+      "lanes": {
+        "kick": "x.........x.....|X.........x.....",
+        "snare": "........X.......|........X...s.g.",
+        "hat": "x...x...x...x...|x...x...x...4..."
+      }
+    },
+    "dr_min": {
+      "track": "drums",
+      "lanes": {
+        "kick": "x.......x.......",
+        "rim": "....s.......s..."
+      }
+    },
+    "dr_fill": {
+      "track": "drums",
+      "lanes": {
+        "kick": "x...x...x.......",
+        "snare": "....x...x.xxXXXX",
+        "crash": "................"
+      }
+    },
+    "unused": {
+      "track": "pad",
+      "steps": "1 2 3 4"
+    }
+  },
+  "progressions": {
+    "main": [
+      "i:4",
+      "VI:4",
+      "III:4",
+      "VII:4"
+    ],
+    "dark": [
+      "i:8",
+      "iv7:8"
+    ],
+    "spare": [
+      "I:4"
+    ]
+  },
+  "scenes": {
+    "A": {
+      "name": "INTRO",
+      "role": "intro",
+      "progression": "dark",
+      "energy": "e",
+      "patterns": {
+        "pad": "pad_main",
+        "bass": null,
+        "drums": {
+          "GROOVE": "dr_break",
+          "MINIMAL": "dr_min"
+        }
+      }
+    },
+    "B": {
+      "name": "MAIN",
+      "role": "main",
+      "progression": "main",
+      "energy": "e",
+      "fill": "dr_fill",
+      "patterns": {
+        "pad": "pad_main",
+        "bass": "bass_main",
+        "drums": {
+          "GROOVE": "dr_main",
+          "BUSY": "dr_busy",
+          "BREAK": "dr_break"
+        }
+      }
+    },
+    "C": {
+      "name": "LIFT",
+      "role": "lift",
+      "progression": "main",
+      "energy": "e2",
+      "fill": "dr_fill",
+      "transition": 2,
+      "params": {
+        "pad.CUT": 80,
+        "*.chor": 20,
+        "drums.level": 110,
+        "g.duck": 30
+      },
+      "patterns": {
+        "pad": "pad_stab",
+        "bass": "bass_drive",
+        "drums": "dr_busy"
+      }
+    },
+    "D": {
+      "name": "BREAKDOWN",
+      "role": "breakdown",
+      "progression": "dark",
+      "transition": 4,
+      "fx": {
+        "rsize": 115,
+        "swing": 20
+      },
+      "patterns": {
+        "pad": "pad_main",
+        "bass": "bass_walk",
+        "drums": null
+      }
+    }
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "AIRY": {
+      "params": {
+        "pad.rev": 80,
+        "keys.rev": 60
+      },
+      "fx": {
+        "rsize": 110
+      },
+      "energy_bias": -0.1
+    },
+    "DARK": {
+      "params": {
+        "pad.CUT": 38,
+        "keys.CUT": 50
+      },
+      "fx": {
+        "dcolor": 30
+      }
+    },
+    "PULSING": {
+      "swap": {
+        "bass_main": "bass_drive"
+      },
+      "energy_bias": 0.1
+    },
+    "HEAVY": {
+      "sounds": {
+        "pad": "DARK STR",
+        "drums": "909"
+      },
+      "params": {
+        "bass.DRV": 40
+      }
+    }
+  },
+  "curves": {
+    "knee": {
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0.5,
+          0.2
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    }
+  },
+  "macros": {
+    "COLOR": [
+      {
+        "to": "*.~bright",
+        "min": -128,
+        "max": 127,
+        "curve": "log"
+      },
+      {
+        "to": "*.@BRIGHT",
+        "min": -128,
+        "max": 127
+      },
+      {
+        "to": "keys.@RESO",
+        "min": -128,
+        "max": 127
+      },
+      {
+        "to": "pad.RES",
+        "min": -20,
+        "max": 127,
+        "curve": "late"
+      },
+      {
+        "to": "g.dcolor",
+        "min": -128,
+        "max": 127
+      }
+    ],
+    "MOTION": [
+      {
+        "to": "pad.ld_flt",
+        "min": -128,
+        "max": 127,
+        "smooth": "slow"
+      },
+      {
+        "to": "keys.~shape",
+        "min": -128,
+        "max": 127,
+        "curve": "knee"
+      },
+      {
+        "to": "bass.@MOVE",
+        "min": -2,
+        "max": 2
+      },
+      {
+        "to": "g.cdepth",
+        "min": -128,
+        "max": 127,
+        "smooth": "fast"
+      },
+      {
+        "to": "*.lrate",
+        "min": -50,
+        "max": 50
+      }
+    ],
+    "SPACE": [
+      {
+        "to": "*.rev",
+        "min": -128,
+        "max": 127,
+        "curve": "s"
+      },
+      {
+        "to": "g.rsize",
+        "min": -128,
+        "max": 127
+      },
+      {
+        "to": "g.dfdbk",
+        "min": -128,
+        "max": 127
+      },
+      {
+        "to": "keys.dly",
+        "min": -128,
+        "max": 127
+      },
+      {
+        "to": "g.drrev",
+        "min": -50,
+        "max": 127
+      }
+    ],
+    "ENERGY": [
+      {
+        "to": "*.level",
+        "min": -128,
+        "max": 127
+      },
+      {
+        "to": "bass.@DRIVE",
+        "min": -128,
+        "max": 127,
+        "curve": "exp"
+      },
+      {
+        "to": "drums.level",
+        "min": -128,
+        "max": 127
+      },
+      {
+        "to": "*.~bright",
+        "min": -60,
+        "max": 100
+      },
+      {
+        "to": "pad+bass.chor",
+        "min": -10,
+        "max": 127,
+        "curve": [
+          0,
+          0.05,
+          0.1,
+          0.2,
+          0.3,
+          0.45,
+          0.6,
+          0.8,
+          1
+        ]
+      },
+      {
+        "to": "*.sgate",
+        "min": -127,
+        "max": 127
+      },
+      {
+        "to": "g.duck",
+        "min": -50,
+        "max": 127
+      }
+    ]
+  },
+  "controls": {
+    "SOFT": [
+      {
+        "to": "keys.atk",
+        "max": 127,
+        "curve": "exp"
+      }
+    ],
+    "FILTER": [
+      {
+        "to": "g.filt",
+        "min": -128,
+        "max": 127,
+        "smooth": "fast"
+      }
+    ],
+    "ECHO": [
+      {
+        "to": "g.dmix",
+        "max": 127
+      },
+      {
+        "to": "g.dfdbk",
+        "max": 127
+      }
+    ]
+  },
+  "rules": [
+    {
+      "if": {
+        "SPACE": 0.8,
+        "ENERGY": 0.8
+      },
+      "then": [
+        {
+          "to": "bass.rev",
+          "add": -30
+        },
+        {
+          "to": "g.drrev",
+          "add": -10
+        },
+        {
+          "to": "g.dfdbk",
+          "add": -25
+        },
+        {
+          "to": "*.level",
+          "add": -6
+        }
+      ]
+    },
+    {
+      "if": {
+        "COLOR": 0.9,
+        "ENERGY": 0.9
+      },
+      "then": [
+        {
+          "to": "keys.@RESO",
+          "add": -20
+        }
+      ]
+    },
+    {
+      "if": {
+        "MOTION": 0.9
+      },
+      "then": [
+        {
+          "to": "g.cdepth",
+          "add": -30
+        }
+      ]
+    },
+    {
+      "if": {
+        "COLOR": 0.4
+      },
+      "then": [
+        {
+          "to": "*.level",
+          "add": 127
+        },
+        {
+          "to": "pad.RES",
+          "add": 127
+        },
+        {
+          "to": "g.rsize",
+          "add": 127
+        },
+        {
+          "to": "*.~shape",
+          "add": 127
+        }
+      ]
+    }
+  ],
+  "energy": {
+    "e": {
+      "density_lanes": [
+        "hat",
+        "open"
+      ],
+      "bands": [
+        {
+          "from": 0.0,
+          "layers": [
+            "pad",
+            "keys"
+          ],
+          "drums": [
+            "kick",
+            "hat"
+          ],
+          "density": "x...x...x...x..."
+        },
+        {
+          "from": 0.35,
+          "layers": [
+            "pad",
+            "bass",
+            "keys",
+            "drums"
+          ],
+          "drums": [
+            "kick",
+            "snare",
+            "hat"
+          ],
+          "density": "x.x.x.x.x.x.x.x.",
+          "bass": "x.x.x.x.x.x.x.x."
+        },
+        {
+          "from": 0.65,
+          "layers": "all",
+          "drums": "all",
+          "fills": true
+        },
+        {
+          "from": 0.9,
+          "layers": "all",
+          "drums": "all",
+          "fills": true,
+          "ratchets": true
+        }
+      ]
+    },
+    "e2": {
+      "bands": [
+        {
+          "from": 0,
+          "layers": "all"
+        }
+      ]
+    }
+  },
+  "smart_keys": {
+    "track": "keys",
+    "mode": "melody",
+    "melody_scale": "MPEN",
+    "white": "scale",
+    "black": "chord+9",
+    "tonic": "A3",
+    "range": [
+      "E2",
+      "C6"
+    ]
+  },
+  "guard": {
+    "notes": {
+      "keys": {
+        "max_poly": 4,
+        "loop_follow": "snap",
+        "avoid": "classic"
+      },
+      "bass": {
+        "range": [
+          "E1",
+          "A3"
+        ]
+      }
+    },
+    "record": {
+      "quantize": 0.75,
+      "max_notes": 3
+    },
+    "sound": {
+      "ranges": {
+        "keys.RES": [
+          0,
+          100
+        ],
+        "g.dfdbk": [
+          0,
+          90
+        ],
+        "*.@BRIGHT": [
+          -40,
+          40
+        ]
+      },
+      "max_level": 116,
+      "max_dfdbk": 90
+    },
+    "arrangement": {
+      "mute_change": "bar",
+      "density_change": "beat",
+      "fills_every": 4,
+      "min_band_bars": 2
+    },
+    "cpu": {
+      "max_unison": 4,
+      "ceiling": 0.85
+    }
+  },
+  "defaults": {
+    "scene": "B",
+    "variation": "ORIGINAL",
+    "macros": [
+      0.5,
+      0.5,
+      0.5,
+      0.6
+    ],
+    "pulse": "SLOW",
+    "beat": "GROOVE",
+    "shape": [
+      0,
+      0.2,
+      0,
+      0
+    ],
+    "movement": [
+      0,
+      0,
+      0,
+      0.5
+    ]
+  }
+}

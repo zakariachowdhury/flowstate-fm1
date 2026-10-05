@@ -8,7 +8,8 @@
  *     --var NAME | all     the variation (default: the World's)
  *     --bars N             bars of 4/4 played (default 8)
  *     --energy X           the ENERGY position 0..1 (default: the World's), plus the variation's bias
- *     --raw                no ENERGY emulation: every pattern of the scene plays, as the Phase 5 firmware does
+ *     --ctl C=X,..         macro positions (COLOR MOTION SPACE ENERGY, or the later controls), 0..1 or 0..100
+ *     --raw                no ENERGY arrangement: every pattern of the scene plays, as the Phase 5 firmware did
  *     --keys               a phrase on the Smart Keys track (written as a recorded loop: the player's lead)
  *     --mash               a beginner mashing the 27 keys live (Smart Keys, Phase 6): on most eighth notes one or two
  *                          random keys, each held one to four eighths (--seed N: another player); every key note must
@@ -21,16 +22,21 @@
  *     --macros             each macro / control mapping over every scene x variation (world_stage's bases): the
  *                          effective value at 0 and at 1 against the parameter's range (design 6.4: inside it,
  *                          and 100 % is never the maximum)
+ *     --extremes           the default scene and variation with each macro at 0 and at 1 (the others at the
+ *                          World's defaults), ENERGY at 0.5, all four at 0 and all at 1: clean (peak under
+ *                          -0.5 dBFS, nothing at full scale, the tail under -60 dBFS within the 6 s after STOP), and
+ *                          ENERGY's gain compensation: from 0 to 1 more notes and hits, the loudness at most
+ *                          EXT_LU_HALF LU over 0.5 and EXT_LU_SPAN LU over 0 (design 5.6); and no corner far quieter
+ *                          than the World's defaults (at most EXT_LU_FLOOR under them: dark and sparse, not silent)
  *     --mute T,..          tracks kept silent, 1..4 (gain staging: a part alone)
  *     --check              exit 1 when a check fails
  *
- * A render: wb_check, world_load and world_apply (stage + commit while stopped: the real world.c), then the
- * ENERGY band at the position, emulated on the committed steps until Phase 11's arrange.c does it (tracks
- * outside its layers muted, drum lanes, the density and play masks, ratchets only where the band allows them,
- * the scene's fill on the last bar of each phrase), PLAY through the transport (transport_req, as the panel
- * asks), N bars of mix_block, STOP, the tail. Each render runs in a fork of the booted process, so each starts
- * from the same state (no reverb, delay or voice left over from the one before). Macros are Phase 7: every
- * render is the authored sound (the macros at home).
+ * A render: wb_check, world_load, the macro positions (macro.c: the World's defaults, --energy, --ctl) and
+ * world_apply (stage + commit while stopped: the real world.c, which evaluates the macros' target table and commits
+ * the scene's ENERGY band: arrange.c's layers, drum lanes, density and play masks, ratchets, the fill on the last
+ * bar of each phrase), PLAY through the transport (transport_req, as the panel asks), N bars of mix_block (the
+ * macro overlay in it, H4 / H5), STOP, the tail. Each render runs in a fork of the booted process, so each starts
+ * from the same state (no reverb, delay or voice left over from the one before).
  *
  * Measured over the bars played: peak, RMS, loudness (BS.1770: K-weighted, gated, LUFS), DC, samples at and
  * within 0.1 dB of full scale, the longest silence, the limiter (the time it takes more than 1 dB and more than
@@ -41,8 +47,9 @@
  * scale, the limiter over 6 dB at most 5 % of the time (design 12.3), |DC| at most 0.001, no voice left after the
  * tail and its end below -60 dBFS, at most 8 voices and no held note stolen (without --keys: the World alone
  * leaves room for the player), every synth note in the scale, bass in E1..G3, pad / chords / keys in E2..E6,
- * texture in C3..C7; with --keys the lead in C3..C7; with --bands the drum hits and the loudness never fall as
- * ENERGY rises. */
+ * texture in C3..C7; with --keys the lead in C3..C7; with --bands the notes and drum hits never fall as ENERGY
+ * rises (the bands only add), and the loudness falls by at most BAND_LU from one band to the next (ENERGY's gain
+ * compensation, design 5.6, may take back what a layer adds, not more). */
 #define FELUCCA_WORLD 1
 #define main hostsim_main
 #include "hostsim.c"
@@ -65,7 +72,8 @@ static uint32_t blob_n;
 static int energy_emul = 1, keys_phrase = 0, mash = 0;
 static uint32_t mash_seed = 1;
 static uint32_t mute_mask;                       /* --mute: tracks kept silent (gain staging: one part at a time) */
-static double energy_set = -1, tail_s = 6;
+static double energy_set = -1, tail_s = 6, peak_max = -1.0;
+static double ctl_want[WF_NCTL] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};   /* < 0: default */
 static uint32_t bars = 8;
 
 static const uint8_t *meta(void) { return wctx.b + wctx.off[WF_S_META]; }
@@ -126,121 +134,18 @@ static void chord_at(uint32_t s, uint32_t b, uint32_t *pc, uint32_t *mask)
     *mask = QMASK[p[1u + 2u * k] & 15u];
 }
 
-/* ------------------------------------------------- the ENERGY band (Phase 11) --- */
+/* ------------------------------------------------- the ENERGY band (arrange.c) --- */
 typedef struct {
-    int on;                      /* a band applies (the scene has a table, not --raw) */
-    uint32_t idx, nbands, layers, lanes, dens, dlanes, fills, ratchets, play[NPART], pos;
+    uint32_t idx, nbands, layers, pos;           /* the band the layers follow, of how many; tracks heard; 0..1000 */
 } band_t;
-
-static band_t band_of(uint32_t s, uint32_t v, double energy)
+static band_t band_now(void)                     /* what the firmware's arrangement plays now */
 {
     band_t b;
-    const uint8_t *e = energy_rec(scene_rec(s)[13]), *bd = 0;
-    int32_t pos = (int32_t)(energy * WF_UNIT + 0.5) + (int8_t)var_rec(v)[WF_LABEL_LEN];
-    uint32_t k;
-    memset(&b, 0, sizeof b);
-    b.pos = (uint32_t)clamp(pos, 0, WF_UNIT);
-    b.layers = 15;
-    b.lanes = b.dens = 0xFFFF;
-    b.play[0] = b.play[1] = b.play[2] = 0xFFFF;
-    b.ratchets = 1;
-    if (!e || !energy_emul)
-        return b;
-    b.on = 1;
-    b.nbands = e[2];
-    b.dlanes = wb_u16(e);
-    for (k = 0; k < e[2]; k++)
-        if (e[WF_ENERGY_HDR + WF_BAND_LEN * k] <= b.pos) {
-            bd = e + WF_ENERGY_HDR + WF_BAND_LEN * k;
-            b.idx = k;
-        }
-    b.layers = bd[1] & WF_B_LAYERS;
-    b.fills = (bd[1] & WF_B_FILLS) != 0;
-    b.ratchets = (bd[1] & WF_B_RATCHETS) != 0;
-    b.lanes = wb_u16(bd + 2);
-    b.dens = wb_u16(bd + 4);
-    for (k = 0; k < NPART; k++)
-        b.play[k] = wb_u16(bd + 6 + 2 * k);
+    b.nbands = arr.et.n;
+    b.idx = arr.mb;
+    b.layers = 15u & ~(uint32_t)wrt.mute;
+    b.pos = arr_pos();
     return b;
-}
-
-static void mask_drums(dstep_t *d, uint32_t len, const band_t *b)
-{
-    uint32_t k, l;
-    for (k = 0; k < len; k++) {
-        uint32_t m = dstep_mask(&d[k]), keep = m & b->lanes;
-        if (!(b->dens >> (k & 15u) & 1u))
-            keep &= ~b->dlanes;
-        for (l = 0; l < DRUM_LANES; l++)
-            if ((m >> l & 1u) && !(keep >> l & 1u))
-                d[k].on[l >> 3] &= (uint8_t)~(1u << (l & 7u));
-        if (!b->ratchets)
-            memset(d[k].rat, 0, sizeof d[k].rat);
-    }
-}
-
-/* the band on the committed tracks (the unmasked steps are kept in base[] for the pool write-back) */
-static step_t base[NTRK][NSTEP];
-static dstep_t fill_steps[16];
-static uint32_t fill_on, phrase_bars;
-static void band_apply(uint32_t s, const band_t *b)
-{
-    uint32_t t, k;
-    for (t = 0; t < NTRK; t++) {
-        memcpy(base[t], trk[t].step, sizeof base[t]);
-        if (mute_mask >> t & 1u)
-            trk[t].p[P_MUTE] = 1;
-    }
-    fill_on = 0;
-    if (!b->on)
-        return;
-    for (t = 0; t < NTRK; t++)
-        if (t != wrt.keys_trk && !(b->layers >> t & 1u))
-            trk[t].p[P_MUTE] = 1;                    /* (H1: wrt.mute, the same fade and note block) */
-    for (t = 0; t < NPART; t++)
-        if (t != wrt.keys_trk)
-            for (k = 0; k < NSTEP; k++)
-                if (trk[t].step[k].time == ST_NOTE && !(b->play[t] >> (k & 15u) & 1u)) {
-                    memset(&trk[t].step[k], 0, sizeof trk[t].step[k]);
-                    trk[t].step[k].time = ST_REST;
-                }
-    mask_drums(TDRUM->dstep, NSTEP, b);
-    if (b->fills && scene_rec(s)[15] != WF_NONE) {   /* the fill: wpool holds it as world_load decoded it */
-        uint32_t fe = guard_byte(WF_G_FILLS), pb = prog_beats(prog_rec(scene_rec(s)[12])) / 4u;
-        memcpy(fill_steps, wpool[scene_rec(s)[15]].dstep, sizeof fill_steps);
-        mask_drums(fill_steps, 16, b);
-        phrase_bars = fe != WF_NONE ? fe : pb ? pb : 1u;
-        fill_on = 1;
-    }
-}
-static dstep_t fill_saved[16];
-static uint32_t fill_bar = 0xFFFFFFFFu;
-static void band_undo(void)                      /* before the next commit: the steps and mutes as committed */
-{
-    uint32_t t;
-    fill_bar = 0xFFFFFFFFu;
-    for (t = 0; t < NTRK; t++) {
-        memcpy(trk[t].step, base[t], sizeof base[t]);
-        trk[t].p[P_MUTE] = 0;
-    }
-}
-
-/* the fill on the last bar of each phrase (Phase 11: the drum track plays wfill[idx & 15] on that bar) */
-static void fill_tick(void)
-{
-    uint32_t bar = clk_beat / 4u, len = trk_len(TDRUM), k;
-    int want = fill_on && song.playing && bar % phrase_bars == phrase_bars - 1u;
-    if (want && fill_bar != bar) {
-        for (k = 0; k < 16; k++) {
-            fill_saved[k] = TDRUM->dstep[(bar * 16u + k) % len];
-            TDRUM->dstep[(bar * 16u + k) % len] = fill_steps[k];
-        }
-        fill_bar = bar;
-    } else if (!want && fill_bar != 0xFFFFFFFFu) {
-        for (k = 0; k < 16; k++)
-            TDRUM->dstep[(fill_bar * 16u + k) % len] = fill_saved[k];
-        fill_bar = 0xFFFFFFFFu;
-    }
 }
 
 /* ------------------------------------------------------ the player's phrase --- */
@@ -431,14 +336,14 @@ static void snoop(meter_t *m, uint32_t beat)
         m->last_abs[t] = k->seq_abs;
         if (trk_silent(k))
             continue;
-        if (t == TRK_DRUM) {
-            uint32_t msk = dstep_mask(&k->dstep[k->seq_idx]);
+        if (t == TRK_DRUM) {                     /* (as seq_tick played it: the band's lanes, density, the fill) */
+            uint32_t msk = dstep_mask(arr_dstep(&k->dstep[k->seq_idx], k->seq_idx)) & ~arr_dskip(k->seq_idx);
             m->r->lanes |= msk;
             for (; msk; msk &= msk - 1u)
                 m->hits++;
             continue;
         }
-        if (k->step[k->seq_idx].time != ST_NOTE)
+        if (k->step[k->seq_idx].time != ST_NOTE || !arr_plays(t, k->seq_idx))
             continue;
         for (i = 0; i < k->step[k->seq_idx].n; i++) {
             uint32_t n = k->step[k->seq_idx].note[i], rel = (n + 12u - w_root()) % 12u;
@@ -536,7 +441,6 @@ static void run(meter_t *m, uint32_t frames, int play)
     for (f = 0; f < frames; f += CTL) {
         int32_t o[2 * CTL];
         uint32_t beat = clk_beat;                /* (the steps this block starts are on this beat) */
-        fill_tick();
         held_before();
         if (mash && play == 1)
             mash_before();
@@ -604,22 +508,35 @@ static int stopped_play(meter_t *m, uint32_t nbars)   /* PLAY, N bars, measured 
     return 0;
 }
 
-/* stage + commit scene s / variation v (stopped), the band on it */
+/* the macro positions (--ctl, the extremes; energy >= 0: ENERGY there), stage + commit scene s / variation v
+ * (stopped: the macros' table and the scene's ENERGY band with it) */
 static int scene_go(uint32_t s, uint32_t v, double energy, band_t *b)
 {
+    uint32_t c, t;
     int rc;
-    band_undo();
+    for (c = 0; c < WF_NCTL; c++)
+        if (ctl_want[c] >= 0)
+            macro_set(c, (int32_t)(ctl_want[c] * 1000 + 0.5));
+    if (energy >= 0)
+        macro_set(MC_ENERGY, (int32_t)(energy * 1000 + 0.5));
     rc = world_apply(s, v);
     if (rc)
         return rc;
+    if (!energy_emul) {                          /* --raw: no table, every pattern plays */
+        arr.et.n = 0;
+        arr_masks(0);
+        arr_layers(0);
+    }
+    for (t = 0; t < NTRK; t++)
+        if (mute_mask >> t & 1u)
+            trk[t].p[P_MUTE] = 1;
     if (keys_phrase)
         keys_write();
-    *b = band_of(s, v, energy);
-    band_apply(s, b);
+    *b = band_now();
     return 0;
 }
 
-static void finish(meter_t *m, result_t *r, const band_t *b)
+static void finish(meter_t *m, result_t *r, band_t *b)
 {
     uint32_t p;
     double n = (double)m->pframes;
@@ -638,6 +555,7 @@ static void finish(meter_t *m, result_t *r, const band_t *b)
     for (p = 0; p < NPART; p++)
         r->vpart[p] = m->vpart[p];
     r->hits_bar10 = (uint32_t)(10.0 * m->hits * bar_frames() / n + 0.5);
+    *b = band_now();                             /* (as it played at the end) */
     r->layers = b->layers;
     r->band = b->idx;
     r->nbands = b->nbands;
@@ -673,7 +591,7 @@ static void judge(result_t *r)
 #define BAD(...) do { r->fails++; w += snprintf(w, sizeof r->why - (size_t)(w - r->why), __VA_ARGS__); } while (0)
     if (r->rms < -45 || r->silence_s > 2.0)
         BAD(" silent(rms %.1f, %.1f s)", r->rms, r->silence_s);
-    if (r->peak > -1.0)
+    if (r->peak > peak_max)
         BAD(" peak %.2f", r->peak);
     if (r->lim6_pct > 5.0)
         BAD(" limiter over 6 dB %.1f %%", r->lim6_pct);
@@ -771,9 +689,10 @@ static result_t render_one(uint32_t s, uint32_t v, double energy, const char *wa
 }
 
 /* ------------------------------------------------------------ the mappings --- */
-/* --macros: the static check of design 6.4 on the real stage (Phase 7 evaluates the mappings; Phase 8's
- * validator owns this check): for every MAPS record, every scene x variation and every track it moves, base +
- * the offset at 0 and at 1 (curves end at 0 and 1) inside the descriptor, and not its maximum at 1 */
+/* --macros: the static check of design 6.4 on the real stage, one mapping at a time (macro.c sums them live, and
+ * tests/macro_test.c checks the sums; Phase 8's validator owns this check): for every MAPS record, every scene x
+ * variation and every track it moves, base + the offset at 0 and at 1 (curves end at 0 and 1) inside the
+ * descriptor, and not its maximum at 1 */
 static const uint8_t EROLE[NENGINES][WF_NEROLES] = WF_ENG_ROLE;
 static const char *const CTLN[WF_NCTL] = {"COLOR", "MOTION", "SPACE", "ENERGY", "SOFT", "SHORT", "BODY", "TAIL",
                                           "DRIFT", "WOBBLE", "PULSE", "RATE", "FILTER", "ECHO", "CRUSH", "FREEZE"};
@@ -875,8 +794,8 @@ static void detail(uint32_t s, uint32_t v, const result_t *r)
     char lay[8];
     layers_txt(lay, r->layers);
     printf("render: scene %c (%s), variation %s, %u bars at %u BPM, ENERGY %.2f -> band %u of %u, layers %s%s\n",
-           'A' + s, (const char *)scene_rec(s), (const char *)var_rec(v), bars, w_bpm(), r->energy_pos / 250.0,
-           r->nbands ? r->band + 1 : 0, r->nbands, lay, energy_emul ? "" : " (raw: no ENERGY)");
+           'A' + s, (const char *)scene_rec(s), (const char *)var_rec(v), bars, w_bpm(), r->energy_pos / 1000.0,
+           r->nbands ? r->band + 1 : 0, r->nbands, lay, energy_emul ? "" : " (raw: no ENERGY arrangement)");
     printf("  peak     %7.2f dBFS, %u samples at full scale, %u within 0.1 dB\n", r->peak, r->full, r->near);
     printf("  rms      %7.2f dBFS, loudness %.2f LUFS\n", r->rms, r->lufs);
     printf("  dc       L %+.6f, R %+.6f\n", r->dc[0], r->dc[1]);
@@ -931,7 +850,7 @@ static int sequence(const char *path, uint32_t v)
             transport_req = 2;                       /* STOP at the bar: Phase 5 changes the scene while stopped */
             run(&m, CTL, 1);
         }
-        rc = scene_go(s, v, energy_set >= 0 ? energy_set : defaults()[5] / 250.0, &b);
+        rc = scene_go(s, v, energy_set, &b);
         if (rc) {
             printf("sequence: scene %c: WORLD ERROR %d\n", 'A' + s, rc);
             return 1;
@@ -949,6 +868,87 @@ static int sequence(const char *path, uint32_t v)
            r.rms, r.lufs, r.full);
     fails += r.full != 0 || r.peak > -1.0;
     return fails;
+}
+
+/* --ctl C=X,..: COLOR=0.2,ENERGY=90 (0..1, or 0..100 above 1); 0 = ok */
+static int ctl_parse(const char *arg)
+{
+    char buf[256], *tok, *save = 0;
+    uint32_t c;
+    snprintf(buf, sizeof buf, "%s", arg);
+    for (tok = strtok_r(buf, ",", &save); tok; tok = strtok_r(0, ",", &save)) {
+        char *eq = strchr(tok, '=');
+        double x;
+        if (!eq)
+            return -1;
+        *eq = 0;
+        for (c = 0; c < WF_NCTL && strcasecmp(CTLN[c], tok); c++)
+            ;
+        x = atof(eq + 1);
+        if (c == WF_NCTL || x < 0 || x > 100)
+            return -1;
+        ctl_want[c] = x > 1 ? x / 100.0 : x;
+    }
+    return 0;
+}
+
+/* --extremes: the default scene and variation at each macro's ends, ENERGY 0 / 0.5 / 1, all at 0, all at 1 */
+#define BAND_LU 1.5                              /* --bands: the most a band may be quieter than the one below */
+#define EXT_LU_HALF 4.0                          /* ENERGY 1 at most this much louder than 0.5 (design 5.6, 12.3) */
+#define EXT_LU_SPAN 6.0                          /* .. and than 0: denser, not just louder */
+#define EXT_LU_FLOOR 12.0                        /* no extreme more than this under the defaults */
+static int extremes(void)
+{
+    static const struct { const char *name; double c[4]; } X[] = {
+        {"defaults", {-1, -1, -1, -1}}, {"COLOR 0", {0, -1, -1, -1}}, {"COLOR 1", {1, -1, -1, -1}},
+        {"MOTION 0", {-1, 0, -1, -1}}, {"MOTION 1", {-1, 1, -1, -1}}, {"SPACE 0", {-1, -1, 0, -1}},
+        {"SPACE 1", {-1, -1, 1, -1}}, {"ENERGY 0", {-1, -1, -1, 0}}, {"ENERGY 0.5", {-1, -1, -1, 0.5}},
+        {"ENERGY 1", {-1, -1, -1, 1}}, {"all 0", {0, 0, 0, 0}}, {"all 1", {1, 1, 1, 1}}};
+    uint32_t s = defaults()[0], v = defaults()[1], i, c, t;
+    double lufs[3] = {0, 0, 0}, dens[3] = {0, 0, 0}, worst = -INFINITY, tail = -INFINITY, def = 0, low = INFINITY;
+    int fails = 0, bad;
+    peak_max = -0.5;
+    printf("  extremes, scene %c %s, %s:  peak   rms   LUFS  lim1  tail   notes/bar hits/bar  band lay\n", 'A' + s,
+           (const char *)scene_rec(s), (const char *)var_rec(v));
+    for (i = 0; i < sizeof X / sizeof X[0]; i++) {
+        result_t r;
+        char lay[8];
+        double notes = 0;
+        for (c = 0; c < 4u; c++)
+            ctl_want[c] = X[i].c[c];
+        r = render_one(s, v, -1, 0);
+        for (t = 0; t < NPART; t++)
+            notes += r.notes[t];
+        notes /= bars;
+        layers_txt(lay, r.layers);
+        printf("  %-12s %31s %6.2f %6.2f %6.2f %5.1f %6.1f %8.1f %8.1f   %u/%u  %s  %s%s\n", X[i].name, "", r.peak, r.rms,
+               r.lufs, r.lim_pct, r.tail_db, notes, r.hits_bar10 / 10.0, r.nbands ? r.band + 1 : 0, r.nbands, lay,
+               r.fails ? "FAIL" : "ok", r.why);
+        fails += r.fails != 0;
+        if (!i)
+            def = r.lufs;
+        if (r.lufs < low)
+            low = r.lufs;
+        if (r.peak > worst)
+            worst = r.peak;
+        if (r.tail_db > tail)
+            tail = r.tail_db;
+        for (c = 0; c < 3u; c++)
+            if (X[i].c[3] == 0.5 * c && X[i].c[0] < 0) {
+                lufs[c] = r.lufs;
+                dens[c] = notes + r.hits_bar10 / 10.0;
+            }
+    }
+    bad = lufs[2] - lufs[1] > EXT_LU_HALF || lufs[2] - lufs[0] > EXT_LU_SPAN || dens[2] <= dens[0] ||
+          low < def - EXT_LU_FLOOR;
+    printf("extremes: %s, ENERGY 0 / 0.5 / 1: %.2f / %.2f / %.2f LUFS (%+.2f LU over 0.5, %+.2f over 0), "
+           "%.1f / %.1f / %.1f notes + hits a bar; the quietest extreme %.1f LU under the defaults; worst peak %.2f dBFS, "
+           "tail %.1f dBFS: %s\n", (const char *)meta(), lufs[0], lufs[1], lufs[2], lufs[2] - lufs[1], lufs[2] - lufs[0],
+           dens[0], dens[1], dens[2], def - low, worst, tail, fails || bad ? "FAIL" : "ok");
+    if (bad)
+        printf("extremes: ENERGY 1 must be denser than 0 and at most %.0f LU over 0.5 and %.0f LU over 0; no extreme "
+               "more than %.0f LU under the defaults\n", EXT_LU_HALF, EXT_LU_SPAN, EXT_LU_FLOOR);
+    return fails || bad;
 }
 
 static int read_all(const char *path)
@@ -974,17 +974,17 @@ static int read_all(const char *path)
 
 static void usage(void)
 {
-    fprintf(stderr, "usage: world_render [--scene A..D|all] [--var NAME|all] [--bars N] [--energy X] [--raw] "
-                    "[--keys | --mash [--seed N]] [--tail S] [--mute T,..]\n"
-                    "                    [--wav OUT.wav | --sequence OUT.wav | --bands | --macros] [--check] "
-                    "WORLD.wblob\n");
+    fprintf(stderr, "usage: world_render [--scene A..D|all] [--var NAME|all] [--bars N] [--energy X] [--ctl C=X,..] "
+                    "[--raw] [--keys | --mash [--seed N]] [--tail S] [--mute T,..]\n"
+                    "                    [--wav OUT.wav | --sequence OUT.wav | --bands | --macros | --extremes] "
+                    "[--check] WORLD.wblob\n");
     exit(2);
 }
 
 int main(int argc, char **argv)
 {
     const char *scene = 0, *var = 0, *wav = 0, *seq = 0, *path = 0;
-    int check = 0, bands = 0, macros = 0, i, fails = 0, rc;
+    int check = 0, bands = 0, macros = 0, ext = 0, i, fails = 0, rc;
     uint32_t s0, s1, v0, v1, s, v, nv;
     double lufs_def = 0;
     for (i = 1; i < argc; i++) {
@@ -1015,6 +1015,12 @@ int main(int argc, char **argv)
             bands = 1;
         else if (!strcmp(a, "--macros"))
             macros = 1;
+        else if (!strcmp(a, "--extremes"))
+            ext = 1;
+        else if (!strcmp(a, "--ctl") && i + 1 < argc) {
+            if (ctl_parse(argv[++i]))
+                usage();
+        }
         else if (!strcmp(a, "--check"))
             check = 1;
         else if (!strcmp(a, "--mute") && i + 1 < argc)
@@ -1042,6 +1048,8 @@ int main(int argc, char **argv)
            'A' + defaults()[0], (const char *)var_rec(defaults()[1]), defaults()[5] / 250.0);
     if (macros)
         return macros_check() && check;
+    if (ext)
+        return extremes() && check;
     if (seq) {
         v = var ? var_find(var) : defaults()[1];
         if (v == WF_NONE)
@@ -1064,23 +1072,26 @@ int main(int argc, char **argv)
         usage();
     else if (var)
         v1 = v0 + 1;
-    if (bands) {                                 /* each band of each scene: drum hits and loudness rise */
-        printf("  scene band from  lay   rms    LUFS   hits/bar\n");
+    if (bands) {                                 /* each band of each scene: notes and hits only rise */
+        printf("  scene band from  lay   rms    LUFS   notes/bar hits/bar\n");
         for (s = 0; s < WF_NSCENE; s++) {
             const uint8_t *e = energy_rec(scene_rec(s)[13]);
-            double prev_l = -INFINITY, prev_h = -1;
+            double prev_l = -INFINITY, prev_h = -1, prev_n = -1;
             uint32_t k;
             for (k = 0; e && k < e[2]; k++) {
-                double at = e[WF_ENERGY_HDR + WF_BAND_LEN * k] / 250.0 + 0.004;
+                double at = e[WF_ENERGY_HDR + WF_BAND_LEN * k] / 250.0 + 0.004, nb;
                 result_t r = render_one(s, 0, at, 0);
                 char lay[8];
-                int bad = r.fails || r.hits_bar10 / 10.0 < prev_h || r.lufs < prev_l - 0.5;
+                int bad;
+                nb = (double)(r.notes[0] + r.notes[1] + r.notes[2]) / bars;
+                bad = r.fails || r.hits_bar10 / 10.0 < prev_h || nb < prev_n || r.lufs < prev_l - BAND_LU;
                 layers_txt(lay, r.layers);
-                printf("  %c     %u    %.2f  %s %6.2f %6.2f  %6.1f  %s%s%s\n", 'A' + s, k + 1, at, lay, r.rms, r.lufs,
-                       r.hits_bar10 / 10.0, bad ? "FAIL" : "ok", r.why,
-                       bad && !r.fails ? " (fewer hits or quieter than the band below)" : "");
+                printf("  %c     %u    %.2f  %s %6.2f %6.2f  %8.1f %8.1f  %s%s%s\n", 'A' + s, k + 1, at, lay, r.rms,
+                       r.lufs, nb, r.hits_bar10 / 10.0, bad ? "FAIL" : "ok", r.why,
+                       bad && !r.fails ? " (fewer notes or hits, or much quieter than the band below)" : "");
                 fails += bad;
                 prev_h = r.hits_bar10 / 10.0;
+                prev_n = nb;
                 prev_l = r.lufs;
             }
         }
@@ -1088,14 +1099,14 @@ int main(int argc, char **argv)
         return check && fails;
     }
     if (s1 - s0 == 1 && v1 - v0 == 1) {
-        result_t r = render_one(s0, v0, energy_set >= 0 ? energy_set : defaults()[5] / 250.0, wav);
+        result_t r = render_one(s0, v0, energy_set, wav);
         detail(s0, v0, &r);
         return check && r.fails;
     }
     line_head();
     for (s = s0; s < s1; s++)
         for (v = v0; v < v1; v++) {
-            result_t r = render_one(s, v, energy_set >= 0 ? energy_set : defaults()[5] / 250.0, 0);
+            result_t r = render_one(s, v, energy_set, 0);
             line(s, v, &r);
             fails += r.fails != 0;
             if (s == defaults()[0] && v == defaults()[1])
