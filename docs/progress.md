@@ -105,3 +105,46 @@ Midnight Drive, Frozen Lake and Dusty Cafe.
 
 **Next.** Phase 3: real-time host audio. SDL2, a firmware thread feeding a lock-free FIFO, keyboard commands, and
 measurements of latency, underruns, CPU and timing.
+
+## Phase 3: Real-time host audio (2026-10-05)
+
+**Done.** `build/host-bin/flowstate-sim` (`host/sim/`) runs the SLOOP core in real time on macOS through SDL2.
+
+**Threads.**
+- One firmware thread runs the core in lockstep, as the device's single core does: audio blocks, plus a main-loop
+  pass every 22 blocks. It writes into a lock-free FIFO.
+- The SDL audio callback only drains the FIFO.
+- The main thread polls input and draws from a double-buffered snapshot.
+- The firmware and sink threads use the macOS real-time thread policy, so they wake up about 20 µs late instead of
+  1–7 ms.
+
+**Controls.** The FM-1 panel is mapped to the computer keyboard by key position. Option-key commands give PLAY/STOP,
+scene A–D on the next bar, mute tracks 1–4, filter and tempo. K1–K4 stand in for the macros until Phase 7.
+
+**Options:** `--project`, `--demo`, `--flash` (persists the NOR image), `--buffer`, `--fifo`, `--headless`, `--fast`,
+`--mute-output`, `--script` (timed commands and expectations), `--stats`, `--wav`, `--screen`, `--shot`.
+
+**Measured (M1 Pro, built-in speakers at 48 kHz).**
+- 0 underruns over 60 s at the default 672-frame buffer.
+- Latency the simulator controls: about 32 ms. SDL2 keeps at least 30 ms queued in its AudioQueue, so 20–25 ms is
+  not reachable with SDL. The speakers add 28 ms.
+- CPU: about 1.4 % of realtime.
+- The speaker clock drifts 5–11 ppm.
+
+The full table is in [simulator.md](simulator.md).
+
+**Verified** on the commit alone, in a clean worktree:
+- A date-pinned build is byte-identical to the published 2.1.
+- `./tests/run_tests.sh` passes all 26 groups. The new simulator group checks scripted PLAY, scene on the bar, mutes,
+  tempo, filter, audio, the exact frame count and a clean exit, and that the real-time output is bit-identical to
+  `--fast`.
+
+**Risks / open.**
+- The latency floor of SDL2 on macOS. Writing directly to CoreAudio's output unit could reach about 10 ms plus the
+  device, if that is ever needed.
+- On the host there is still no CPU model and no MIDI.
+
+**Commits:** `7b21d70` to `51a95f4`.
+
+**Next.** Phase 4: the FLOWSTATE STUDIO simulator UI (UI spec §12). Phase 5 (the World format) is already being
+built in parallel.
