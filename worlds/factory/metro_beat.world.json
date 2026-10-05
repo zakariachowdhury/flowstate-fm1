@@ -1,0 +1,127 @@
+{
+  "notes": "Techno, A phrygian, 128 BPM, straight. A one-finger minor chord stab (TRIO MIN STAB: every stab a minor triad, so the progressions use only the minor chords i, iv and vii) on the offbeats with a quarter-note dub echo, a rolling Casio bass that holds an A pedal in sixteenths around the kick (with the phrygian flat 2 at the end of the bar), the player's resonant pluck on the Smart Keys, and the TECHNO kit: four on the floor, clap on 2 and 4, open hats on the offbeats, rim syncopations, a ride in the lift. Scenes: A PLATFORM is the intro with kick and hats, no bass; B NIGHT LINE runs i for three bars and vii for one; C OVERPASS climbs iv vii with the bass following the roots; D UNDERPASS drops to iv i. ENERGY: stabs alone, then kick and bass, then the full kit in eighths, then sixteenths, fills and ratchets. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "metro_beat",
+  "name": "METRO BEAT",
+  "category": "GROOVE",
+  "blurb": "Techno on the night line",
+  "tempo": {"bpm": 128, "min": 120, "max": 134},
+  "key": {"root": "A", "scale": "PHRY"},
+  "tracks": [
+    {"name": "stab", "role": "chords", "register": "C3", "sound": {"engine": "TRIO", "preset": "MIN STAB",
+      "params": {"level": 104, "dec": 76, "sus": 60, "CUT": 78, "sgate": 66, "lrate": 40, "ld_flt": 8, "chor": 22, "dly": 40, "rev": 30, "pan": -8}}},
+    {"name": "bass", "role": "bass", "register": "A1", "sound": {"engine": "PHASE", "preset": "CZ BASS",
+      "params": {"level": 110, "sgate": 50, "rev": 4}}},
+    {"name": "pluck", "role": "lead", "register": "C3", "sound": {"engine": "PHASE", "preset": "RESO PLUCK",
+      "params": {"level": 106, "dly": 34, "rev": 30, "pan": 10}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "TECHNO", "params": {"level": 60, "rev": 16}}}
+  ],
+  "fx": {"dtime": "1/4", "dfdbk": 50, "dcolor": 44, "dmix": 84, "rsize": 100, "rdamp": 58, "crate": 30, "cdepth": 40,
+         "duck": 22},
+  "patterns": {
+    "st_dub": {"track": "stab", "steps": ". . c1 . . . c1_ . . . c1 . . . . ."},
+    "st_hold": {"track": "stab", "div": "1/4", "steps": "c1 - . . c1_ . . ."},
+    "bs_roll": {"track": "bass", "steps": ". 1 1 1_ . 1 1' 1_ . 1 1 1_ . 1 1' 2_"},
+    "bs_gallop": {"track": "bass", "steps": "1_ 1 1 1 1'_ 1 1 1 1_ 1 1 1 1'_ 1 1 2"},
+    "bs_follow": {"track": "bass", "steps": ". c1 c1 c1_ . c1 c1' c1_ . c1 c1 c1_ . c1 c1' c5_"},
+    "bs_pulse": {"track": "bass", "div": "1/8", "steps": "1 - . 1 . . 1' ."},
+    "dr_techno": {"track": "drums", "lanes": {
+      "kick":  "x...x...x...x...",
+      "clap":  "....x.......x...",
+      "hat":   "xgsgxgsgxgsgxgsg",
+      "open":  "..x...x...x...x.",
+      "rim":   "......g..g....g."}},
+    "dr_ride": {"track": "drums", "lanes": {
+      "kick":  "x...x...x...x...",
+      "clap":  "....x.......x...",
+      "hat":   "xgsgxgsgxgsgxgsg",
+      "ride":  "..x...x...x...x.",
+      "rim":   "......g..g....g."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":  "x...x...x...x...",
+      "clap":  "....x...x.x.x.x4",
+      "snare": "............s.s.",
+      "hat":   "xgsgxgsgxgsg...."}}
+  },
+  "progressions": {
+    "signal": ["i:4"],
+    "line": ["i:12", "vii:4"],
+    "rise": ["iv:4", "vii:4"],
+    "under": ["iv:8", "i:8"]
+  },
+  "scenes": {
+    "A": {"name": "PLATFORM", "role": "intro", "progression": "signal", "energy": "e_sig",
+          "patterns": {"stab": "st_hold", "bass": "bs_pulse", "drums": "dr_techno"}},
+    "B": {"name": "NIGHT LINE", "role": "main", "progression": "line", "energy": "e_line", "fill": "dr_fill",
+          "patterns": {"stab": "st_dub", "bass": "bs_roll", "drums": "dr_techno"}},
+    "C": {"name": "OVERPASS", "role": "lift", "progression": "rise", "energy": "e_rise", "fill": "dr_fill",
+          "params": {"stab.ed_flt": 12}, "patterns": {"stab": "st_dub", "bass": "bs_follow", "drums": "dr_ride"}},
+    "D": {"name": "UNDERPASS", "role": "breakdown", "progression": "under", "energy": "e_under", "transition": 2,
+          "params": {"stab.rev": 44}, "fx": {"rsize": 110, "dfdbk": 54},
+          "patterns": {"stab": "st_hold", "bass": "bs_pulse", "drums": "dr_techno"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "DRIVING": {"swap": {"bs_roll": "bs_gallop"}, "fx": {"duck": 32}, "energy_bias": 0.12, "macros": {"MOTION": 0.62}},
+    "DUB": {"params": {"stab.dly": 64, "stab.rev": 42}, "fx": {"dfdbk": 58, "rsize": 110}, "energy_bias": -0.08,
+            "macros": {"SPACE": 0.68}},
+    "MINIMAL": {"sounds": {"drums": "MINIMAL"}, "params": {"stab.CUT": 64, "stab.level": 108, "drums.level": 120}, "energy_bias": -0.06,
+                "macros": {"COLOR": 0.42}}
+  },
+  "macros": {
+    "COLOR": [{"to": "stab.~bright", "min": -24, "max": 26, "curve": "s"},
+              {"to": "bass.@BRIGHT", "min": -20, "max": 30},
+              {"to": "pluck.@BRIGHT", "min": -30, "max": 26},
+              {"to": "g.dcolor", "min": -20, "max": 22}],
+    "MOTION": [{"to": "stab.ld_flt", "min": -8, "max": 22, "smooth": "slow"},
+               {"to": "stab.sgate", "min": -14, "max": 30},
+               {"to": "bass.@SHAPE", "min": -24, "max": 24},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "stab+pluck.dly", "min": -20, "max": 26},
+              {"to": "stab+pluck.rev", "min": -20, "max": 24, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 12},
+              {"to": "g.dfdbk", "min": -24, "max": 18},
+              {"to": "drums.rev", "min": -14, "max": 14}],
+    "ENERGY": [{"to": "stab.level", "min": 4, "max": -5},
+               {"to": "drums.level", "min": -8, "max": 6},
+               {"to": "g.duck", "min": -10, "max": 14},
+               {"to": "bass.~bright", "min": 0, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -4}, {"to": "g.drrev", "add": -14},
+                                                     {"to": "g.dfdbk", "add": -20}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "stab.@RESO", "add": -10}, {"to": "pluck.@BRIGHT", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "stab.ld_flt", "add": -10}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_sig": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["stab", "pluck"]},
+      {"from": 0.25, "layers": ["stab", "pluck", "drums"], "drums": ["kick"]},
+      {"from": 0.42, "layers": ["stab", "pluck", "drums"], "drums": ["kick", "hat", "open"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.72, "layers": "all", "drums": ["kick", "hat", "open", "rim"]}]},
+    "e_line": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["stab", "pluck"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick"]},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "clap", "hat", "open", "rim"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_rise": {"density_lanes": ["hat", "ride"], "bands": [
+      {"from": 0.00, "layers": ["stab", "bass", "pluck"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick", "ride"]},
+      {"from": 0.42, "layers": "all", "density": "x.x.x.x.x.x.x.x.", "fills": true},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_under": {"bands": [
+      {"from": 0.00, "layers": ["stab", "pluck"]},
+      {"from": 0.42, "layers": ["stab", "bass", "pluck"]},
+      {"from": 0.72, "layers": "all", "drums": ["kick", "hat"]}]}
+  },
+  "smart_keys": {"track": "pluck", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord",
+                 "tonic": "A3", "range": ["C3", "A6"]},
+  "guard": {
+    "notes": {"pluck": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["A1", "G3"]}},
+    "record": {"quantize": 0.8},
+    "sound": {"ranges": {"stab.RES": [0, 70], "g.dfdbk": [0, 84], "g.duck": [0, 40]}, "max_level": 116, "max_dfdbk": 84},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}

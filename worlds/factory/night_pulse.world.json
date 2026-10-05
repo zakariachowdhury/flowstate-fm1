@@ -1,0 +1,121 @@
+{
+  "notes": "Deep house, F minor, 122 BPM, a light shuffle. A DX Rhodes comping rootless minor-ninth shells (b3, b7, 9) on the offbeats, a round sampled bass an octave down that answers the kick, the player's soft vocal ooh on the Smart Keys, and the HOUSE kit: four on the floor, clap on 2 and 4, open hats on the offbeats, a shaker in sixteenths, a little pumping. Scenes: A NIGHTFALL holds Fm7 with the Rhodes chord and a long bass; B PULSE vamps i7 iv7; C HEAT climbs bVI bVII with congas; D AFTERGLOW floats on bVImaj7 iv7. ENERGY: Rhodes alone, then kick and bass, then clap, offbeat hats and shaker eighths, then sixteenths, congas, fills and ratchets. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "night_pulse",
+  "name": "NIGHT PULSE",
+  "category": "GROOVE",
+  "blurb": "Deep house, after dark",
+  "tempo": {"bpm": 122, "min": 112, "max": 128},
+  "key": {"root": "F", "scale": "MIN"},
+  "swing": 14,
+  "tracks": [
+    {"name": "rhodes", "role": "chords", "register": "C3", "sound": {"engine": "DIGITAL", "preset": "DX RHODES",
+      "params": {"level": 96, "rel": 40, "IDX": 70, "sgate": 56, "ld_amp": 14, "chor": 52, "dly": 22, "rev": 34, "pan": -8}}},
+    {"name": "bass", "role": "bass", "register": "C2", "sound": {"engine": "SAMPLE", "preset": "DEEP BASS",
+      "params": {"level": 88, "CUT": 84, "rev": 4}}},
+    {"name": "vox", "role": "lead", "register": "C3", "sound": {"engine": "VOICE", "preset": "SOUL OOH",
+      "params": {"level": 78, "atk": 20, "rel": 50, "voice": "LEG", "glide": 16, "dly": 30, "rev": 52, "pan": 8}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "HOUSE", "params": {"level": 80, "rev": 20}}}
+  ],
+  "fx": {"dtime": "1/8", "dfdbk": 40, "dcolor": 52, "dmix": 80, "rsize": 96, "rdamp": 62, "crate": 30, "cdepth": 58,
+         "duck": 16},
+  "patterns": {
+    "rh_stab": {"track": "rhodes", "steps": ". . [c3 c7 c9] - . [c3 c7 c9]_ . . . . [c3 c7 c9] - . [c3 c7 c9]_ . ."},
+    "rh_long": {"track": "rhodes", "div": "1/4", "steps": "[c1 c7 c3'] - - - - [c1 c7 c3']_ - -"},
+    "bs_deep": {"track": "bass", "steps": "c1 - . . . . c1 . . c1 - . c5_ . c7, ."},
+    "bs_roll": {"track": "bass", "steps": ". . c1 - . . c1 - . . c1 - . . c5 -"},
+    "bs_hold": {"track": "bass", "div": "1/8", "steps": "c1 - - - - . c1_ -"},
+    "dr_main": {"track": "drums", "lanes": {
+      "kick":   "x...x...x...x...",
+      "clap":   "....x.......x...",
+      "open":   "..x...x...x...x.",
+      "shaker": "sgsgsgsgsgsgsgsg"}},
+    "dr_heat": {"track": "drums", "lanes": {
+      "kick":   "x...x...x...x...",
+      "clap":   "....x.......x...",
+      "open":   "..x...x...x...x.",
+      "conga":  "...s..g....s..g.",
+      "shaker": "sgsgsgsgsgsgsgsg"}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x...x...x...x...",
+      "clap":   "....x.......x...",
+      "snare":  "........g.s.s.x4",
+      "open":   "..x...x...x....."}}
+  },
+  "progressions": {
+    "fall": ["i7:8"],
+    "pulse": ["i7:4", "iv7:4"],
+    "heat": ["VImaj7:4", "VII7:4"],
+    "glow": ["VImaj7:8", "iv7:8"]
+  },
+  "scenes": {
+    "A": {"name": "NIGHTFALL", "role": "intro", "progression": "fall", "energy": "e_soft",
+          "patterns": {"rhodes": "rh_long", "bass": "bs_hold", "drums": "dr_main"}},
+    "B": {"name": "PULSE", "role": "main", "progression": "pulse", "energy": "e_main", "fill": "dr_fill",
+          "patterns": {"rhodes": "rh_stab", "bass": "bs_deep", "drums": "dr_main"}},
+    "C": {"name": "HEAT", "role": "lift", "progression": "heat", "energy": "e_heat", "fill": "dr_fill",
+          "params": {"rhodes.ed_flt": 10}, "patterns": {"rhodes": "rh_stab", "bass": "bs_deep", "drums": "dr_heat"}},
+    "D": {"name": "AFTERGLOW", "role": "breakdown", "progression": "glow", "energy": "e_soft", "transition": 2,
+          "params": {"rhodes.rev": 50, "vox.rev": 64}, "fx": {"rsize": 108, "dfdbk": 48},
+          "patterns": {"rhodes": "rh_long", "bass": "bs_hold", "drums": "dr_main"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "DRIVING": {"swap": {"bs_deep": "bs_roll"}, "fx": {"duck": 26}, "energy_bias": 0.12, "macros": {"MOTION": 0.6}},
+    "DEEP": {"sounds": {"rhodes": "RHODES"}, "params": {"rhodes.level": 94, "bass.CUT": 72}, "fx": {"dcolor": 38, "rdamp": 80},
+             "macros": {"COLOR": 0.36}},
+    "HAZE": {"sounds": {"vox": "CHOIR AAH"}, "params": {"rhodes.chor": 72, "vox.atk": 30}, "fx": {"rsize": 110, "dfdbk": 50},
+             "energy_bias": -0.08, "macros": {"SPACE": 0.68}}
+  },
+  "macros": {
+    "COLOR": [{"to": "rhodes.~bright", "min": -24, "max": 26, "curve": "s"},
+              {"to": "bass.~bright", "min": -20, "max": 14},
+              {"to": "vox.@BRIGHT", "min": -20, "max": 30},
+              {"to": "g.dcolor", "min": -20, "max": 20}],
+    "MOTION": [{"to": "rhodes.ld_amp", "min": -14, "max": 22, "smooth": "slow"},
+               {"to": "rhodes.sgate", "min": -20, "max": 28},
+               {"to": "vox.@MOVE", "min": 0, "max": 30, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "rhodes+vox.rev", "min": -26, "max": 28, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 10},
+              {"to": "g.dfdbk", "min": -24, "max": 24},
+              {"to": "rhodes+vox.dly", "min": -16, "max": 24},
+              {"to": "drums.rev", "min": -16, "max": 16}],
+    "ENERGY": [{"to": "rhodes.level", "min": 4, "max": -6},
+               {"to": "drums.level", "min": -10, "max": 6},
+               {"to": "g.duck", "min": -10, "max": 14},
+               {"to": "bass.~bright", "min": 0, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -4}, {"to": "g.drrev", "add": -16},
+                                                     {"to": "g.dfdbk", "add": -20}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "rhodes.@BRIGHT", "add": -10}, {"to": "vox.@RESO", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "rhodes.ld_amp", "add": -12}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_soft": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["rhodes", "vox"]},
+      {"from": 0.42, "layers": ["rhodes", "bass", "vox"]},
+      {"from": 0.72, "layers": "all", "drums": ["kick", "open", "shaker"], "density": "x.x.x.x.x.x.x.x."}]},
+    "e_main": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["rhodes", "vox"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick"]},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "clap", "open", "shaker"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_heat": {"density_lanes": ["shaker", "conga"], "bands": [
+      {"from": 0.00, "layers": ["rhodes", "bass", "vox"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick", "clap", "open"]},
+      {"from": 0.42, "layers": "all", "density": "x.x.x.x.x.x.x.x.", "fills": true},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]}
+  },
+  "smart_keys": {"track": "vox", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord+9",
+                 "tonic": "F3", "range": ["Ab2", "F6"]},
+  "guard": {
+    "notes": {"vox": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["C2", "G3"]}},
+    "record": {"quantize": 0.75},
+    "sound": {"ranges": {"g.dfdbk": [0, 84], "g.duck": [0, 40]}, "max_level": 116, "max_dfdbk": 84},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}

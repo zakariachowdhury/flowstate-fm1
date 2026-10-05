@@ -1,0 +1,125 @@
+{
+  "notes": "UK garage two-step, G minor, 126 BPM, a heavy shuffle (swing 32). An organ stabbing rootless ninth shells (b3, b7, 9) on a skipping 2-step rhythm, its rotary speaker sped up by MOTION, a detuned reese bass that follows the kick, the player's FM bell on the Smart Keys with triplet echoes, and the 909 kit: a broken two-step kick, snare on 2 and 4, shuffled hats, ghost rims and a shaker. Scenes: A STATIC is hats and organ over a held Gm7; B PULL turns i7 VII iv7 in two bars; C CHARGE lifts iv7 VII IIImaj7 with claps and open hats; D DRIFT floats on IIImaj7 iv7. ENERGY: organ alone, then kick, rims and bass, then the full shuffle, then sixteenths, fills and ratchets. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "magnetic",
+  "name": "MAGNETIC",
+  "category": "GROOVE",
+  "blurb": "Two-step, after midnight",
+  "tempo": {"bpm": 126, "min": 116, "max": 132},
+  "key": {"root": "G", "scale": "MIN"},
+  "swing": 32,
+  "tracks": [
+    {"name": "organ", "role": "chords", "register": "C3", "sound": {"engine": "WHEEL", "preset": "SOUL ORGAN",
+      "params": {"level": 92, "sgate": 84, "CLICK": 44, "ROTR": "OFF", "dly": 14, "rev": 22, "pan": -8}}},
+    {"name": "bass", "role": "bass", "register": "E1", "sound": {"engine": "ANALOG", "preset": "REESE",
+      "params": {"level": 94, "CUT": 52, "rev": 4}}},
+    {"name": "bell", "role": "lead", "register": "C3", "sound": {"engine": "DIGITAL", "preset": "TRAP BELL",
+      "params": {"level": 100, "IDX": 70, "dly": 36, "rev": 36, "pan": 10}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "909", "params": {"level": 80, "rev": 18}}}
+  ],
+  "fx": {"dtime": "8T", "dfdbk": 40, "dcolor": 54, "dmix": 78, "rsize": 92, "rdamp": 60, "crate": 34, "cdepth": 56,
+         "duck": 24},
+  "patterns": {
+    "org_stab": {"track": "organ", "steps": ". . . [c3 c7 c9] . . [c3 c7 c9]_ . . [c3 c7 c9]_ . . . [c3 c7 c9] . ."},
+    "org_hold": {"track": "organ", "div": "1/4", "steps": "[c1 c3 c7] - - - [c3 c7]_ - - -"},
+    "bs_2step": {"track": "bass", "steps": "c1 - - . . . c1_ . . . c1 - . c7 c1' ."},
+    "bs_warp": {"track": "bass", "steps": "c1~ c1' . c1 . c1'~ c1 . c1 . c1'~ c7 . c1 c5 ."},
+    "bs_hold": {"track": "bass", "div": "1/8", "steps": "c1 - - - . . c5_ -"},
+    "dr_2step": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....|x.......x..x....",
+      "snare":  "....x.......x...|....x.......x...",
+      "rim":    ".g....g..g....g.|.g....g...g..g..",
+      "hat":    "..x...x...x..x.x|..x...x...x...xx",
+      "shaker": "gsgsgsgsgsgsgsgs|gsgsgsgsgsgsgsgs"}},
+    "dr_charge": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....",
+      "snare":  "....x.......x...",
+      "clap":   "....s.......s...",
+      "rim":    ".g....g..g....g.",
+      "hat":    "..x...x...x..x.x",
+      "open":   "......s.......s.",
+      "shaker": "gsgsgsgsgsgsgsgs"}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....",
+      "snare":  "....x...g.s.x.x3",
+      "tomhi":  "........s.......",
+      "tomlo":  "..........s.s..."}}
+  },
+  "progressions": {
+    "static": ["i7:8"],
+    "pull": ["i7:4", "VII:2", "iv7:2"],
+    "charge": ["iv7:4", "VII:4", "IIImaj7:8"],
+    "drift": ["IIImaj7:8", "iv7:8"]
+  },
+  "scenes": {
+    "A": {"name": "STATIC", "role": "intro", "progression": "static", "energy": "e_drift", "params": {"organ.level": 80, "bass.level": 86},
+          "patterns": {"organ": "org_hold", "bass": "bs_hold", "drums": "dr_2step"}},
+    "B": {"name": "PULL", "role": "main", "progression": "pull", "energy": "e_pull", "fill": "dr_fill",
+          "patterns": {"organ": "org_stab", "bass": "bs_2step", "drums": "dr_2step"}},
+    "C": {"name": "CHARGE", "role": "lift", "progression": "charge", "energy": "e_charge", "fill": "dr_fill",
+          "params": {"organ.CLICK": 60}, "patterns": {"organ": "org_stab", "bass": "bs_2step", "drums": "dr_charge"}},
+    "D": {"name": "DRIFT", "role": "breakdown", "progression": "drift", "energy": "e_drift", "transition": 2,
+          "params": {"organ.level": 80, "bass.level": 86, "organ.rev": 40, "bell.rev": 50}, "fx": {"rsize": 106, "dfdbk": 48},
+          "patterns": {"organ": "org_hold", "bass": "bs_hold", "drums": "dr_2step"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "SPEED": {"swap": {"bs_2step": "bs_warp"}, "fx": {"duck": 30}, "energy_bias": 0.12, "macros": {"MOTION": 0.62}},
+    "VELVET": {"params": {"organ.rev": 36, "bell.dly": 52}, "fx": {"rsize": 106, "dfdbk": 50}, "energy_bias": -0.08,
+               "macros": {"SPACE": 0.68}},
+    "DARK": {"params": {"organ.TOP": -4, "bass.CUT": 42, "bell.IDX": 52}, "fx": {"dcolor": 36, "rdamp": 78},
+             "macros": {"COLOR": 0.36}}
+  },
+  "macros": {
+    "COLOR": [{"to": "organ.@BRIGHT", "min": -4, "max": 5, "curve": "s"},
+              {"to": "bass.~bright", "min": -20, "max": 16},
+              {"to": "bell.@BRIGHT", "min": -30, "max": 24},
+              {"to": "g.dcolor", "min": -20, "max": 20}],
+    "MOTION": [{"to": "organ.@MOVE", "min": 0, "max": 1},
+               {"to": "bass.ld_flt", "min": -10, "max": 24, "smooth": "slow"},
+               {"to": "bass.@DETUNE", "min": -12, "max": 20, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "organ+bell.rev", "min": -20, "max": 28, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 14},
+              {"to": "g.dfdbk", "min": -24, "max": 22},
+              {"to": "bell.dly", "min": -20, "max": 30},
+              {"to": "organ.dly", "min": -12, "max": 20},
+              {"to": "drums.rev", "min": -16, "max": 16}],
+    "ENERGY": [{"to": "organ.level", "min": 2, "max": -5},
+               {"to": "drums.level", "min": -10, "max": 6},
+               {"to": "g.duck", "min": -10, "max": 14},
+               {"to": "bass.~bright", "min": 0, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -4}, {"to": "g.drrev", "add": -14},
+                                                     {"to": "g.dfdbk", "add": -20}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.@RESO", "add": -12}, {"to": "bell.@BRIGHT", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.ld_flt", "add": -12}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_drift": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["organ", "bell"]},
+      {"from": 0.42, "layers": ["organ", "bass", "bell"]},
+      {"from": 0.72, "layers": "all", "drums": ["hat", "rim", "shaker"], "density": "x.x.x.x.x.x.x.x."}]},
+    "e_pull": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["organ", "bell"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick", "rim"]},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "snare", "rim", "hat", "shaker"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_charge": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["organ", "bass", "bell"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick", "snare", "clap"]},
+      {"from": 0.42, "layers": "all", "density": "x.x.x.x.x.x.x.x.", "fills": true},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]}
+  },
+  "smart_keys": {"track": "bell", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord+9",
+                 "tonic": "G3", "range": ["Bb2", "G6"]},
+  "guard": {
+    "notes": {"bell": {"max_poly": 3, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["E1", "G3"]}},
+    "record": {"quantize": 0.7},
+    "sound": {"ranges": {"bass.RES": [0, 70], "g.dfdbk": [0, 84], "g.duck": [0, 40]}, "max_level": 116, "max_dfdbk": 84},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}

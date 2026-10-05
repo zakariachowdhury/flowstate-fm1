@@ -1,0 +1,117 @@
+{
+  "notes": "Downtempo electronica with a broken beat, D lydian, 96 BPM, swung sixteenths. A Casio-style string pad (CZ STRING) breathing on open voicings (3rd, 5th, 9th), a round FM bass that leaves space, the player's marimba on the Smart Keys (triplet echoes), and the AFRO kit: a displaced kick, a dry snare with ghosts, congas and a shaker. The lydian II chord (E major over D) is the floating colour. Scenes: A POWER ON holds Dmaj7; B SOFT LOOP turns Imaj7 II iii7 II; C DAYDREAM rises vi7 V II with the pad pulsing 3+3+2; D SLEEP MODE rests on vi7 Imaj7. ENERGY: pad and marimba, then kick and bass with the shaker, then the broken beat with congas, then sixteenths, fills and ratchets. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "soft_machine",
+  "name": "SOFT MACHINE",
+  "category": "GROOVE",
+  "blurb": "Downtempo, warm circuits",
+  "tempo": {"bpm": 96, "min": 86, "max": 106},
+  "key": {"root": "D", "scale": "LYD"},
+  "swing": 22,
+  "tracks": [
+    {"name": "pad", "role": "pad", "register": "C3", "sound": {"engine": "PHASE", "preset": "CZ STRING",
+      "params": {"level": 70, "atk": 40, "rel": 34, "lrate": 30, "ld_flt": 6, "chor": 56, "dly": 14, "rev": 50, "pan": -6}}},
+    {"name": "bass", "role": "bass", "register": "A1", "sound": {"engine": "DIGITAL", "preset": "FM BASS",
+      "params": {"level": 100, "sgate": 80, "rev": 4}}},
+    {"name": "mallet", "role": "lead", "register": "C4", "sound": {"engine": "DIGITAL", "preset": "MARIMBA",
+      "params": {"level": 110, "dly": 36, "rev": 38, "pan": 10}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "AFRO", "params": {"level": 120, "rev": 22}}}
+  ],
+  "fx": {"dtime": "8T", "dfdbk": 42, "dcolor": 48, "dmix": 80, "rsize": 100, "rdamp": 64, "crate": 22, "cdepth": 64,
+         "duck": 8},
+  "patterns": {
+    "pd_air": {"track": "pad", "div": "1/4", "steps": "[c3 c5 c9] - - - [c3 c9]_ - - -"},
+    "pd_pulse": {"track": "pad", "div": "1/8", "steps": "[c3 c5 c9] - - [c3 c5 c9]_ - - [c5 c9] -"},
+    "bs_soft": {"track": "bass", "div": "1/8", "steps": "c1 - - . . c1 c5 c1'_"},
+    "bs_walk": {"track": "bass", "div": "1/8", "steps": "c1 - c5 - c1' - c5 -"},
+    "bs_hold": {"track": "bass", "div": "1/4", "steps": "c1 - - - - - c5 -"},
+    "dr_broken": {"track": "drums", "lanes": {
+      "kick":   "x......x..x.....|x.........x..s..",
+      "snare":  "....x.....g.x...|....x..g....x.g.",
+      "hat":    "x.s.x.s.x.s.x.s.|x.s.x.s.x.s.xsx.",
+      "shaker": "gsgsgsgsgsgsgsgs|gsgsgsgsgsgsgsgs",
+      "conga":  "..s..g....s..g..|..s..g.s..s...g."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....",
+      "snare":  "....x...........",
+      "conga":  "..s..g..s.g.s...",
+      "tomhi":  "........s.s.....",
+      "tomlo":  "............s.ss"}}
+  },
+  "progressions": {
+    "boot": ["Imaj7:8"],
+    "loop": ["Imaj7:4", "II:4", "iii7:4", "II:4"],
+    "dream": ["vi7:4", "V:4", "II:8"],
+    "sleep": ["vi7:8", "Imaj7:8"]
+  },
+  "scenes": {
+    "A": {"name": "POWER ON", "role": "intro", "progression": "boot", "energy": "e_float", "params": {"pad.level": 62},
+          "patterns": {"pad": "pd_air", "bass": "bs_hold", "drums": "dr_broken"}},
+    "B": {"name": "SOFT LOOP", "role": "main", "progression": "loop", "energy": "e_loop", "fill": "dr_fill",
+          "patterns": {"pad": "pd_air", "bass": "bs_soft", "drums": "dr_broken"}},
+    "C": {"name": "DAYDREAM", "role": "lift", "progression": "dream", "energy": "e_dream", "fill": "dr_fill",
+          "params": {"pad.ed_flt": 10}, "patterns": {"pad": "pd_pulse", "bass": "bs_soft", "drums": "dr_broken"}},
+    "D": {"name": "SLEEP MODE", "role": "breakdown", "progression": "sleep", "energy": "e_float", "transition": 2,
+          "params": {"pad.level": 62, "pad.rev": 64, "mallet.rev": 52}, "fx": {"rsize": 110, "dfdbk": 48},
+          "patterns": {"pad": "pd_air", "bass": "bs_hold", "drums": "dr_broken"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "FLOAT": {"params": {"pad.rev": 64, "mallet.dly": 50}, "fx": {"rsize": 112, "dfdbk": 50},
+              "energy_bias": -0.08, "macros": {"SPACE": 0.68}},
+    "WARM": {"params": {"pad.DCW": 36, "mallet.IDX": 44}, "fx": {"dust": 12, "dcolor": 36, "rdamp": 78},
+             "macros": {"COLOR": 0.38}},
+    "BUSY": {"swap": {"bs_soft": "bs_walk"}, "fx": {"duck": 18}, "energy_bias": 0.1, "macros": {"MOTION": 0.62}}
+  },
+  "macros": {
+    "COLOR": [{"to": "bass.~bright", "min": -16, "max": 12},
+              {"to": "mallet.@BRIGHT", "min": -30, "max": 26},
+              {"to": "g.dcolor", "min": -20, "max": 20}],
+    "MOTION": [{"to": "pad.ld_flt", "min": -6, "max": 20, "smooth": "slow"},
+               {"to": "pad.@DETUNE", "min": -10, "max": 20, "smooth": "slow"},
+               {"to": "g.crate", "min": -12, "max": 18, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "pad+mallet.rev", "min": -24, "max": 28, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 12},
+              {"to": "g.dfdbk", "min": -24, "max": 22},
+              {"to": "mallet.dly", "min": -20, "max": 30},
+              {"to": "drums.rev", "min": -16, "max": 18},
+              {"to": "pad.rel", "min": -16, "max": 12, "smooth": "slow"}],
+    "ENERGY": [{"to": "pad.level", "min": 2, "max": -3},
+               {"to": "drums.level", "min": -10, "max": 6},
+               {"to": "g.duck", "min": -8, "max": 10},
+               {"to": "bass.~bright", "min": 0, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -4}, {"to": "g.drrev", "add": -16},
+                                                     {"to": "g.dfdbk", "add": -18}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "mallet.@BRIGHT", "add": -10}, {"to": "pad.@BRIGHT", "add": -8}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "pad.ld_flt", "add": -10}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_float": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["pad", "mallet"]},
+      {"from": 0.42, "layers": ["pad", "bass", "mallet"]},
+      {"from": 0.72, "layers": "all", "drums": ["shaker", "conga"], "density": "x.x.x.x.x.x.x.x."}]},
+    "e_loop": {"density_lanes": ["hat", "shaker"], "bands": [
+      {"from": 0.00, "layers": ["pad", "mallet"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick", "shaker"], "density": "x...x...x...x..."},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "snare", "hat", "shaker", "conga"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_dream": {"density_lanes": ["hat", "shaker"], "bands": [
+      {"from": 0.00, "layers": ["pad", "bass", "mallet"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick", "snare", "conga"]},
+      {"from": 0.42, "layers": "all", "density": "x.x.x.x.x.x.x.x.", "fills": true},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]}
+  },
+  "smart_keys": {"track": "mallet", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord+9",
+                 "tonic": "D4", "range": ["E3", "C7"]},
+  "guard": {
+    "notes": {"mallet": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["A1", "G3"]}},
+    "record": {"quantize": 0.6},
+    "sound": {"ranges": {"g.dfdbk": [0, 82], "g.duck": [0, 30]}, "max_level": 116, "max_dfdbk": 82},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}

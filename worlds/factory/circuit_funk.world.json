@@ -1,0 +1,123 @@
+{
+  "notes": "Electro-funk, E dorian, 108 BPM, nearly straight sixteenths. Casio-style synth brass (CZ BRASS) stabbing two-note shells (3rd and 7th) around the kick, a square-wave funk bass that lands on the one with fifths, sevenths and slides, the player's talkbox on the Smart Keys (glide, the vowel moving with MOTION), and the ELECTRO kit: syncopated 808 kick, snare and clap on 2 and 4, accented sixteenth hats, a cowbell, FM toms in the fills, the parts ducking under the kick. The bass sits on E2 so the roots stay in range; the progressions use only i, ii, III and IV. Scenes: A BOOT UP holds Em7 with long brass chords; B GROOVE vamps i7 IV7 (Em7 A7); C OVERDRIVE walks down IV7 III ii7 i7 in half bars with open hats; D COOL DOWN rests on ii7 IV7. ENERGY: brass alone, then kick and bass, then the full electro kit in eighths, then sixteenths, fills and ratchets. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "circuit_funk",
+  "name": "CIRCUIT FUNK",
+  "category": "GROOVE",
+  "blurb": "Electro funk, robot soul",
+  "tempo": {"bpm": 108, "min": 98, "max": 118},
+  "key": {"root": "E", "scale": "DOR"},
+  "swing": 6,
+  "tracks": [
+    {"name": "brass", "role": "chords", "register": "C3", "sound": {"engine": "PHASE", "preset": "CZ BRASS",
+      "params": {"level": 84, "sgate": 60, "chor": 26, "dly": 10, "rev": 18, "pan": -10}}},
+    {"name": "bass", "role": "bass", "register": "A1", "sound": {"engine": "ANALOG", "preset": "FUNK BASS",
+      "params": {"level": 104, "CUT": 54, "DRV": 12, "sgate": 70, "rev": 4}}},
+    {"name": "talk", "role": "lead", "register": "C3", "sound": {"engine": "VOICE", "preset": "TALKBOX",
+      "params": {"level": 82, "dly": 30, "rev": 30, "pan": 6}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "ELECTRO", "params": {"level": 80, "rev": 18}}}
+  ],
+  "fx": {"dtime": "1/8", "dfdbk": 34, "dcolor": 56, "dmix": 74, "rsize": 78, "rdamp": 66, "crate": 44, "cdepth": 50,
+         "duck": 28},
+  "patterns": {
+    "br_funk": {"track": "brass", "steps": "[c3 c7] . . [c3 c7]_ . . [c3 c7] - . . [c7 c3']_ . [c3 c7] . [c3 c7]_ ."},
+    "br_hit": {"track": "brass", "div": "1/8", "steps": "[c1 c3 c7] - - . . . [c1 c3 c7]_ ."},
+    "bs_funk": {"track": "bass", "steps": "c1! - . c5_ . . c1 . . c1~ c3 . c7! . c5 c3_"},
+    "bs_pump": {"track": "bass", "steps": "c1! c5 . c1 . c7_ c1 . c1! c5 . c1 . c7_ c5 c3"},
+    "bs_hold": {"track": "bass", "div": "1/8", "steps": "c1! - - . . . c1 c5_"},
+    "dr_main": {"track": "drums", "lanes": {
+      "kick":  "x.....x...x..x..",
+      "snare": "....x.......x...",
+      "clap":  "....s.......s...",
+      "hat":   "xgsgxgsgxgsgxgsg",
+      "bell":  "......g.......g."}},
+    "dr_over": {"track": "drums", "lanes": {
+      "kick":  "x.....x...x..x..",
+      "snare": "....x.......x...",
+      "clap":  "....x.......x...",
+      "hat":   "xg.gxg.gxg.gxg.g",
+      "open":  "..s...s...s...s.",
+      "bell":  "......g.......g."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":  "x.....x...x.....",
+      "snare": "....x.......x.x4",
+      "tomhi": "........s.s.....",
+      "tomlo": "............s.s."}}
+  },
+  "progressions": {
+    "boot": ["i7:4"],
+    "groove": ["i7:4", "IV7:4"],
+    "over": ["IV7:2", "III:2", "ii7:2", "i7:2"],
+    "cool": ["ii7:8", "IV7:8"]
+  },
+  "scenes": {
+    "A": {"name": "BOOT UP", "role": "intro", "progression": "boot", "energy": "e_soft", "params": {"brass.level": 68},
+          "patterns": {"brass": "br_hit", "bass": "bs_hold", "drums": "dr_main"}},
+    "B": {"name": "GROOVE", "role": "main", "progression": "groove", "energy": "e_main", "fill": "dr_fill",
+          "patterns": {"brass": "br_funk", "bass": "bs_funk", "drums": "dr_main"}},
+    "C": {"name": "OVERDRIVE", "role": "lift", "progression": "over", "energy": "e_over", "fill": "dr_fill",
+          "params": {"brass.ed_flt": 12}, "patterns": {"brass": "br_funk", "bass": "bs_funk", "drums": "dr_over"}},
+    "D": {"name": "COOL DOWN", "role": "breakdown", "progression": "cool", "energy": "e_soft", "transition": 2,
+          "params": {"brass.level": 68, "brass.rev": 34, "talk.rev": 44}, "fx": {"rsize": 96, "dfdbk": 44},
+          "patterns": {"brass": "br_hit", "bass": "bs_hold", "drums": "dr_main"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "BOUNCE": {"swap": {"bs_funk": "bs_pump"}, "fx": {"duck": 22}, "energy_bias": 0.12, "macros": {"MOTION": 0.62}},
+    "ROBOT": {"params": {"talk.TALK": 84, "talk.glide": 20, "brass.DCW": 22}, "fx": {"dcolor": 40, "crate": 70},
+              "macros": {"COLOR": 0.4}},
+    "HEAVY": {"sounds": {"drums": "808"}, "params": {"bass.DRV": 52, "bass.level": 98}, "energy_bias": 0.08}
+  },
+  "macros": {
+    "COLOR": [{"to": "brass.@BRIGHT", "min": -20, "max": 26},
+              {"to": "bass.~bright", "min": -20, "max": 16},
+              {"to": "talk.@BRIGHT", "min": -30, "max": 20},
+              {"to": "g.dcolor", "min": -20, "max": 22}],
+    "MOTION": [{"to": "talk.TALK", "min": -30, "max": 30, "smooth": "slow"},
+               {"to": "bass.ed_flt", "min": -20, "max": 24},
+               {"to": "brass.sgate", "min": -20, "max": 26},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "brass+talk.rev", "min": -14, "max": 30, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 20},
+              {"to": "g.dfdbk", "min": -24, "max": 26},
+              {"to": "talk.dly", "min": -24, "max": 30},
+              {"to": "brass.dly", "min": -10, "max": 24},
+              {"to": "drums.rev", "min": -14, "max": 16}],
+    "ENERGY": [{"to": "brass.level", "min": 1, "max": -5},
+               {"to": "drums.level", "min": -10, "max": 6},
+               {"to": "g.duck", "min": -8, "max": 10},
+               {"to": "bass.~bright", "min": 0, "max": 12}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -4}, {"to": "g.drrev", "add": -14},
+                                                     {"to": "g.dfdbk", "add": -20}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.@RESO", "add": -14}, {"to": "brass.@BRIGHT", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "talk.TALK", "add": -16}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_soft": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["brass", "talk"]},
+      {"from": 0.42, "layers": ["brass", "bass", "talk"]},
+      {"from": 0.72, "layers": "all", "drums": ["kick", "hat"], "density": "x...x...x...x..."}]},
+    "e_main": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["brass", "talk"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick"]},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "snare", "clap", "hat", "bell"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_over": {"density_lanes": ["hat", "open"], "bands": [
+      {"from": 0.00, "layers": ["brass", "bass", "talk"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick", "snare", "clap"]},
+      {"from": 0.42, "layers": "all", "density": "x.x.x.x.x.x.x.x.", "fills": true},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]}
+  },
+  "smart_keys": {"track": "talk", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord",
+                 "tonic": "E3", "range": ["G2", "E6"]},
+  "guard": {
+    "notes": {"talk": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["E1", "G3"]}},
+    "record": {"quantize": 0.8},
+    "sound": {"ranges": {"bass.RES": [0, 80], "g.dfdbk": [0, 80], "g.duck": [0, 34]}, "max_level": 116, "max_dfdbk": 80},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}

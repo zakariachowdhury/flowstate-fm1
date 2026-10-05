@@ -1,0 +1,124 @@
+{
+  "notes": "Nu-disco, Bb major, 116 BPM, a touch of swing. Sampled string stabs on the offbeats (the disco 'chk', held through beat 4), a fat unison synth bass jumping octaves in eighths, the player's sync lead on the Smart Keys, and the DISCO kit: four on the floor, snare and clap on 2 and 4, long open hats on the offbeats, congas and cowbell in the lift, syndrum toms in the fills, the parts pumping on the kick. Scenes: A CLOCK OUT swells IVmaj7 V; B NIGHT BUS turns IVmaj7 V iii7 vi7; C MIRRORBALL climbs ii7 iii7 IVmaj7 V; D LAST TRAIN holds vi7 IVmaj7. ENERGY: strings alone, then kick and bass, then the full disco kit, then sixteenths, fills and ratchets. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "late_shift",
+  "name": "LATE SHIFT",
+  "category": "GROOVE",
+  "blurb": "Nu-disco after hours",
+  "tempo": {"bpm": 116, "min": 106, "max": 124},
+  "key": {"root": "Bb", "scale": "MAJ"},
+  "swing": 8,
+  "tracks": [
+    {"name": "strings", "role": "chords", "register": "G2", "sound": {"engine": "SAMPLE", "preset": "STRING STB",
+      "params": {"level": 84, "CUT": 104, "sgate": 70, "chor": 30, "dly": 12, "rev": 28, "pan": -10}}},
+    {"name": "bass", "role": "bass", "register": "A1", "sound": {"engine": "TRIO", "preset": "FAT BASS",
+      "params": {"level": 104, "INT3": 0, "CUT": 70, "sgate": 60, "rev": 4}}},
+    {"name": "lead", "role": "lead", "register": "C3", "sound": {"engine": "TRIO", "preset": "SYNC LEAD",
+      "params": {"level": 90, "lrate": 80, "dly": 32, "rev": 30, "pan": 8}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "DISCO", "params": {"level": 72, "rev": 18}}}
+  ],
+  "fx": {"dtime": "1/4", "dfdbk": 36, "dcolor": 62, "dmix": 76, "rsize": 96, "rdamp": 56, "crate": 40, "cdepth": 66,
+         "duck": 30},
+  "patterns": {
+    "st_chk": {"track": "strings", "div": "1/8", "steps": ". [c1 c3 c5] . [c1 c3 c5]_ . [c1 c3 c5] - [c1 c3 c5]_"},
+    "st_swell": {"track": "strings", "div": "1/4", "steps": "[c1 c3 c7] - - - [c1 c3 c7]_ - - -"},
+    "bs_oct": {"track": "bass", "div": "1/8", "steps": "c1 c1' c1 c1' c1 c1' c1 c1'"},
+    "bs_boogie": {"track": "bass", "div": "1/8", "steps": "c1 - c1' c5 . c1 c7 c1'"},
+    "bs_hold": {"track": "bass", "div": "1/4", "steps": "c1 - - - c5 - c1' -"},
+    "dr_disco": {"track": "drums", "lanes": {
+      "kick":  "x...x...x...x...",
+      "snare": "....x.......x...",
+      "clap":  "....s.......s...",
+      "hat":   "sg.gsg.gsg.gsg.g",
+      "open":  "..x...x...x...x."}},
+    "dr_ball": {"track": "drums", "lanes": {
+      "kick":  "x...x...x...x...",
+      "snare": "....x.......x...",
+      "clap":  "....x.......x...",
+      "hat":   "sg.gsg.gsg.gsg.g",
+      "open":  "..x...x...x...x.",
+      "conga": "...s..g....s..g.",
+      "bell":  ".......g.......g"}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":  "x...x...x...x...",
+      "snare": "....x.......x.x3",
+      "tomhi": "........s...s...",
+      "tomlo": "..........s...s."}}
+  },
+  "progressions": {
+    "clock": ["IVmaj7:4", "V:4"],
+    "bus": ["IVmaj7:4", "V:4", "iii7:4", "vi7:4"],
+    "ball": ["ii7:4", "iii7:4", "IVmaj7:4", "V:4"],
+    "train": ["vi7:8", "IVmaj7:8"]
+  },
+  "scenes": {
+    "A": {"name": "CLOCK OUT", "role": "intro", "progression": "clock", "energy": "e_soft",
+          "patterns": {"strings": "st_swell", "bass": "bs_hold", "drums": "dr_disco"}},
+    "B": {"name": "NIGHT BUS", "role": "main", "progression": "bus", "energy": "e_bus", "fill": "dr_fill",
+          "patterns": {"strings": "st_chk", "bass": "bs_oct", "drums": "dr_disco"}},
+    "C": {"name": "MIRRORBALL", "role": "lift", "progression": "ball", "energy": "e_ball", "fill": "dr_fill",
+          "params": {"strings.CUT": 110}, "patterns": {"strings": "st_chk", "bass": "bs_oct", "drums": "dr_ball"}},
+    "D": {"name": "LAST TRAIN", "role": "breakdown", "progression": "train", "energy": "e_soft", "transition": 2,
+          "params": {"strings.rev": 44, "lead.rev": 46}, "fx": {"rsize": 108, "dfdbk": 44},
+          "patterns": {"strings": "st_swell", "bass": "bs_hold", "drums": "dr_disco"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "BOOGIE": {"swap": {"bs_oct": "bs_boogie"}, "fx": {"duck": 34}, "energy_bias": 0.12, "macros": {"MOTION": 0.62}},
+    "HORNS": {"sounds": {"strings": "HORN STAB"}, "params": {"strings.level": 88}, "macros": {"COLOR": 0.58}},
+    "SILK": {"params": {"strings.rev": 44, "lead.dly": 50}, "fx": {"rsize": 108, "dfdbk": 46}, "energy_bias": -0.08,
+             "macros": {"SPACE": 0.68}}
+  },
+  "macros": {
+    "COLOR": [{"to": "strings.@BRIGHT", "min": -30, "max": 16},
+              {"to": "bass.~bright", "min": -20, "max": 16},
+              {"to": "lead.@BRIGHT", "min": -30, "max": 24},
+              {"to": "g.dcolor", "min": -20, "max": 20}],
+    "MOTION": [{"to": "strings.sgate", "min": -20, "max": 26},
+               {"to": "bass.sgate", "min": -20, "max": 22},
+               {"to": "lead.ld_pit", "min": 0, "max": 3, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "strings+lead.rev", "min": -20, "max": 28, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 14},
+              {"to": "g.dfdbk", "min": -24, "max": 22},
+              {"to": "lead.dly", "min": -20, "max": 30},
+              {"to": "strings.dly", "min": -10, "max": 20},
+              {"to": "drums.rev", "min": -14, "max": 16}],
+    "ENERGY": [{"to": "strings.level", "min": 2, "max": -5},
+               {"to": "drums.level", "min": -10, "max": 6},
+               {"to": "g.duck", "min": -10, "max": 14},
+               {"to": "bass.~bright", "min": 0, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -4}, {"to": "g.drrev", "add": -14},
+                                                     {"to": "g.dfdbk", "add": -20}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.@RESO", "add": -12}, {"to": "lead.@RESO", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "lead.ld_pit", "add": -2}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_soft": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["strings", "lead"]},
+      {"from": 0.42, "layers": ["strings", "bass", "lead"]},
+      {"from": 0.72, "layers": "all", "drums": ["kick", "hat", "open"], "density": "x.x.x.x.x.x.x.x."}]},
+    "e_bus": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["strings", "lead"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick"]},
+      {"from": 0.42, "layers": "all", "drums": ["kick", "snare", "clap", "hat", "open"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_ball": {"density_lanes": ["hat", "conga"], "bands": [
+      {"from": 0.00, "layers": ["strings", "bass", "lead"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick", "open"]},
+      {"from": 0.42, "layers": "all", "density": "x.x.x.x.x.x.x.x.", "fills": true},
+      {"from": 0.72, "layers": "all", "fills": true, "ratchets": true}]}
+  },
+  "smart_keys": {"track": "lead", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord",
+                 "tonic": "Bb3", "range": ["C3", "Bb6"]},
+  "guard": {
+    "notes": {"lead": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["E1", "G3"]}},
+    "record": {"quantize": 0.75},
+    "sound": {"ranges": {"bass.RES": [0, 76], "g.dfdbk": [0, 80], "g.duck": [0, 44]}, "max_level": 116, "max_dfdbk": 80},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}
