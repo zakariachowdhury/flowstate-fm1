@@ -88,14 +88,16 @@ int main(void)
     nor[st_sector(OBJ_PROJECT0 + 2, 1) + 8] ^= 0x01;
     bad += check("both headers broken -> nothing", st_load(OBJ_PROJECT0 + 2, got, sizeof got) < 0);
     {   /* every copy of every object in the Felucca regions, off the sample slots (0xA0000..0xDBFFF) and
-         * the update staging (0xE0000..), and no two sectors shared */
+         * the update staging (0xE0000..0xE4FFF), Flowstate's (user Worlds, the PLAY session) in 0xE5000..0xFBFFF; no
+         * two sectors shared */
         uint32_t o, c, o2, c2, inside = 1, apart = 1;
         for (o = 0; o < OBJ_COUNT; o++)
             for (c = 0; c < 2u; c++) {
                 uint32_t a = st_sector(o, c);
                 int data = a >= 0x97000u && a + 4096u <= 0xA0000u, ups = a >= 0xDC000u && a + 4096u <= 0xE0000u;
                 int glob = a >= 0xFC000u && a + 4096u <= 0xFF000u;
-                inside &= (data || ups || glob) && !(a & 0xFFFu);
+                int world = o >= OBJ_UWORLD0 && a >= 0xE5000u && a + 4096u <= 0xFC000u;
+                inside &= (data || ups || glob || world) && !(a & 0xFFFu);
                 for (o2 = 0; o2 < OBJ_COUNT; o2++)
                     for (c2 = 0; c2 < 2u; c2++)
                         if ((o2 != o || c2 != c) && st_sector(o2, c2) == a)
@@ -103,6 +105,25 @@ int main(void)
             }
         bad += check("data stays in the Felucca regions (autosave too)", inside);
         bad += check("every object copy has its own sector", apart);
+    }
+    {   /* Flowstate's region: a payload never reaches offset 0xF00 of its sector, where the update loader and the SPL
+         * look for an update record (fm1_flash.h); one that would is refused */
+        static uint8_t big[ST_PAYLOAD_MAX];
+        uint32_t i, c, ok = 1;
+        memset(big, 0x00, sizeof big);
+        bad += check("Flowstate: a payload past 0xF00 refused", st_save(OBJ_WSESSION, big, ST_LOW_MAX + 1u) < 0 &&
+                                                             st_save(OBJ_UWORLD0 + 9, big, ST_PAYLOAD_MAX) < 0);
+        ok &= st_save(OBJ_WSESSION, big, ST_LOW_MAX) == 0 && st_save(OBJ_WSESSION, big, ST_LOW_MAX) == 0;
+        ok &= st_save(OBJ_UWORLD0, big, ST_LOW_MAX) == 0;
+        for (c = 0; c < 2u; c++)
+            for (i = 0xF00u; i < 0x1000u; i++)
+                ok &= nor[st_sector(OBJ_WSESSION, c) + i] == 0xFF;
+        for (i = 0xF00u; i < 0x1000u; i++)
+            ok &= nor[st_sector(OBJ_UWORLD0, 0) + i] == 0xFF;
+        bad += check("Flowstate: 0xF00.. of its sectors stay erased", ok);
+        bad += check("Flowstate: the session at 0xF9000 / 0xFA000", st_sector(OBJ_WSESSION, 0) == 0xF9000u &&
+                                                                    st_sector(OBJ_WSESSION, 1) == 0xFA000u &&
+                                                                    st_sector(OBJ_UWORLD0 + 9, 1) == 0xF8000u);
     }
     printf("%s\n", bad ? "STORAGE TEST FAILED" : "storage test passed");
     return bad != 0;

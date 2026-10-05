@@ -383,4 +383,22 @@ guard_tests() {
 run "guardrails: rules, H6, notes, CPU (ASan/UBSan); the worldc model = the C engine; sweeps over the macro space${SWEEP:+ ($SWEEP)}" \
     guard_tests
 
+# PLAY MODE (Phase 9: firmware/src/ui_play.c, world_store.c; design 8, 10.4): tests/ui_play_test.c on the whole
+# firmware (host/core.c, FELUCCA_WORLD 1: the real UI, flash and audio) under ASan/UBSan, each scenario in its own
+# process: a first boot into PLAY MODE (NEON RAIN, FIRST); every screen with its texts (the text hook) and the control
+# map; CHOOSE WORLD switching on the next bar while playing and at once while stopped, HOME and the timeout cancelling;
+# scenes and variations on the bar; the overlays' timeouts; EDIT held 2 s untouched -> the dialog -> ADVANCED and back;
+# H17 / H26; the LEDs; the redraw cost of each change (pixels sent to the panel); LEAVE WORLD bringing the SLOOP project
+# back bit-identically (and its render); the session across a reboot of the flash image; 20,000 frames of random input
+# with audio (PLAY_FUZZ=n: another length). The screens: $OUT/play-*.ppm
+ui_play_test() {
+    $CC -g -w -fsanitize=address,undefined -fno-sanitize=shift-base -fno-sanitize-recover=undefined -Ihost -Ibuild/host-obj \
+        -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/ui_play_test" tests/ui_play_test.c -lm || return 1
+    "$OUT/ui_play_test" "$OUT" > "$OUT/ui_play.txt" 2>&1 || { cat "$OUT/ui_play.txt"; return 1; }
+    grep -a 'cost\|fuzz:' "$OUT/ui_play.txt"
+    echo "PLAY MODE: $(grep -ac ' ok$' "$OUT/ui_play.txt") checks passed; the screens in $OUT/play-*.ppm"
+}
+run "PLAY MODE: screens, control map, World / scene / variation on the bar, ADVANCED, LEAVE WORLD, session, fuzz" \
+    ui_play_test
+
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }
