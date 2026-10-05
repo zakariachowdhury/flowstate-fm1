@@ -58,11 +58,13 @@
   "variations": {
     "ORIGINAL": {},
     "AIRY": {"sounds": {"texture": "FLUTE DUST"}, "params": {"pad.level": 77, "pad.CUT": 66, "pad.rev": 104, "bell.rev": 96},
-             "fx": {"rsize": 122, "rdamp": 50}, "energy_bias": -0.05},
+             "fx": {"rsize": 122, "rdamp": 50}, "energy_bias": -0.05,
+             "macros": {"SPACE": 0.66, "COLOR": 0.58}},
     "FLOATING": {"params": {"pad.ld_pit": 2, "pad.lrate": 10, "texture.SPRD": 56, "texture.RAND": 30, "pad.rel": 104,
-                 "bell.dly": 62}, "fx": {"dfdbk": 62, "crate": 12, "cdepth": 96}},
-    "DARK": {"sounds": {"pad": "DARK STR", "texture": "LOFI CLOUD"}, "params": {"pad.level": 86, "texture.level": 88, "pad.CUT": 58, "texture.TONE": 60,
-             "bell.IDX": 30}, "fx": {"dfdbk": 56, "dcolor": 34, "rdamp": 84}},
+                 "bell.dly": 62}, "fx": {"dfdbk": 62, "crate": 12, "cdepth": 96},
+                 "macros": {"MOTION": 0.65, "SPACE": 0.6}},
+    "DARK": {"sounds": {"pad": "DARK STR", "texture": "LOFI CLOUD"}, "params": {"pad.level": 78, "texture.level": 84, "pad.CUT": 58, "texture.TONE": 60,
+             "bell.IDX": 30}, "fx": {"dfdbk": 56, "dcolor": 34, "rdamp": 84}, "macros": {"COLOR": 0.35}},
     "SPARSE": {"params": {"drums.level": 64, "texture.level": 74}, "energy_bias": -0.2}
   },
   "macros": {

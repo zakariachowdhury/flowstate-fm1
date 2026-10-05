@@ -63,12 +63,13 @@
   "variations": {
     "ORIGINAL": {},
     "DREAMY": {"sounds": {"keys": "DX RHODES"}, "params": {"keys.chor": 64, "keys.dly": 32, "piano.dly": 44},
-               "fx": {"dfdbk": 46, "dmix": 80}, "energy_bias": -0.04},
+               "fx": {"dfdbk": 46, "dmix": 80}, "energy_bias": -0.04, "macros": {"SPACE": 0.68}},
     "AIRY": {"sounds": {"drums": "JAZZ", "piano": "VIBES"}, "params": {"keys.rev": 44, "piano.rev": 52, "piano.CUT": 100},
-             "fx": {"dust": 16}, "energy_bias": -0.06},
+             "fx": {"dust": 16}, "energy_bias": -0.06,
+             "macros": {"COLOR": 0.58, "SPACE": 0.6}},
     "DARK": {"sounds": {"keys": "WURLI", "drums": "BOOMBAP"}, "params": {"keys.level": 96, "drums.level": 104},
-             "fx": {"filt": -12, "dcolor": 30, "dust": 32}},
-    "SPARSE": {"swap": {"k_comp": "k_sparse", "b_walk": "b_root"}, "energy_bias": -0.08}
+             "fx": {"filt": -12, "dcolor": 30, "dust": 32}, "macros": {"COLOR": 0.38}},
+    "SPARSE": {"swap": {"k_comp": "k_sparse", "b_walk": "b_root"}, "energy_bias": -0.08, "macros": {"MOTION": 0.4}}
   },
   "macros": {
     "COLOR": [{"to": "keys.@BRIGHT", "min": -14, "max": 16},

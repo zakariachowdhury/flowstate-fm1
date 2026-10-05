@@ -64,12 +64,13 @@
   },
   "variations": {
     "ORIGINAL": {},
-    "DRIVING": {"swap": {"bs_8": "bs_16"}, "fx": {"duck": 28}, "energy_bias": 0.12},
-    "DREAMY": {"sounds": {"chords": "WARM PAD"}, "params": {"chords.level": 100, "chords.CUT": 72, "chords.sgate": 96, "chords.chor": 96, "chords.rev": 70,
-               "lead.dly": 70}, "fx": {"rsize": 112, "dfdbk": 62, "dmix": 96}, "energy_bias": -0.04},
-    "DARK": {"sounds": {"chords": "DARK STR"}, "params": {"chords.level": 100, "chords.CUT": 62, "bass.CUT": 48, "lead.TONE": 76},
-             "fx": {"dcolor": 40, "rdamp": 76}},
-    "HEAVY": {"params": {"bass.dist": 34, "bass.CUT": 66, "chords.DRV": 30}, "energy_bias": 0.12}
+    "DRIVING": {"swap": {"bs_8": "bs_16"}, "fx": {"duck": 28}, "energy_bias": 0.12, "macros": {"MOTION": 0.62}},
+    "DREAMY": {"sounds": {"chords": "WARM PAD"}, "params": {"chords.level": 84, "chords.CUT": 72, "chords.sgate": 96, "chords.chor": 96, "chords.rev": 70,
+               "lead.dly": 70}, "fx": {"rsize": 112, "dfdbk": 62, "dmix": 96}, "energy_bias": -0.04,
+               "macros": {"SPACE": 0.68}},
+    "DARK": {"sounds": {"chords": "DARK STR"}, "params": {"chords.level": 84, "chords.CUT": 62, "bass.CUT": 48, "lead.TONE": 76},
+             "fx": {"dcolor": 40, "rdamp": 76}, "macros": {"COLOR": 0.35}},
+    "HEAVY": {"params": {"bass.dist": 34, "bass.CUT": 66, "chords.DRV": 30, "chords.level": 74}, "energy_bias": 0.12}
   },
   "macros": {
     "COLOR": [{"to": "chords.~bright", "min": -24, "max": 30, "curve": "s"},
