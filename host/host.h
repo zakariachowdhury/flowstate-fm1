@@ -78,6 +78,15 @@ int host_global(uint32_t what);              /* tempo, swing, the DJ filter (FX 
 int host_global_set(uint32_t what, int32_t v);   /* clamped to its range; returns what was set */
 uint32_t host_flash_changes(void);           /* erases + page programs so far (a change to save) */
 int host_button_led(uint32_t label);         /* host_led of a button by its label (through the panel table) */
+void host_track_select(uint32_t track);      /* ALGORITHM: the selected track (the keys play it, REC follows) */
+/* a track's parameters as the EDIT pages label and format them (the engine's own labels for its eight), for
+ * inspection: up to max of them into p; returns how many */
+typedef struct {
+    char label[8], text[10];                 /* "CUT", "64%" */
+    int16_t value, min, max;
+    uint8_t id;                              /* the index in the track's p[] */
+} host_param_t;
+int host_track_params(uint32_t track, host_param_t *p, int max);
 
 /* ---- names, colours and the firmware's font, for a host's own drawing. Constant data only: any thread */
 const char *host_version(void);              /* "SLOOP 2.1" */
@@ -93,7 +102,7 @@ int host_text_height(int large);
 /* ---- what is loaded */
 typedef struct {
     const char *engine, *sound;              /* engine and preset names; the drum track: "DRUMS" and its kit */
-    const char *div, *root, *scale;
+    const char *div, *root, *scale, *quant;  /* quant: how the keys snap (SLOOP KEYS: OFF SNAP WHITE) */
     int steps, notes;                        /* pattern length, steps that play */
     double bars;                             /* one pass of the pattern, in 4/4 bars */
     int level, pan, mute, cho, dly, rev;     /* the drum track: GLO > DRUMS level and reverb */
@@ -108,5 +117,9 @@ typedef struct {
                                               * -1 none) and the one asked for from the next bar (-1 none) */
     int beat;                                /* beats since PLAY or the section's start (4 a bar) */
     int filter, master;                      /* the DJ filter (-64..63); the master gain (4096 = unity) */
+    int sel;                                 /* the selected track (the keys play it) */
 } host_state_t;
 void host_state(host_state_t *s);
+/* what a project file holds, without loading it: tempo, swing and per track the engine, sound, key, mix
+ * (the steps, the scene and the clock fields stay 0). The format read, or < 0 as host_project_load */
+int host_project_info(const char *path, host_state_t *s);

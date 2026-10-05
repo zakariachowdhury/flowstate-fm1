@@ -382,6 +382,7 @@ void host_state(host_state_t *s)
         d->div = N_DIV[div];
         d->root = N_NOTE[(uint32_t)t->p[P_ROOT] % 12u];
         d->scale = N_SCALE[(uint32_t)t->p[P_SCALE] % NSCALES];
+        d->quant = N_QUANT[(uint32_t)t->p[P_QUANT] % 3u];
         d->steps = (int)len;
         for (k = 0; k < len && k < NSTEP; k++)
             d->notes += is_drum(t) ? dstep_mask(&t->dstep[k]) != 0u : t->step[k].time == ST_NOTE && t->step[k].n;
@@ -398,6 +399,58 @@ void host_state(host_state_t *s)
     s->beat = (int)clk_beat;
     s->filter = song.g[G_FILT];
     s->master = (int)song.master_q12;
+    s->sel = song.sel;
+}
+
+static project_t host_info_proj;                 /* (host_project_info: never the working project) */
+int host_project_info(const char *path, host_state_t *s)
+{
+    FILE *f = fopen(path, "rb");
+    project_t *q = &host_info_proj;
+    uint8_t *b;
+    int n, fmt;
+    uint32_t i;
+    memset(s, 0, sizeof *s);
+    s->scene = s->scene_next = -1;
+    if (!f)
+        return -1;
+    b = malloc(sizeof host_pf);
+    n = b ? (int)fread(b, 1, sizeof host_pf, f) : 0;
+    fclose(f);
+    if (n < 8 || !proj_import(q, b, n)) {
+        free(b);
+        return -2;
+    }
+    fmt = ((const project_t *)(const void *)b)->magic == PROJ_MAGIC ? 4 :
+          ((const project_t *)(const void *)b)->magic == PROJ_MAGIC_V3 ? 3 :
+          ((const project_t *)(const void *)b)->magic == PROJ_MAGIC_V2 ? 2 : 1;
+    free(b);
+    s->bpm = q->g[G_BPM];
+    s->swing = q->g[G_SWING];
+    s->sel = q->sel < NTRK ? q->sel : 0;
+    for (i = 0; i < NTRK; i++) {
+        const proj_trk_t *t = &q->t[i];
+        host_track_t *d = &s->t[i];
+        if (i == TRK_DRUM) {
+            d->engine = "DRUMS";
+            d->sound = DRUM_KIT_NAMES[(uint32_t)t->p[P_E0] % DRUM_KITS];
+        } else {
+            const engine_t *e = ENGINES[t->engine % NENGINES];
+            d->engine = e->name;
+            d->sound = e->npresets ? e->presets[t->preset % e->npresets].name : "-";
+        }
+        d->div = N_DIV[(uint32_t)t->p[P_SDIV] % 6u];
+        d->root = N_NOTE[(uint32_t)t->p[P_ROOT] % 12u];
+        d->scale = N_SCALE[(uint32_t)t->p[P_SCALE] % NSCALES];
+        d->quant = N_QUANT[(uint32_t)t->p[P_QUANT] % 3u];
+        d->level = i == TRK_DRUM ? q->g[G_DRLVL] : t->p[P_LEVEL];
+        d->pan = t->p[P_PAN];
+        d->mute = t->p[P_MUTE];
+        d->cho = t->p[P_CHOR];
+        d->dly = t->p[P_DLY];
+        d->rev = i == TRK_DRUM ? q->g[G_DRREV] : t->p[P_REV];
+    }
+    return fmt;
 }
 
 /* ------------------------------------------------ live control (the gestures of ui_layers.c, direct) --- */
@@ -463,6 +516,32 @@ int host_global_set(uint32_t what, int32_t v)
 }
 uint32_t host_flash_changes(void) { return host_nor_erases + host_nor_progs; }
 int host_button_led(uint32_t label) { return label < NB ? host_led(panel.btn[label]) : 0; }
+void host_track_select(uint32_t k) { track_select(k); }   /* ui.c: what ALGORITHM does */
+int host_track_params(uint32_t k, host_param_t *out, int max)
+{
+    uint32_t id;
+    int n = 0;
+    if (k >= NTRK)
+        return 0;
+    for (id = 0; id < P_COUNT && n < max; id++) {
+        const param_desc_t *d = track_desc(&trk[k], id);
+        const char *unit;
+        char v[16];
+        host_param_t *p = &out[n++];
+        if (!d->label || !d->label[0] || !strcmp(d->label, "-")) {   /* (an unused engine slot) */
+            n--;
+            continue;
+        }
+        str_cpy(p->label, d->label, sizeof p->label);
+        param_format(d, trk[k].p[id], v, &unit);
+        snprintf(p->text, sizeof p->text, "%s%s", v, unit ? unit : "");
+        p->value = trk[k].p[id];
+        p->min = d->min;
+        p->max = d->max;
+        p->id = (uint8_t)id;
+    }
+    return n;
+}
 
 /* ------------------------------------------------ names, colours, the font (constant data) --- */
 const char *host_version(void) { return FELUCCA_VERSION; }
