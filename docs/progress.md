@@ -305,3 +305,76 @@ a key and the sequencer.
 **Commits:** `89a69be` to `2806141`.
 
 **Next.** Phase 7: the performance macro engine (COLOR, MOTION, SPACE, ENERGY).
+
+## Phase 7: Performance macro engine (2026-10-05)
+
+**Done.**
+
+**Macro engine** (`firmware/src/macro.c`, design §5).
+- **Controls.** COLOR, MOTION, SPACE and ENERGY are positions 0–1000, taken from the World's defaults.
+- **Evaluation, `macro_eval`** (main loop, on change, at most 60 Hz):
+  - runs every mapping through its curve: lin, exp, log, s, late or a 9-point LUT;
+  - resolves `@ROLE` against each track's engine;
+  - adds the cross-macro rules, scaled by how far past their thresholds the controls are;
+  - clamps to the parameter descriptors and to the hard limits in `guard_limits.h`;
+  - publishes an overlay table of at most 48 slots.
+- **The overlay, inside the audio ISR.** Each slot is smoothed (fast / medium / slow / stepped). The effective value
+  `clamp(base + offset)` is written into `p[]`/`g[]` for the block, then the authored base is restored. The UI,
+  editor and autosave never see macro values.
+- **Smooth targets.** `~bright`/`~shape` reach the engines as per-voice offsets.
+
+**ENERGY as arrangement** (`firmware/src/arrange.c`). The scene's ENERGY band, with hysteresis:
+- mutes layers through SLOOP's mute fade, on the bar;
+- masks drum lanes, density and synth steps, on the beat;
+- plays fills on phrase ends.
+
+The Smart Keys track is never muted.
+
+**Host.**
+- The Studio's four knobs drive the real macros.
+- The Option+I inspector shows each macro's hidden mappings with live values
+  ([images/inspector.png](images/inspector.png)).
+- `sloop-render --ctl` and `--sweep`.
+
+**Factory Worlds tuned.** The all-zero macro corner of three Worlds was about 22 LU under their defaults. COLOR's
+minimum is now smaller and ENERGY no longer darkens, so the corner sits 2–7 LU under. The defaults are unchanged.
+
+**Verified.** `./tests/run_tests.sh` passes all 34 groups.
+
+`macro_test` (about 5 M checks, ASan/UBSan) covers:
+- inert behaviour with no World;
+- 625 macro combinations per World against an independent model;
+- ranges, hard limits, and "100 % is never all-max";
+- the base restored after every block;
+- rules at their thresholds;
+- smoothing;
+- ENERGY timing and hysteresis;
+- slot overflow, using a new test World.
+
+24 injected bugs were all caught.
+
+Every World also renders clean at every macro extreme:
+
+| World | Worst peak | Slowest tail 6 s after STOP | ENERGY 0→1: notes | ENERGY 0→1: loudness |
+| --- | --- | --- | --- | --- |
+| NEON RAIN | −4.1 dBFS | −78 dBFS | 2.8× | −1.2 LU |
+| MIDNIGHT DRIVE | −3.1 dBFS | −81 dBFS | 8.6× | +4.8 LU |
+| FROZEN LAKE | −4.5 dBFS | −66 dBFS | 5.0× | −0.5 LU |
+| DUSTY CAFE | −3.5 dBFS | −78 dBFS | 2.7× | +1.0 LU |
+
+ENERGY makes the music fuller, not louder. Both regression builds match the 83 goldens.
+
+**Sizes and cost.**
+- Image 520,424 B (+2.4 KB).
+- RAM `.data` + `.bss` 66,880 B of 98,304 B.
+- The overlay costs about 1.3 instructions per moving slot per sample, at most 1.6 % of the heaviest mix.
+
+**Deviations** (design §5.8):
+- The overlay is applied before `events_block`, so mappings read at note time (such as gate) work.
+- `arrange.c` (including fills) and `guard_limits.h` moved forward into this phase.
+
+**Commits:** `9af542f` to `f1c7b8c`.
+
+**Next.** Phase 8: the Musical Guardrail Engine. `guard.c` with soft caps, sound ranges and combinations, the note
+guard moved there, read-site clamps, a CPU guard, and exhaustive macro sweeps checking clipping, runaway feedback,
+silence, CPU and invalid parameters.
