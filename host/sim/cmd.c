@@ -24,7 +24,10 @@
  *   print                      the state on stdout
  *   expect FIELD OP VALUE      playing scene next bpm filter mute1..4 level1..4 macro1..4 sel voices gated rms peak
  *                              time master rec (0 empty, 1 armed, 2 recording, 3 loop, 4 overdub) loop (the keys
- *                              loop's notes) (numbers; A..D or - for a scene); world browse pending var varnext (a
+ *                              loop's notes) ctl1..ctl16 (every control 0..100: COLOR .. ENERGY, SOFT .. TAIL, DRIFT
+ *                              .. RATE, FILTER .. FREEZE) page (the Studio's knob row: 0 the macros, 1 LIVE FX,
+ *                              2 SOUND SHAPE, 3 MOVEMENT: FX / ENV / LFO held) (numbers; A..D or - for a scene);
+ *                              world browse pending var varnext (a
  *                              name or -; voices: synth voices sounding, gated: still held, 0 after STOP);
  *                              = != < <= > >= (names: = !=). A failure: exit status 1
  *   quit */
@@ -37,7 +40,7 @@
 
 static const char *const FIELD[F_NF] = {"playing", "scene", "next", "bpm", "filter", "mute", "level", "rms",
                                         "peak", "time", "master", "macro", "sel", "voices", "gated", "rec", "loop",
-                                        "world", "browse", "pending", "var", "varnext"};
+                                        "ctl", "page", "world", "browse", "pending", "var", "varnext"};
 const char *cmd_field_name(int f) { return f >= 0 && f < F_NF ? FIELD[f] : "?"; }
 const char *cmd_scene_name(int s)
 {
@@ -201,6 +204,10 @@ static int parse(char **w, int n, sim_cmd_t *c)
         for (f = 0; f < F_NF; f++) {
             size_t l = strlen(FIELD[f]);
             int indexed = f == F_MUTE || f == F_LEVEL || f == F_MACRO;
+            if (f == F_CTL && !strncmp(a, "ctl", 3) && num(a + 3, &v) && v >= 1 && v <= HOST_NCTL) {
+                c->rel = (uint8_t)(v - 1);
+                break;
+            }
             if (indexed && !strncmp(a, FIELD[f], l) && a[l] >= '1' && a[l] <= '4' && !a[l + 1]) {
                 c->rel = (uint8_t)(a[l] - '1');
                 break;

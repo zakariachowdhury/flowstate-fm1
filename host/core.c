@@ -871,6 +871,17 @@ int host_macro_set(uint32_t ctl, int32_t pos)
     return (int)macro_pos(ctl);
 }
 int host_macro(uint32_t ctl) { return wrt.active && ctl < WF_NCTL ? (int)macro_pos(ctl) : -1; }
+int host_play_page(int *held, uint32_t *ctl0)
+{
+    int in = wrt.active && wrt.mode == WM_PLAY && !ui.menu, page = -1;
+    if (held)
+        *held = in && (fm1_in.buttons & (PL_BT(B_FX) | PL_BT(B_ENV) | PL_BT(B_LFO))) != 0u;
+    if (in && pl.scr == PS_PAGE && pl.held)
+        page = (int)pl.ctl;
+    if (ctl0)
+        *ctl0 = page >= 0 ? PL_PAGE_CTL[page] : 0u;
+    return page;
+}
 int host_macro_snap(void)
 {
     if (!wrt.active)

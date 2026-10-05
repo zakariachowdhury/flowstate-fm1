@@ -7,7 +7,9 @@
  *   middle       scenes A B C D (the one playing filled, the one asked for marked: it changes on the next bar)
  *                and the variation selector (greyed until variations exist: Phase 12)
  *   controls     COLOR MOTION SPACE ENERGY, 0..100 with the spec's end words: a World's macros (what they move is
- *                the World's: the inspector shows it), a SLOOP project's KNOB 1..4; the line under them says which
+ *                the World's: the inspector shows it), a SLOOP project's KNOB 1..4; the line under them says which.
+ *                FX / ENV / LFO held: the device's KNOB 1..4 and that page's four (FILTER ECHO CRUSH FREEZE,
+ *                SOFT SHORT BODY TAIL, DRIFT WOBBLE PULSE RATE) with their values, until it is let go
  *   performance  PLAY REC PULSE BEAT FX: the FM-1's PLAY REC ARP SEQ FX buttons with their LEDs, held while
  *                the mouse is down (right-click latches)
  *   tracks       by role: mute, level, the sound; a click on the sound gives the keys that track
@@ -72,6 +74,9 @@ static const char *const PERF_NAME[5] = {"PLAY", "REC", "PULSE", "BEAT", "FX"};
 static const char *const PERF_SUB[5] = {"", "", "ARP", "SEQ", "HOLD"};
 static const char *const MACRO_LO[4] = {"DARK", "STILL", "CLOSE", "SPARSE"};
 static const char *const MACRO_HI[4] = {"BRIGHT", "ALIVE", "HUGE", "INTENSE"};
+static const char *const PAGE_NAME[3] = {"LIVE FX", "SOUND SHAPE", "MOVEMENT"};
+static const char *const PAGE_BTN[3] = {"FX", "ENV", "LFO"};
+static const uint8_t PAGE_CTL[3] = {12, 4, 8};   /* (ui_play.c PL_PAGE_CTL: host_play_page gives the same) */
 #define A0 ((float)(0.75 * M_PI))                /* knob travel: 135 .. 405 degrees, clockwise */
 #define A1 ((float)(2.25 * M_PI))
 
@@ -116,13 +121,9 @@ static void draw_static(int w, int h)
     card(&layer, LX, LY, 246, 246);
     c_text_c(&layer, LX + 123, LY + 252, "DEVICE SCREEN  \xB7  TAB: THE FM-1", FAINT);
     card(&layer, 24, MY, 952, MH);
-    for (k = 0; k < 4; k++) {
+    for (k = 0; k < 4; k++) {                    /* (the names and end words: draw_macros, a page relabels them) */
         int cx = macro_cx(k), cy = MY + 70;
-        c_text_sp(&layer, cx - (c_text_w(MACRO_NAME[k]) + 2 * ((int)strlen(MACRO_NAME[k]) - 1)) / 2, MY + 12,
-                  MACRO_NAME[k], 2, TEXT);
         c_arc(&layer, (float)cx, (float)cy, (float)MR, 6.0f, A0, A1, RGBX(40, 42, 52));
-        c_text(&layer, cx - 84, MY + 108, MACRO_LO[k], DIM);
-        c_text_r(&layer, cx + 84, MY + 108, MACRO_HI[k], DIM);
     }
     card(&layer, 24, PY, 442, PH);
     card(&layer, TX, PY, 498, PH);
@@ -214,9 +215,14 @@ static void draw_scenes(canvas_t *c, const studio_t *m)
 
 static void draw_macros(canvas_t *c, const studio_t *m, double now)
 {
-    int k;
+    int k, page = m->macro_live && m->page >= 0 && m->page < 3 ? m->page : -1;
     for (k = 0; k < 4; k++) {
-        int cx = macro_cx(k), cy = MY + 70, v = m->macro[k];
+        int cx = macro_cx(k), cy = MY + 70, ci = page >= 0 ? PAGE_CTL[page] + k : k;
+        int v = page >= 0 ? m->ctl[ci] : m->macro[k];
+        const char *name = page >= 0 ? host_macro_name((uint32_t)ci) : MACRO_NAME[k];
+        c_text_sp(c, cx - (c_text_w(name) + 2 * ((int)strlen(name) - 1)) / 2, MY + 12, name, 2, page >= 0 ? LAV : TEXT);
+        c_text(c, cx - 84, MY + 108, page < 0 ? MACRO_LO[k] : ci == 12 ? "LOW-PASS" : ci == 11 ? "SLOWER" : "OFF", DIM);
+        c_text_r(c, cx + 84, MY + 108, page < 0 ? MACRO_HI[k] : ci == 12 ? "HIGH-PASS" : ci == 11 ? "FASTER" : "FULL", DIM);
         uint32_t col = 0xFF000000u | host_knob_rgb((uint32_t)k);
         float a = A0 + (A1 - A0) * (float)v / 100.0f;
         char b[8];
@@ -239,6 +245,12 @@ static void draw_macro_line(canvas_t *c, const sim_snap_t *s)   /* under the kno
     if (!m->macro_live) {
         c_text_c(c, 500, MY + MH + 8, "a SLOOP project: these turn SLOOP's KNOB 1-4 (the device screen shows what they "
                  "change)", FAINT);
+        return;
+    }
+    if (m->page >= 0 && m->page < 3) {
+        snprintf(b, sizeof b, "%s held: the knobs are the device's KNOB 1-4 on %s%s  \xB7  let go: COLOR MOTION SPACE "
+                 "ENERGY", PAGE_BTN[m->page], PAGE_NAME[m->page], m->page == 0 ? " (momentary: home on release)" : "");
+        c_text_c(c, 500, MY + MH + 8, b, LAV);
         return;
     }
     for (k = 0; k < HOST_NTRK; k++)

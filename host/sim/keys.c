@@ -9,7 +9,9 @@
  *   buttons   U I O P  FX SCL ENV LFO   7 8 9 0  EDIT GLO HOME SAVE   [ ]  ARP SEQ   Space PLAY   Return REC
  *             - =  OCT- OCT+  (held while the key is down)
  *   encoders  < >  PRESETS   v ^  ALGORITHM   shift < >  SELECT   shift v ^  MASTER   (key repeat keeps turning)
- *             shift Z X / C V / B N / M ,: in STUDIO the macros COLOR MOTION SPACE ENERGY, in ADVANCED KNOB 1..4
+ *             shift Z X / C V / B N / M ,: in STUDIO the macros COLOR MOTION SPACE ENERGY (FX / ENV / LFO held:
+ *             the device's KNOB 1..4, so its LIVE FX / SOUND SHAPE / MOVEMENT page gets them: studio.c), in
+ *             ADVANCED KNOB 1..4
  *   Option    Space PLAY / STOP   1..4 scene A..D (next bar)   V / shift V variation (next bar)
  *             5..8 mute track 1..4   < > DJ filter -/+4   0 filter off   v ^ tempo -/+1
  *             W / shift W choose a World   Return load it   I the inspector
@@ -123,6 +125,7 @@ void keys_print_mapping(void)
            "            5..8 mute track 1..4\n"
            "            < / > DJ filter -/+4    0 filter off    v / ^ tempo -/+1 BPM\n"
            "            W / shift+W choose a World (the current one plays on)    Return load it    I inspector\n"
+           "  FX / ENV / LFO held (STUDIO): the four knobs turn that page (LIVE FX, SOUND SHAPE, MOVEMENT)\n"
            "  Tab       STUDIO / ADVANCED    Esc  close the inspector / cancel choosing / quit\n"
            "  mouse     click / drag the keys; hold a button; wheel or drag a knob or a slider (up = more);\n"
            "            right-click (or ctrl-click) latches a button or key\n");
@@ -144,8 +147,9 @@ void keys_legend(int studio, char l[5][192])
         k += snprintf(l[0] + k, 192 - (size_t)k, " %s", sc_name(KEY_SC[BLACK_N[i]]));
     snprintf(l[0] + k, 192 - (size_t)k, "   (F3..G5)");
     if (studio) {
-        snprintf(l[1], 192, "MACROS  %s COLOR   %s MOTION   %s SPACE   %s ENERGY      TAB advanced   ESC quit",
-                 e[HOST_EN_K1], e[HOST_EN_K2], e[HOST_EN_K3], e[HOST_EN_K4]);
+        snprintf(l[1], 192, "MACROS  %s COLOR   %s MOTION   %s SPACE   %s ENERGY   (%s %s %s held: that page's "
+                 "four)   TAB advanced   ESC quit", e[HOST_EN_K1], e[HOST_EN_K2], e[HOST_EN_K3], e[HOST_EN_K4],
+                 sc_name(BTN_SC[HOST_B_FX]), sc_name(BTN_SC[HOST_B_ENV]), sc_name(BTN_SC[HOST_B_LFO]));
         snprintf(l[2], 192, "OPTION +  SPC play/stop  1..4 scene  V var  5..8 mute  W world  RET load  < > filter  "
                  "v ^ tempo  I inspect");
         l[3][0] = l[4][0] = 0;

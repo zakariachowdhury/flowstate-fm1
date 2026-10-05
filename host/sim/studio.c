@@ -18,7 +18,9 @@
  * current one plays on; confirming loads it, at once while stopped, on the next bar while playing (design D10):
  * a World through world_switch (on the bar the transport stops and the new World starts again), a project here.
  * With a World the four knobs are its macros (macro.c: host_macro_set, 0..100 here for 0..1000 there; a World
- * loads with its own default positions); with a SLOOP project they turn SLOOP's KNOB 1..4. */
+ * loads with its own default positions); with a SLOOP project they turn SLOOP's KNOB 1..4. While FX, ENV or LFO is
+ * held in PLAY MODE (keyboard, mouse or latched) they turn the device's KNOB 1..4 instead, so the firmware's LIVE FX,
+ * SOUND SHAPE or MOVEMENT page gets them (ui_play.c), and the view shows that page's four (host_play_page). */
 #include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
@@ -400,7 +402,16 @@ void studio_exec(const sim_cmd_t *c)
     switch (c->op) {
     case OP_MACRO:
         if (c->a < 4) {
-            int cur = host_macro(c->a), v;
+            int cur = host_macro(c->a), v, held;
+            uint32_t ctl0;
+            int page = host_play_page(&held, &ctl0);
+            if (cur >= 0 && held) {              /* FX / ENV / LFO held: the device's KNOB 1..4, which its page gets */
+                int now = host_macro(page >= 0 ? ctl0 + c->a : c->a);
+                v = c->rel ? c->v : c->v - (now + 5) / 10;
+                if (v)
+                    host_turn(HOST_EN_K1 + c->a, v);   /* (1 % a detent, as the device's knob; fast turns accelerate) */
+                break;
+            }
             if (cur >= 0) {                      /* a World: its macro */
                 v = c->rel ? (cur + 5) / 10 + c->v : c->v;
                 host_macro_set(c->a, 10 * (v < 0 ? 0 : v > 100 ? 100 : v));
@@ -546,6 +557,11 @@ void studio_fill(studio_t *m)
     for (k = 0; k < 4; k++)
         m->macro[k] = studio_macro(k);
     m->macro_live = w.active;
+    m->page = host_play_page(NULL, NULL);        /* (FX / ENV / LFO held: the knob row is that page) */
+    for (k = 0; k < HOST_NCTL; k++) {
+        int v = host_macro((uint32_t)k);
+        m->ctl[k] = v < 0 ? -1 : (v + 5) / 10;
+    }
     for (k = 0; k < HOST_NTRK; k++) {
         snprintf(m->sound[k], sizeof m->sound[k], "%s", st.t[k].sound ? st.t[k].sound : "");
         m->mute[k] = st.t[k].mute;

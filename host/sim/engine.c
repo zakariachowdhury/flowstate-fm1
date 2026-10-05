@@ -190,6 +190,8 @@ static double field(int f, int trk, const host_state_t *st)
     case F_GATED: return st->gated;
     case F_REC: return st->rec;
     case F_LOOP: return st->loop;
+    case F_CTL: { int v = host_macro((uint32_t)trk); return v < 0 ? -1 : (v + 5) / 10; }
+    case F_PAGE: return host_play_page(NULL, NULL) + 1;
     default: return 0;
     }
 }
@@ -243,9 +245,13 @@ static void expect(const sim_cmd_t *c)
         printf("expect: t=%.3f %s %s %s: %s (%s)\n", (double)host_frames() / HOST_FS, cmd_field_name(c->a),
                OPS[c->cmp], cmd_scene_name(c->v), ok ? "ok" : "FAIL", cmd_scene_name((int)v));
     else
-        printf("expect: t=%.3f %s%s %s %d: %s (%.1f)\n", (double)host_frames() / HOST_FS, cmd_field_name(c->a),
-               c->a == F_MUTE || c->a == F_LEVEL || c->a == F_MACRO ? (const char *[]){"1", "2", "3", "4"}[c->rel & 3] : "",
+    {
+        char ix[4] = "";
+        if (c->a == F_MUTE || c->a == F_LEVEL || c->a == F_MACRO || c->a == F_CTL)
+            snprintf(ix, sizeof ix, "%d", c->rel + 1);
+        printf("expect: t=%.3f %s%s %s %d: %s (%.1f)\n", (double)host_frames() / HOST_FS, cmd_field_name(c->a), ix,
                OPS[c->cmp], c->v, ok ? "ok" : "FAIL", v);
+    }
     fflush(stdout);
     if (!ok)
         AT_ADD(&E.failures, 1);

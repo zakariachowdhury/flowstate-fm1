@@ -60,11 +60,12 @@ enum {
 enum { WA_STEP, WA_PICK, WA_NAME, WA_CONFIRM, WA_CANCEL, WA_SAVE };   /* OP_WORLD: v = step / index; s = name;
                                                                        * WA_SAVE: v 1 SAVE, 0 SAVE AS USER WORLD */
 enum { F_PLAYING, F_SCENE, F_NEXT, F_BPM, F_FILTER, F_MUTE, F_LEVEL, F_RMS, F_PEAK, F_TIME, F_MASTER,
-       F_MACRO, F_SEL, F_VOICES, F_GATED, F_REC, F_LOOP, F_WORLD, F_BROWSE, F_PENDING, F_VAR, F_VARNEXT, F_NF };
+       F_MACRO, F_SEL, F_VOICES, F_GATED, F_REC, F_LOOP, F_CTL, F_PAGE, F_WORLD, F_BROWSE, F_PENDING, F_VAR, F_VARNEXT,
+       F_NF };
                                          /* F_WORLD..: names */
 enum { CMP_EQ, CMP_NE, CMP_LT, CMP_LE, CMP_GT, CMP_GE };
 typedef struct {
-    uint8_t op, a, rel, cmp;             /* OP_EXPECT: a = field, cmp; F_MUTE / F_LEVEL / F_MACRO: index in rel */
+    uint8_t op, a, rel, cmp;             /* OP_EXPECT: a = field, cmp; F_MUTE / F_LEVEL / F_MACRO / F_CTL: index in rel */
     int32_t v;
     char s[16];                          /* a World's or variation's name ('_' for a space: "NEON_RAIN") */
 } sim_cmd_t;
@@ -103,6 +104,8 @@ typedef struct {
     char var_name[8][12];
     int macro[4];                        /* COLOR MOTION SPACE ENERGY, 0..100 */
     int macro_live;                      /* 1: a World's macros (macro.c); 0: a SLOOP project's KNOB 1..4 */
+    int page;                            /* FX / ENV / LFO held in PLAY: 0 LIVE FX, 1 SOUND SHAPE, 2 MOVEMENT; -1 */
+    int ctl[HOST_NCTL];                  /* every control 0..100 (-1: no World): the page's four are 12.., 4.., 8.. */
     char role[HOST_NTRK][8], sound[HOST_NTRK][16];   /* "PAD", "WARM PAD" */
     int mute[HOST_NTRK], level[HOST_NTRK], sel;      /* level 0..127; sel: the track the keys play */
     int keys_track, keys_smart;          /* the World's keys track; 1: Smart Keys map the keys (Phase 6) */

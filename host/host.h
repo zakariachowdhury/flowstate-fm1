@@ -154,6 +154,11 @@ int host_macro_set(uint32_t ctl, int32_t pos);   /* clamped to 0..1000; the posi
 int host_macro_snap(void);
 int host_macro(uint32_t ctl);                    /* the position, or -1 (no World active) */
 const char *host_macro_name(uint32_t ctl);       /* "COLOR" .. "FREEZE" */
+/* PLAY MODE's FX / ENV / LFO pages (Phase 13, ui_play.c): the page the device shows while its button is held
+ * (0 LIVE FX: controls 12..15, 1 SOUND SHAPE: 4..7, 2 MOVEMENT: 8..11; its first control in *ctl0), else -1.
+ * *held: one of the three buttons is down in PLAY MODE with a World, so KNOB 1..4 turn that page (a Studio turns
+ * the device's knobs then, not the macros). Either pointer may be 0 */
+int host_play_page(int *held, uint32_t *ctl0);
 /* the developer's view (the beginner UI never shows it): each parameter the macros move now is a slot of the overlay
  * (a target at home has none: it costs the audio interrupt nothing) */
 typedef struct {
