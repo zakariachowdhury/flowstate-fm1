@@ -3,10 +3,12 @@
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 """Build Felucca: the app, the update loader and an installable .fwsc package.
 
-  tools/build.py [--release X.Y[-suffix]]
+  tools/build.py [--release X.Y[-suffix]] [--gen-only]
 
 Outputs in build/: felucca.bin (app), loader/ota.bin (update loader),
 felucca.fwsc (package). See BUILDING.md for the toolchain and the SDK.
+--gen-only writes only build/gen (the generated headers the host tests need):
+no toolchain, Docker or SDK. SOURCE_DATE_EPOCH sets the ABOUT build date (UTC).
 
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
 macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
@@ -20,6 +22,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -183,6 +186,13 @@ def build_app():
     flags.append(f'-DFELUCCA_ID="{PRODUCT}"')
     if VERSION:
         flags.append(f'-DFELUCCA_VERSION="{VERSION}"')
+    sde = os.environ.get("SOURCE_DATE_EPOCH")
+    if sde:                         # reproducible build date: __DATE__ ("Mmm dd yyyy") of that UTC time
+        if not sde.isdigit():
+            raise SystemExit(f"SOURCE_DATE_EPOCH={sde}: not a Unix time")
+        t = time.gmtime(int(sde))
+        mon = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()[t.tm_mon - 1]
+        flags.append(f'-DFELUCCA_BUILD_DATE="{mon} {t.tm_mday:2d} {t.tm_year}"')
     tc_all(("cc", "-c", FW / "crt0.S", "-o", OUT / "crt0.o"),
            ("cc", "-c", FW / "hal" / "fm1_vec.S", "-o", OUT / "fm1_vec.o"),
            ("cc", "-c", FW / "hal" / "fm1_isr.S", "-o", OUT / "fm1_isr.o"),
@@ -304,6 +314,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--release", metavar="X.Y", help="release build: identity FM-1_9XY, version string X.Y")
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
+    ap.add_argument("--gen-only", action="store_true", help="only the generated headers (build/gen), for host tests")
     a = ap.parse_args()
     name = "felucca.fwsc"
     if a.release:                   # one digit each: the identity has room for two
@@ -313,6 +324,9 @@ def main():
         PRODUCT = "FM-1_9" + m[1] + m[2]
         VERSION = a.release.upper() if "BETA" in a.release.upper() else a.release.upper() + " BETA"
         name = f"felucca-{a.release}.fwsc"
+    if a.gen_only:                  # no toolchain, Docker or SDK
+        generate()
+        return 0
     fm1pkg_make.SDK = a.sdk
     for rel, sha in SDK_SHA256.items():          # fail early without the SDK
         if hashlib.sha256(fm1pkg_make.sdk_file(rel)).hexdigest() != sha:
