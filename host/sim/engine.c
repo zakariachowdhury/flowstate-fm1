@@ -188,6 +188,8 @@ static double field(int f, int trk, const host_state_t *st)
     case F_SEL: return st->sel + 1;
     case F_VOICES: return st->voices;
     case F_GATED: return st->gated;
+    case F_REC: return st->rec;
+    case F_LOOP: return st->loop;
     default: return 0;
     }
 }
@@ -204,9 +206,10 @@ static void print_state(void)
         host_world_t w;
         host_world(&w);
         printf("       world=%s browse=%s pending=%s var=%s varnext=%s macros=%d,%d,%d,%d sel=%d voices=%d gated=%d "
-               "keys=%s chord=%s\n", studio_name_field(F_WORLD), studio_name_field(F_BROWSE), studio_name_field(F_PENDING),
-               studio_name_field(F_VAR), studio_name_field(F_VARNEXT), studio_macro(0), studio_macro(1), studio_macro(2),
-               studio_macro(3), st.sel + 1, st.voices, st.gated, w.keys_on ? "smart" : "sloop", w.chord[0] ? w.chord : "-");
+               "keys=%s chord=%s rec=%d loop=%d\n", studio_name_field(F_WORLD), studio_name_field(F_BROWSE),
+               studio_name_field(F_PENDING), studio_name_field(F_VAR), studio_name_field(F_VARNEXT), studio_macro(0),
+               studio_macro(1), studio_macro(2), studio_macro(3), st.sel + 1, st.voices, st.gated,
+               w.keys_on ? "smart" : "sloop", w.chord[0] ? w.chord : "-", st.rec, st.loop);
     }
     fflush(stdout);
 }

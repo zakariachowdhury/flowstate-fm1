@@ -59,7 +59,8 @@ enum {
 };
 enum { WA_STEP, WA_PICK, WA_NAME, WA_CONFIRM, WA_CANCEL };   /* OP_WORLD: v = step / index; s = name */
 enum { F_PLAYING, F_SCENE, F_NEXT, F_BPM, F_FILTER, F_MUTE, F_LEVEL, F_RMS, F_PEAK, F_TIME, F_MASTER,
-       F_MACRO, F_SEL, F_VOICES, F_GATED, F_WORLD, F_BROWSE, F_PENDING, F_VAR, F_VARNEXT, F_NF };   /* F_WORLD..: names */
+       F_MACRO, F_SEL, F_VOICES, F_GATED, F_REC, F_LOOP, F_WORLD, F_BROWSE, F_PENDING, F_VAR, F_VARNEXT, F_NF };
+                                         /* F_WORLD..: names */
 enum { CMP_EQ, CMP_NE, CMP_LT, CMP_LE, CMP_GT, CMP_GE };
 typedef struct {
     uint8_t op, a, rel, cmp;             /* OP_EXPECT: a = field, cmp; F_MUTE / F_LEVEL / F_MACRO: index in rel */

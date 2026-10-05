@@ -13,6 +13,7 @@
  *   master V                   the MASTER pot, 0..1023
  *   key K [down|up]            K: 1..27 or F3..G5; without down / up a tap (held for one main-loop pass)
  *   button NAME [down|up]      FX SCL ENV LFO EDIT GLO HOME SAVE ARP SEQ PLAY REC OCT- OCT+
+ *   rec | undo                 REC / EDIT tapped: PLAY REC (arm, take, close on the bar, overdub), UNDO
  *   turn ENC STEPS             SELECT ALGO PRESET K1..K4 MASTER (+ = clockwise)
  *   world NAME|N|next|prev     choose a World or a project (the current one plays on); confirm loads it (at once
  *   confirm | cancel           while stopped, on the next bar while playing); cancel forgets the choice. A name
@@ -22,7 +23,8 @@
  *   select N                   the track the keys play (1..4)
  *   print                      the state on stdout
  *   expect FIELD OP VALUE      playing scene next bpm filter mute1..4 level1..4 macro1..4 sel voices gated rms peak
- *                              time master (numbers; A..D or - for a scene); world browse pending var varnext (a
+ *                              time master rec (0 empty, 1 armed, 2 recording, 3 loop, 4 overdub) loop (the keys
+ *                              loop's notes) (numbers; A..D or - for a scene); world browse pending var varnext (a
  *                              name or -; voices: synth voices sounding, gated: still held, 0 after STOP);
  *                              = != < <= > >= (names: = !=). A failure: exit status 1
  *   quit */
@@ -34,8 +36,8 @@
 #include "sim.h"
 
 static const char *const FIELD[F_NF] = {"playing", "scene", "next", "bpm", "filter", "mute", "level", "rms",
-                                        "peak", "time", "master", "macro", "sel", "voices", "gated", "world",
-                                        "browse", "pending", "var", "varnext"};
+                                        "peak", "time", "master", "macro", "sel", "voices", "gated", "rec", "loop",
+                                        "world", "browse", "pending", "var", "varnext"};
 const char *cmd_field_name(int f) { return f >= 0 && f < F_NF ? FIELD[f] : "?"; }
 const char *cmd_scene_name(int s)
 {
@@ -103,6 +105,10 @@ static int parse(char **w, int n, sim_cmd_t *c)
     else if (ieq(w[0], "playstop") && n == 1) c->op = OP_PLAYSTOP;
     else if (ieq(w[0], "print") && n == 1) c->op = OP_PRINT;
     else if (ieq(w[0], "quit") && n == 1) c->op = OP_QUIT;
+    else if ((ieq(w[0], "rec") || ieq(w[0], "undo")) && n == 1) {   /* REC / EDIT tapped (PLAY REC, UNDO) */
+        c->op = OP_BUTTON_TAP;
+        c->a = (uint8_t)(ieq(w[0], "rec") ? HOST_B_REC : HOST_B_EDIT);
+    }
     else if ((ieq(w[0], "scene") || ieq(w[0], "store")) && n == 2 && scene_of(a) >= 0) {
         c->op = ieq(w[0], "scene") ? OP_SCENE : OP_STORE;
         c->a = (uint8_t)scene_of(a);
