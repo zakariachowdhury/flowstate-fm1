@@ -32,9 +32,9 @@ build/host-bin/flowstate-sim --project my.fun4 --advanced
 
 | Option | |
 | --- | --- |
-| `--world NAME\|FILE` | Start with this World: a factory World by name or id (`"NEON RAIN"`, `0x4eee4454`); a World file, `.world.json` (compiled with `tools/worldc.py`) or `.wblob`, which [reloads whenever it changes](#authoring-hot-reload); or a SLOOP project of the list by name. Without it the Studio starts with NEON RAIN, as the device's first boot will. |
+| `--world NAME\|FILE` | Start with this World: a factory World by name or id (`"NEON RAIN"`, `0x4eee4454`); a World file, `.world.json` (compiled with `tools/worldc.py`) or `.wblob`, which [reloads whenever it changes](#authoring-hot-reload); or a SLOOP project of the list by name. Without it the firmware boots as the device does: the PLAY session in the flash image decides, and a first boot (no image, or no session in it) is PLAY MODE with NEON RAIN on the FIRST screen. |
 | `--demo` | `--world NEON_RAIN`. |
-| `--sloop` | No World at the start: SLOOP as it boots. |
+| `--sloop` | No World at the start: SLOOP as it boots, whatever the session in the flash image says (`host_boot_device(0)`). |
 | `--worlds DIR` | The SLOOP projects listed after the Worlds: every `.fun4` in DIR (default `examples/projects`). |
 | `--project FILE.fun4` | Load this project at boot, as LOAD does. FUN1–3 are converted. It is no World, and the sections stay as they are. |
 | `--flash FILE` | The 1 MiB NOR image. It is read at boot; the file need not exist yet. It is written 1 s after the firmware last wrote (while stopped) and at exit. SAVE, sections, the song, settings, user presets and the autosave (after its idle time, as on the device) all survive a restart. Without this option the flash lives in RAM. |
@@ -338,8 +338,11 @@ The group takes about 7 s.
 - **Output level.** The DAC's −6 dB is applied, and the MASTER pot starts fully up (on the device it is wherever the
   knob is). CoreAudio resamples when the output does not run at 44.1 kHz.
 - **Worlds.** A scene or variation change is quantised to one bar (a scene's 2- and 4-bar transitions, fills and
-  held-note continuity are Phase 11). Another World while playing restarts on the bar. The macros are a World's own
-  (Phase 7); the device has no World UI to turn them yet (Phase 9: K1–K4 on HOME).
+  held-note continuity are Phase 11). Another World while playing restarts on the bar. The device screen is the
+  firmware's PLAY MODE (Phase 9, `firmware/src/ui_play.c`; its screens: `docs/images/play-*.png`), and the FM-1 panel
+  (Tab) drives it: PRESETS chooses a World (PLAY loads it), SELECT a scene, ALGORITHM a variation, K1–K4 the macros.
+  The Studio follows what the device does (a World chosen there, PLAY MODE, LEAVE WORLD), and the device screen shows
+  what the Studio does.
 
 ## What later phases add
 

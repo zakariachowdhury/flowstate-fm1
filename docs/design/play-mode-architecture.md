@@ -976,6 +976,32 @@ STAGE band keeps the spec's simple activity animation, and its cost is capped.
 
 **Tempo.** The World's `tempo.bpm` is written to `G_BPM` at load. GLO + SELECT nudges it within `[min, max]`, shows `96 BPM` in the KEYS band, and stores it in the playstate. In ADV_WORLD the SLOOP SELECT tempo works without bounds; returning to PLAY clamps to `[min, max]`.
 
+### 8.6 As built (Phase 9)
+
+`firmware/src/ui_play.c` (after `world.c`) and `firmware/src/world_store.c` (after `project.c`) follow §8, §1.5 and §10.4 with these differences. The screens: [../images/play-first.png](../images/play-first.png) and the other `play-*.png`; `tests/ui_play_test.c` checks them.
+
+| Here | As built | Why |
+| --- | --- | --- |
+| MACRO, SCENES, VARS, RECORDING, LOOP, PULSE / BEAT, ADVDLG in STAGE + KEYS | in the body, y 20–155 (four bands, or 20 px rows for the lists); BRAND and CONTROLS stay. A band is redrawn when its signature changes, a detent sends only the bar and the digits (MACRO: 6,500 px; a page knob: 1,800 px), an overlay opens with the body (≈ 33,000 px), CHOOSE WORLD and FIRST with the screen (57,600 px), HOME's bars ≤ 15 times a second (7,000 px each) | The spec's overlays carry four lines (`SPACE`, the bar, `78`, `NEON RAIN · SCENE B`), two of them in FONT_L: 96 rows, the STAGE + KEYS bands have 80. |
+| toasts in the KEYS band | in the BRAND band, white on violet, 1.2 s; SLOOP's messages (`ui_say`: the update countdown, the host's scene requests) become toasts | One place on every screen, CHOOSE WORLD included. |
+| `TAP KEYS TO ADD MORE · UNDO READY` | on two lines | 33 characters: 264 px. |
+| values 0–100 | position / 10; LIVE FX as the spec writes it, two digits (`03`, `00`); 10 units a detent, `accel` ×3 | — |
+| REC (§9.1) | a stand-in: EMPTY → ARMED (stopped) / TAKE (playing), the first note or PLAY starts the take, one loop length → LOOP, REC overdub on / off, REC held: the press undone at 0.7 s, the ring, the loop cleared at 1.5 s. Its screens and lights, nothing recorded | Phase 10 replaces it with `play_rec.c`. |
+| BEAT through `arr_req_beat` | `world.c world_beat`: the scene's drum pattern for the BEAT (none authored: its GROOVE) swapped in on the next bar without a clock reset (`wreq_block`), at once while stopped; a scene staged meanwhile is staged again with it. The factory Worlds author no BEAT patterns, so BEAT changes nothing in them yet | MINIMAL's lanes, BUSY's density and ratchets, BREAK's hats are Phase 11 / 13 (`arrange.c`). |
+| SAVE menu | `SAVE AS USER WORLD` (a toast: not in this version) and `RESET WORLD` (the World again with its defaults; playing: on the next bar). `SAVE` (overwrite a user World) needs user Worlds | Phase 14. |
+| EDIT tap: UNDO | nothing yet | Phase 10's undo ring. |
+| HOME held: a PLAY menu (SLOOP PROJECT, SETTINGS) | SLOOP's menu with `LEAVE WORLD` first (PLAY), `PLAY MODE` first (SLOOP), both (ADVANCED) | One menu; H24's items. |
+| SLOOP → PLAY: the session's World and state | the last World played (in RAM, else the session's, else NEON RAIN), at its defaults; a reboot restores the whole state | — |
+| PLAYSTATE inside an `FWD1` blob with flag SESSION | a 48-byte record (`world_rt.h wplay_t`, magic `PLY1`, its size first): the controls as u8 ×4 plus their last two bits (`ctl_lo`), exact. Phases 10 and 14 append the loop and the overrides; a shorter record reads with its tail at the defaults | No blob needed until there are overrides; storage.c already checks CRCs. |
+| `FL_WORLD` objects up to 3,840 B | up to 3,584 B (`ST_LOW_MAX`): nothing is ever programmed at offset 0xF00 of a sector in 0xE5000–0xFBFFF | The update loader (`ldr_records_drop`) and the SPL take a sector whose bytes at 0xF00 look like an update record for one; erased bytes never do. A user World over 3,584 B must be refused or split (Phase 14). |
+| session saved only while a World is active | `wsession_tick` runs in every mode (project.c, H18): it saves a change of mode too (LEAVE WORLD → the next boot is SLOOP); in a World session it returns 1 and SLOOP's autosave waits | — |
+| parking: `proj_capture(&autosave_buf)` | also what a `project_t` does not hold: octave, solo, song mode, the section playing, the user preset marks; written to `OBJ_AUTOSAVE` at the next quiet moment unless it is already there (a first boot parks the power-on project and writes nothing) | LEAVE WORLD then restores the project and its UI exactly. SLOOP's undo is dropped at both changes (it holds the other mode's pattern). |
+| ADV_WORLD → SLOOP through TOOLS > LOAD / NEW, asking first | LOAD (stopped) and NEW leave the World first; their two-detent arm is the question | — |
+| `world_boot` reads the session | `world_boot` still only checks the factory Worlds (the tests rely on it); `wsession_boot` (world_store.c) decides, called after it in `felucca_init`, which now runs `layers_init` and `go_home` first | — |
+| the host | `host_boot` boots SLOOP unless `host_boot_device(1)` (the simulator); `host_world_load` / `_unload` / `host_project_load` go through PLAY MODE's way in and out (parking) | The renderer and the examples keep SLOOP's power-on state. |
+| §13 invariant 1's second half (`regress_world`: a World loaded then unloaded before every golden) | `tests/ui_play_test.c leave`: NEON RAIN loaded over a SLOOP project and LEAVE WORLD: the project bit-identical, its render bit-identical to the same project with no World (4,000 blocks); with the World played and left through the panel the project is compared (the LFOs and the noise generator ran on meanwhile, as in SLOOP) | The parking lives in world_store.c, which `regress_world` does not build. |
+| Flash (§11.1) | image 548,764 B, +27,368 B: about 8,200 B of World code from Phases 5–8 that the firmware now calls for the first time (measured by keeping the World API alive in the Phase 8 build), about 19,200 B for Phase 9 (estimate 11,700). RAM +976 B (.data + .bss 67,872 B), 576 B of it the World code's state | `-Os` on pi32v2 gives about 12 B a line for this UI code (1,631 lines). 32.8 KB of the app slot are left. |
+
 ---
 
 ## 9. REC, PULSE, BEAT, LIVE FX, SOUND SHAPE, MOVEMENT
