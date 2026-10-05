@@ -1,0 +1,129 @@
+{
+  "notes": "Lo-fi, F major, 82 BPM, swung sixteenths (58.5 %). A Rhodes (with its tremolo) comping rootless four-note voicings, an upright bass on roots and fifths, the player's dusty piano on the Smart Keys (LOFI KEYS: an old upright with tape wow), the LO-FI kit, and the record on the master: DUST crackle and bit loss, slow chorus wobble, a dark room, a little ducking. Scenes: A the Rhodes alone on IVmaj7 Imaj7; B IVmaj7 Imaj7 vi7 ii7 (every ninth diatonic, so the rootless voicings stay sweet); C a ii V I vi turnaround with busier drums; D IVmaj7 ii7, almost empty. ENERGY never changes the swing: it adds the bass, then kick, snare and eighth hats, then ghost sixteenths, the shaker and fills; the levels give a little back at the top. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "dusty_cafe",
+  "name": "DUSTY CAFE",
+  "category": "LO-FI",
+  "blurb": "Warm keys, rain outside",
+  "tempo": {"bpm": 82, "min": 72, "max": 92},
+  "key": {"root": "F", "scale": "MAJ"},
+  "swing": 34,
+  "tracks": [
+    {"name": "keys", "role": "keys", "register": "C3", "sound": {"engine": "DIGITAL", "preset": "RHODES",
+      "params": {"level": 92, "ld_amp": 22, "chor": 40, "dly": 14, "rev": 30, "pan": -6}}},
+    {"name": "bass", "role": "bass", "register": "C2", "sound": {"engine": "SAMPLE", "preset": "UP BASS",
+      "params": {"level": 90, "rev": 6}}},
+    {"name": "piano", "role": "lead", "register": "C4", "sound": {"engine": "SAMPLE", "preset": "LOFI KEYS",
+      "params": {"level": 84, "dly": 26, "rev": 40, "pan": 8}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "LO-FI", "params": {"level": 120, "rev": 24}}}
+  ],
+  "fx": {"dtime": "8T", "dfdbk": 34, "dcolor": 40, "dmix": 70, "rsize": 80, "rdamp": 74, "crate": 18, "cdepth": 56,
+         "dust": 24, "duck": 12},
+  "patterns": {
+    "k_comp": {"track": "keys", "steps": "[c3 c5 c7 c9] - - - - - . [c3 c5 c7 c9]_ - - . . . . [c3 c5 c7 c9]_ -"},
+    "k_sparse": {"track": "keys", "steps": "[c3 c5 c7 c9] - - - - - - - - - - - . . . ."},
+    "k_slow": {"track": "keys", "steps": "[c3 c5 c7 c9] - - - - - - - - - [c3 c5 c7 c9]_ - - - - ."},
+    "b_walk": {"track": "bass", "div": "1/8", "steps": "c1 - - . c1 - c5 ."},
+    "b_root": {"track": "bass", "div": "1/4", "steps": "c1 - - -"},
+    "dr_boom": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....|x.......x.x.....",
+      "snare":  "....X.......X...|....X.......X...",
+      "hat":    "x.g.x.gsx.g.x.gg|x.g.x.gsx.g.x.g.",
+      "rim":    "................|..............g.",
+      "shaker": "..g...g...g...g.|..g...g...g...g."}},
+    "dr_rush": {"track": "drums", "lanes": {
+      "kick":   "x.....x...x.....|x.......x..x....",
+      "snare":  "....X.......X...|....X.......X.g.",
+      "hat":    "x.gsx.gsx.gsx.gs|x.gsx.gsx.gsx.gg",
+      "open":   "..............s.|................",
+      "shaker": "g.g.g.g.g.g.g.g.|g.g.g.g.g.g.g.g."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....",
+      "snare":  "....X.......X.gg",
+      "hat":    "x.g.x.g.x.g.....",
+      "tomlo":  "...........g...."}}
+  },
+  "progressions": {
+    "steam": ["IVmaj7:8", "Imaj7:8"],
+    "cup": ["IVmaj7:4", "Imaj7:4", "vi7:4", "ii7:4"],
+    "sun": ["ii7:4", "V7:4", "Imaj7:4", "vi7:4"],
+    "last": ["IVmaj7:8", "ii7:8"]
+  },
+  "scenes": {
+    "A": {"name": "STEAM", "role": "intro", "progression": "steam", "energy": "e_steam",
+          "params": {"keys.rev": 40}, "patterns": {"keys": "k_slow", "bass": "b_root", "drums": "dr_boom"}},
+    "B": {"name": "WARM CUP", "role": "main", "progression": "cup", "energy": "e_cup", "fill": "dr_fill",
+          "patterns": {"keys": "k_comp", "bass": "b_walk", "drums": "dr_boom"}},
+    "C": {"name": "SUNLIGHT", "role": "lift", "progression": "sun", "energy": "e_sun", "fill": "dr_fill",
+          "params": {"keys.ed_flt": 10}, "patterns": {"keys": "k_comp", "bass": "b_walk", "drums": "dr_rush"}},
+    "D": {"name": "LAST CALL", "role": "breakdown", "progression": "last", "energy": "e_last", "transition": 2,
+          "params": {"keys.rev": 46, "keys.dly": 24}, "fx": {"dfdbk": 46},
+          "patterns": {"keys": "k_slow", "bass": "b_root", "drums": "dr_boom"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "DREAMY": {"sounds": {"keys": "DX RHODES"}, "params": {"keys.chor": 64, "keys.dly": 32, "piano.dly": 44},
+               "fx": {"dfdbk": 46, "dmix": 80}, "energy_bias": -0.04},
+    "AIRY": {"sounds": {"drums": "JAZZ", "piano": "VIBES"}, "params": {"keys.rev": 44, "piano.rev": 52, "piano.CUT": 100},
+             "fx": {"dust": 16}, "energy_bias": -0.06},
+    "DARK": {"sounds": {"keys": "WURLI", "drums": "BOOMBAP"}, "params": {"keys.level": 96, "drums.level": 104},
+             "fx": {"filt": -12, "dcolor": 30, "dust": 32}},
+    "SPARSE": {"swap": {"k_comp": "k_sparse", "b_walk": "b_root"}, "energy_bias": -0.08}
+  },
+  "macros": {
+    "COLOR": [{"to": "keys.@BRIGHT", "min": -14, "max": 16},
+              {"to": "piano.@BRIGHT", "min": -40, "max": 24},
+              {"to": "g.dcolor", "min": -20, "max": 20},
+              {"to": "g.dust", "min": 10, "max": -10}],
+    "MOTION": [{"to": "keys.ld_amp", "min": -18, "max": 24, "smooth": "slow"},
+               {"to": "keys.lrate", "min": -20, "max": 10, "smooth": "slow"},
+               {"to": "g.crate", "min": -10, "max": 14, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "keys+piano.rev", "min": -24, "max": 30, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 26},
+              {"to": "g.dfdbk", "min": -24, "max": 26},
+              {"to": "keys+piano.dly", "min": -14, "max": 26},
+              {"to": "drums.rev", "min": -20, "max": 20}],
+    "ENERGY": [{"to": "keys.level", "min": 4, "max": -4},
+               {"to": "drums.level", "min": -10, "max": 6},
+               {"to": "bass.level", "min": -4, "max": 2},
+               {"to": "g.duck", "min": -8, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -6}, {"to": "g.drrev", "add": -16},
+                                                     {"to": "g.dfdbk", "add": -20}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "keys.@BRIGHT", "add": -8}, {"to": "g.dust", "add": -6}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "keys.ld_amp", "add": -14}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_steam": {"bands": [
+      {"from": 0.00, "layers": ["keys", "piano"]},
+      {"from": 0.58, "layers": ["keys", "bass", "piano"]},
+      {"from": 0.80, "layers": "all", "drums": ["kick", "rim", "shaker"]}]},
+    "e_cup": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["keys", "piano"]},
+      {"from": 0.25, "layers": ["keys", "bass", "piano"]},
+      {"from": 0.36, "layers": "all", "drums": ["kick", "snare", "hat", "rim"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.75, "layers": "all", "fills": true}]},
+    "e_sun": {"density_lanes": ["hat", "shaker"], "bands": [
+      {"from": 0.00, "layers": ["keys", "bass", "piano"]},
+      {"from": 0.25, "layers": "all", "drums": ["kick", "snare", "hat"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.36, "layers": "all", "density": "x.x.x.x.x.x.x.x.", "fills": true},
+      {"from": 0.78, "layers": "all", "fills": true}]},
+    "e_last": {"bands": [
+      {"from": 0.00, "layers": ["keys", "piano"]},
+      {"from": 0.36, "layers": ["keys", "bass", "piano"]},
+      {"from": 0.78, "layers": "all", "drums": ["kick", "rim"]}]}
+  },
+  "smart_keys": {"track": "piano", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord+9",
+                 "tonic": "F4", "range": ["G3", "A6"]},
+  "guard": {
+    "notes": {"piano": {"max_poly": 3, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["C2", "F3"]}},
+    "record": {"quantize": 0.6},
+    "sound": {"ranges": {"g.dust": [0, 40], "g.dfdbk": [0, 80], "g.duck": [0, 30]}, "max_level": 116, "max_dfdbk": 80,
+              "max_dust": 40},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

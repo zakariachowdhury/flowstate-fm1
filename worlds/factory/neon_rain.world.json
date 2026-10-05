@@ -1,0 +1,135 @@
+{
+  "notes": "The first-boot World (UI spec cover, 11). D minor, 72 BPM. A warm evolving pad (WARM PAD: its PWM breathes on the LFO) over a deep sine drone that holds a D pedal under moving chords, the player's expressive lead on the Smart Keys (G-FUNK LD: glide, delayed vibrato, long echoes), and sparse 808 percussion: a heartbeat kick and a rain of soft shakers. Scenes: A the pad alone on a two-chord vamp; B the pedal drone enters under a four-chord cycle whose top voice sighs a step down on every beat 3; C the roots move in a 3+3+2 pulse and the pad's top voice sings a rising phrase over a sus4 lift; D strips back to pad and drone in a bigger hall and ends on the tonic. ENERGY adds bass, then percussion, then rain and claps. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "neon_rain",
+  "name": "NEON RAIN",
+  "category": "CINEMATIC",
+  "blurb": "Rain on neon, slow light",
+  "tempo": {"bpm": 72, "min": 64, "max": 80},
+  "key": {"root": "D", "scale": "MIN"},
+  "tracks": [
+    {"name": "pad", "role": "pad", "register": "A2", "sound": {"engine": "ANALOG", "preset": "WARM PAD",
+      "params": {"level": 77, "atk": 80, "rel": 78, "CUT": 60, "lrate": 20, "ld_shp": 26, "ld_flt": 6,
+                 "chor": 62, "dly": 16, "rev": 88}}},
+    {"name": "bass", "role": "bass", "register": "A1", "sound": {"engine": "ANALOG", "preset": "SUB BASS",
+      "params": {"level": 75, "atk": 64, "rel": 82, "rev": 6}}},
+    {"name": "lead", "role": "lead", "register": "A3", "sound": {"engine": "ANALOG", "preset": "G-FUNK LD",
+      "params": {"level": 75, "CUT": 106, "chor": 18, "dly": 56, "rev": 70, "pan": -6}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "808", "params": {"level": 114, "rev": 56}}}
+  ],
+  "fx": {"dtime": "1/4", "dfdbk": 54, "dcolor": 48, "dmix": 92, "rsize": 116, "rdamp": 56, "crate": 26, "cdepth": 68},
+  "patterns": {
+    "pad_hold": {"track": "pad", "div": "1/4", "steps": "[c1 c5 c7 c3'] - - - | - - - -"},
+    "pad_main": {"track": "pad", "div": "1/4", "steps": "[c1 c5 c7 c3'] - [c1 c5 c7 c9] -"},
+    "pad_pulse": {"track": "pad", "div": "1/8", "steps": "[c1 c5 c7 c3'] - - [c1 c5 c7 c3']_ - - [c1 c5 c7 c9]_ -"},
+    "pad_lift": {"track": "pad", "div": "1/8", "steps":
+      "[c1 c5 c3' 5']! - - - [c1 c5 c3' 1''] - - - | [c1 c5 c3' 3'']! - - - [c1 c5 c3' 2''] - - - | [c1 c5 c3' 2'']! - - - [c1 c5 c3' 3''] - [c1 c5 c3' 5''] - | [c1 c5 c3' 4'']! - [c1 c5 c3' 3''] - [c1 c5 c3' 7'] - - -"},
+    "bass_drone": {"track": "bass", "div": "1/4", "steps": "1 - - - - - - - - - - - - - - -"},
+    "bass_pedal": {"track": "bass", "div": "1/4", "steps": "1 - - - - - - - - - - - 7, - - -"},
+    "bass_pulse": {"track": "bass", "div": "1/8", "steps": "c1 - - c1 - - c1 -"},
+    "dr_pulse": {"track": "drums", "lanes": {
+      "kick":   "x..s............|x..s......s.....",
+      "rim":    "........s.......|........s.......",
+      "clap":   "........x.......|........x.......",
+      "shaker": "s.x.s.ss..s.x.ss|s.x.s..ss.s.x.s."}},
+    "dr_lift": {"track": "drums", "lanes": {
+      "kick":   "x.....x...x.....|x.....x.......s.",
+      "clap":   "........X.......|........X.......",
+      "hat":    "..s...s...s...s.|..s...s...s.s.s.",
+      "shaker": "s.sx..s.s.sx.s.s|s.sx..s.s.s.xss.",
+      "open":   "................|..............g."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.......x.......",
+      "clap":   "........x.......",
+      "shaker": "g.g.g.g.g.g.g.g.",
+      "tomhi":  "..........g.s...",
+      "tomlo":  "............s.sx"}}
+  },
+  "progressions": {
+    "intro": ["i9:8", "VImaj7:8"],
+    "main": ["i9:4", "VImaj7:4", "iv7:4", "VII:4"],
+    "lift": ["VImaj7:4", "VIIsus4:2", "VII:2", "i9:4", "III:4"],
+    "end": ["VImaj7:8", "i9:8"]
+  },
+  "scenes": {
+    "A": {"name": "INTRO", "role": "intro", "progression": "intro", "energy": "e_intro", "transition": 2,
+          "patterns": {"pad": "pad_hold", "bass": "bass_drone", "drums": null}},
+    "B": {"name": "MAIN", "role": "main", "progression": "main", "energy": "e_main", "fill": "dr_fill",
+          "patterns": {"pad": "pad_main", "bass": "bass_pedal", "drums": "dr_pulse"}},
+    "C": {"name": "LIFT", "role": "lift", "progression": "lift", "energy": "e_lift", "fill": "dr_fill", "transition": 2,
+          "params": {"pad.ed_flt": 12, "pad.ld_flt": 10}, "fx": {"dfdbk": 58},
+          "patterns": {"pad": "pad_lift", "bass": "bass_pulse", "drums": "dr_lift"}},
+    "D": {"name": "BREAKDOWN", "role": "breakdown", "progression": "end", "energy": "e_end", "transition": 2,
+          "params": {"pad.ed_flt": -12, "pad.rel": 96, "pad.rev": 98},
+          "fx": {"rsize": 120, "dfdbk": 56, "rdamp": 64},
+          "patterns": {"pad": "pad_hold", "bass": "bass_drone", "drums": "dr_pulse"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "DREAMY": {"sounds": {"pad": "ATMOS PAD"}, "params": {"pad.level": 71, "pad.chor": 80, "pad.rev": 98, "lead.rev": 84, "lead.dly": 60},
+               "fx": {"rsize": 120, "dfdbk": 58}, "energy_bias": -0.05},
+    "DARK": {"sounds": {"pad": "DARK STR", "drums": "TRAP"}, "params": {"pad.CUT": 40, "lead.CUT": 80, "drums.level": 92},
+             "fx": {"dcolor": 30, "rdamp": 80}},
+    "PULSING": {"swap": {"pad_main": "pad_pulse", "bass_pedal": "bass_pulse"}, "energy_bias": 0.08},
+    "HEAVY": {"sounds": {"bass": "REESE", "drums": "TRAP"}, "params": {"bass.CUT": 44, "bass.level": 82, "pad.CUT": 50, "drums.level": 92},
+              "energy_bias": 0.12}
+  },
+  "macros": {
+    "COLOR": [{"to": "pad.~bright", "min": -36, "max": 28, "curve": "s"},
+              {"to": "lead.~bright", "min": -30, "max": 22, "curve": "s"},
+              {"to": "g.dcolor", "min": -20, "max": 24}],
+    "MOTION": [{"to": "pad.ld_shp", "min": -20, "max": 30, "smooth": "slow"},
+               {"to": "pad.ld_flt", "min": -6, "max": 16, "smooth": "slow"},
+               {"to": "pad.lrate", "min": -8, "max": 14, "smooth": "slow"},
+               {"to": "lead.ld_pit", "min": -2, "max": 2},
+               {"to": "g.cdepth", "min": -30, "max": 26}],
+    "SPACE": [{"to": "pad+lead.rev", "min": -40, "max": 22, "curve": "s"},
+              {"to": "g.rsize", "min": -36, "max": 4},
+              {"to": "g.dfdbk", "min": -30, "max": 8},
+              {"to": "lead.dly", "min": -40, "max": 14},
+              {"to": "drums.rev", "min": -30, "max": 22},
+              {"to": "pad.rel", "min": -20, "max": 14, "smooth": "slow"}],
+    "ENERGY": [{"to": "pad.level", "min": 6, "max": -6},
+               {"to": "drums.level", "min": -12, "max": 8},
+               {"to": "bass.@DRIVE", "min": -6, "max": 20},
+               {"to": "pad.~bright", "min": -10, "max": 14}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -6}, {"to": "g.drrev", "add": -24},
+                                                     {"to": "g.dfdbk", "add": -22}, {"to": "*.level", "add": -5}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "pad.@RESO", "add": -8}, {"to": "lead.@RESO", "add": -4}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "pad.ld_flt", "add": -10}, {"to": "pad.ld_shp", "add": -12},
+                                                      {"to": "g.cdepth", "add": -24}]}
+  ],
+  "energy": {
+    "e_intro": {"bands": [
+      {"from": 0.00, "layers": ["pad", "lead"]},
+      {"from": 0.74, "layers": ["pad", "bass", "lead"]}]},
+    "e_main": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["pad", "lead"]},
+      {"from": 0.30, "layers": ["pad", "bass", "lead"]},
+      {"from": 0.45, "layers": "all", "drums": ["kick", "rim", "shaker"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.75, "layers": "all", "fills": true}]},
+    "e_lift": {"density_lanes": ["shaker", "hat"], "bands": [
+      {"from": 0.00, "layers": ["pad", "bass", "lead"]},
+      {"from": 0.30, "layers": "all", "drums": ["kick", "clap", "shaker"], "density": "x...x...x...x..."},
+      {"from": 0.45, "layers": "all", "drums": ["kick", "clap", "hat", "shaker"], "density": "x.x.x.x.x.x.x.x.", "fills": true},
+      {"from": 0.80, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_end": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["pad", "lead"]},
+      {"from": 0.45, "layers": ["pad", "bass", "lead"]},
+      {"from": 0.80, "layers": "all", "drums": ["kick", "shaker"], "density": "x...x...x...x..."}]}
+  },
+  "smart_keys": {"track": "lead", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord",
+                 "tonic": "D4", "range": ["F3", "C7"]},
+  "guard": {
+    "notes": {"lead": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["D1", "D3"]},
+              "pad": {"range": ["G2", "D6"]}},
+    "record": {"quantize": 0.7},
+    "sound": {"ranges": {"pad.RES": [0, 60], "lead.RES": [0, 50], "g.dfdbk": [0, 90]}, "max_level": 116,
+              "max_dfdbk": 90, "max_rsize": 126},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}

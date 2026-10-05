@@ -1,0 +1,125 @@
+{
+  "notes": "Ambient, E major, 66 BPM. A long ATMOS PAD in open fifths and ninths (no thirds: the ice), a granular cloud of vibraphone grains (VIBE HAZE) drifting up through each chord's third, seventh and ninth, the player's music box on the Smart Keys, and almost no percussion: a soft heartbeat, breathing shakers, a ride touched now and then. Every chord lasts two or four bars and the major pentatonic is consonant over all of them (I, IVmaj7, vi7, Vsus4), so any sparse note sounds placed. Scenes: A two chords of four bars; B Imaj7 vi7 IVmaj7 I(add9); C rises through IV V(sus4) vi to I; D the relative minor and IV, deep and still. Long transitions, gentle record quantise. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "frozen_lake",
+  "name": "FROZEN LAKE",
+  "category": "AMBIENT",
+  "blurb": "Still water, glass bells",
+  "tempo": {"bpm": 66, "min": 58, "max": 74},
+  "key": {"root": "E", "scale": "MAJ"},
+  "tracks": [
+    {"name": "pad", "role": "pad", "register": "C3", "sound": {"engine": "ANALOG", "preset": "ATMOS PAD",
+      "params": {"level": 80, "atk": 96, "rel": 92, "CUT": 58, "lrate": 14, "ld_shp": 18, "chor": 70, "dly": 24, "rev": 100}}},
+    {"name": "texture", "role": "texture", "register": "C4", "sound": {"engine": "GRAIN", "preset": "VIBE HAZE",
+      "params": {"level": 87, "atk": 90, "rel": 90, "DENS": 80, "SPRD": 30, "TONE": 84, "chor": 40, "dly": 34, "rev": 92}}},
+    {"name": "bell", "role": "lead", "register": "C4", "sound": {"engine": "DIGITAL", "preset": "MUSIC BOX",
+      "params": {"level": 100, "dly": 50, "rev": 80, "pan": 8}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "AMBIENT", "params": {"level": 120, "rev": 96}}}
+  ],
+  "fx": {"dtime": "1/4", "dfdbk": 60, "dcolor": 52, "dmix": 96, "rsize": 122, "rdamp": 64, "crate": 18, "cdepth": 74},
+  "patterns": {
+    "pad_long": {"track": "pad", "div": "1/4", "steps": "[c1 c5 c9] - - - | - - - -"},
+    "tex_line": {"track": "texture", "div": "1/4", "steps": "c3 - - c7 | - - c9 -"},
+    "dr_breath": {"track": "drums", "lanes": {
+      "kick":   "x...............|................",
+      "shaker": "......s.....g...|..s.......g...s.",
+      "ride":   "x...............|........x.......",
+      "rim":    "................|.............g.."}},
+    "dr_glow": {"track": "drums", "lanes": {
+      "kick":   "x.......s.......|x.......s.......",
+      "shaker": "..s...g...s...g.|..s...g...s.g.s.",
+      "ride":   "x.......s.......|x.......s.......",
+      "open":   "..............s.|................",
+      "tomlo":  "................|............g..."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x...............",
+      "ride":   "s...s...s...s...",
+      "tomhi":  "........g...g...",
+      "tomlo":  "..........g...s."}}
+  },
+  "progressions": {
+    "ice": ["Iadd9:16", "IVmaj7:16"],
+    "still": ["Imaj7:8", "vi7:8", "IVmaj7:8", "Iadd9:8"],
+    "aurora": ["IVmaj7:8", "Vsus4:8", "vi7:8", "Iadd9:8"],
+    "deep": ["vi9:16", "IVmaj7:16"]
+  },
+  "scenes": {
+    "A": {"name": "FIRST ICE", "role": "intro", "progression": "ice", "energy": "e_ice", "transition": 2,
+          "patterns": {"pad": "pad_long", "texture": "tex_line", "drums": "dr_breath"}},
+    "B": {"name": "STILLNESS", "role": "main", "progression": "still", "energy": "e_still", "transition": 2,
+          "patterns": {"pad": "pad_long", "texture": "tex_line", "drums": "dr_breath"}},
+    "C": {"name": "AURORA", "role": "lift", "progression": "aurora", "energy": "e_aurora", "fill": "dr_fill",
+          "transition": 4, "params": {"pad.ed_flt": 10, "texture.ed_flt": 12}, "fx": {"dfdbk": 58},
+          "patterns": {"pad": "pad_long", "texture": "tex_line", "drums": "dr_glow"}},
+    "D": {"name": "DEEP ICE", "role": "breakdown", "progression": "deep", "energy": "e_deep", "transition": 4,
+          "params": {"pad.ed_flt": -10, "pad.rel": 104, "texture.ed_flt": -12}, "fx": {"rsize": 122, "rdamp": 72},
+          "patterns": {"pad": "pad_long", "texture": "tex_line", "drums": "dr_breath"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "AIRY": {"sounds": {"texture": "FLUTE DUST"}, "params": {"pad.level": 77, "pad.CUT": 66, "pad.rev": 104, "bell.rev": 96},
+             "fx": {"rsize": 122, "rdamp": 50}, "energy_bias": -0.05},
+    "FLOATING": {"params": {"pad.ld_pit": 2, "pad.lrate": 10, "texture.SPRD": 56, "texture.RAND": 30, "pad.rel": 104,
+                 "bell.dly": 62}, "fx": {"dfdbk": 62, "crate": 12, "cdepth": 96}},
+    "DARK": {"sounds": {"pad": "DARK STR", "texture": "LOFI CLOUD"}, "params": {"pad.level": 86, "texture.level": 88, "pad.CUT": 44, "texture.TONE": 60,
+             "bell.IDX": 30}, "fx": {"dcolor": 34, "rdamp": 84}},
+    "SPARSE": {"params": {"drums.level": 64, "texture.level": 74}, "energy_bias": -0.2}
+  },
+  "macros": {
+    "COLOR": [{"to": "pad.~bright", "min": -32, "max": 26, "curve": "s"},
+              {"to": "texture.@BRIGHT", "min": -34, "max": 26},
+              {"to": "bell.@BRIGHT", "min": -20, "max": 24},
+              {"to": "g.dcolor", "min": -20, "max": 22}],
+    "MOTION": [{"to": "pad.ld_shp", "min": -14, "max": 24, "smooth": "slow"},
+               {"to": "pad.ld_pit", "min": -1, "max": 2, "smooth": "slow"},
+               {"to": "texture.@MOVE", "min": -20, "max": 40, "smooth": "slow"},
+               {"to": "texture.@DETUNE", "min": -10, "max": 30, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 20}],
+    "SPACE": [{"to": "*.rev", "min": -40, "max": 14, "curve": "s"},
+              {"to": "g.rsize", "min": -40, "max": 4},
+              {"to": "g.dfdbk", "min": -36, "max": 6},
+              {"to": "bell.dly", "min": -40, "max": 14},
+              {"to": "pad.rel", "min": -24, "max": 6, "smooth": "slow"},
+              {"to": "drums.rev", "min": -40, "max": 16}],
+    "ENERGY": [{"to": "drums.level", "min": -12, "max": 6},
+               {"to": "texture.level", "min": -8, "max": 4},
+               {"to": "pad.level", "min": 4, "max": -4},
+               {"to": "pad.~bright", "min": -8, "max": 12}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -30}, {"to": "g.dfdbk", "add": -20},
+                                                     {"to": "texture.rev", "add": -16}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "pad.@RESO", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "texture.@MOVE", "add": -20}, {"to": "pad.ld_shp", "add": -12},
+                                                      {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_ice": {"bands": [
+      {"from": 0.00, "layers": ["pad", "bell"]},
+      {"from": 0.58, "layers": ["pad", "texture", "bell"]},
+      {"from": 0.85, "layers": "all", "drums": ["kick", "shaker"]}]},
+    "e_still": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["pad", "bell"]},
+      {"from": 0.25, "layers": ["pad", "texture", "bell"]},
+      {"from": 0.40, "layers": "all", "drums": ["kick", "shaker", "ride"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.75, "layers": "all", "fills": true}]},
+    "e_aurora": {"density_lanes": ["shaker"], "bands": [
+      {"from": 0.00, "layers": ["pad", "texture", "bell"]},
+      {"from": 0.24, "layers": "all", "drums": ["kick", "shaker", "ride"], "density": "x...x...x...x..."},
+      {"from": 0.39, "layers": "all", "fills": true}]},
+    "e_deep": {"bands": [
+      {"from": 0.00, "layers": ["pad", "bell"]},
+      {"from": 0.60, "layers": ["pad", "texture", "bell"]},
+      {"from": 0.85, "layers": "all", "drums": ["kick"]}]}
+  },
+  "smart_keys": {"track": "bell", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord+9",
+                 "tonic": "E4", "range": ["F#3", "C7"]},
+  "guard": {
+    "notes": {"bell": {"max_poly": 4, "loop_follow": "snap", "avoid": "classic"}, "pad": {"range": ["B2", "E5"]}},
+    "record": {"quantize": 0.5},
+    "sound": {"ranges": {"pad.RES": [0, 60], "g.dfdbk": [0, 92]}, "max_level": 116, "max_dfdbk": 92, "max_rsize": 127},
+    "arrangement": {"mute_change": "2bars", "density_change": "bar", "fills_every": 8, "min_band_bars": 2},
+    "cpu": {"max_unison": 4, "grain_dens": 90}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

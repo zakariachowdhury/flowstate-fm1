@@ -1,0 +1,133 @@
+{
+  "notes": "Synthwave, A minor, 100 BPM. Chorused analog chords (SYN BRASS) that pump in eighths, a fat TRIO bass driving in eighths with octave pops (sixteenths in the lift), the player's chiptune lead on the Smart Keys (GAME LEAD with vibrato and an eighth-note echo), and the SYNTHWV kit with its big snare. Scenes: A holds i and VII; B cruises on i v VI VII; C rises through VI VII III v with a sixteenth-note arpeggio on the chord track and a sixteenth bass; D holds VI and iv in a longer reverb with the bass filtered down. ENERGY: chords only, then kick and bass, then snare and eighth hats with the full pulse, then sixteenth hats, open hats and fills. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "midnight_drive",
+  "name": "MIDNIGHT DRIVE",
+  "category": "SYNTHWAVE",
+  "blurb": "Chrome, neon, open road",
+  "tempo": {"bpm": 100, "min": 90, "max": 110},
+  "key": {"root": "A", "scale": "MIN"},
+  "tracks": [
+    {"name": "chords", "role": "chords", "register": "C3", "sound": {"engine": "ANALOG", "preset": "SYN BRASS",
+      "params": {"level": 80, "CUT": 54, "RES": 18, "sus": 104, "rel": 52, "chor": 74, "dly": 18, "rev": 46}}},
+    {"name": "bass", "role": "bass", "register": "E1", "sound": {"engine": "TRIO", "preset": "FAT BASS",
+      "params": {"level": 102, "INT3": 0, "CUT": 64, "RES": 36, "sgate": 92, "rev": 4}}},
+    {"name": "lead", "role": "lead", "register": "A3", "sound": {"engine": "LOFI", "preset": "GAME LEAD",
+      "params": {"level": 87, "TONE": 104, "glide": 18, "dly": 48, "rev": 36, "pan": 6}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "SYNTHWV", "params": {"level": 72, "rev": 40}}}
+  ],
+  "fx": {"dtime": "1/8", "dfdbk": 46, "dcolor": 60, "dmix": 86, "rsize": 104, "rdamp": 50, "crate": 36, "cdepth": 84, "duck": 16},
+  "patterns": {
+    "ch_hold": {"track": "chords", "div": "1/4", "steps": "[c1 c5 c3']_ - - - | - - - -"},
+    "ch_pulse": {"track": "chords", "div": "1/8", "steps": "[c1 c3 c5] [c1 c3 c5] [c1 c3 c5] [c1 c3 c5] [c1 c3 c5] [c1 c3 c5] [c1 c3 c5] [c1 c3 c5]"},
+    "ch_arp": {"track": "chords", "div": "1/16", "steps": "c1! c5 c1'! c3' c5! c1' c3'! c5' c1! c5 c1'! c3' c5'! c3' c1'! c5"},
+    "bs_hold": {"track": "bass", "div": "1/8", "steps": "c1 - - - c1 - - -"},
+    "bs_8": {"track": "bass", "div": "1/8", "steps": "c1 c1 c1' c1 c1 c1 c1' c5"},
+    "bs_16": {"track": "bass", "div": "1/16", "steps": "c1! c1 c1' c1 c1! c1 c1' c1 c1! c1 c1' c1 c1! c5 c1' c1"},
+    "dr_cruise": {"track": "drums", "lanes": {
+      "kick":  "x...s...x...s...",
+      "snare": "....x.......x...",
+      "hat":   "xgxgxgxgxgxgxgxg",
+      "open":  "..............x."}},
+    "dr_over": {"track": "drums", "lanes": {
+      "kick":  "x...s...x...s...",
+      "snare": "....x.......x...",
+      "clap":  "....s.......s...",
+      "hat":   "xgxgxgxgxgxgxgxg",
+      "open":  "..x...x...x...x."}},
+    "dr_tunnel": {"track": "drums", "lanes": {
+      "kick":  "x.......x.......",
+      "hat":   "..s...s...s...s."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":  "x...s...x.......",
+      "snare": "....x...........",
+      "tomhi": "........s.s.....",
+      "tomlo": "............s.sx"}}
+  },
+  "progressions": {
+    "ignite": ["i:8", "VII:8"],
+    "cruise": ["i:4", "v:4", "VI:4", "VII:4"],
+    "over": ["VI:4", "VII:4", "III:4", "v:4"],
+    "tunnel": ["VI:8", "iv:8"]
+  },
+  "scenes": {
+    "A": {"name": "IGNITION", "role": "intro", "progression": "ignite", "energy": "e_ignite",
+          "patterns": {"chords": "ch_hold", "bass": "bs_hold", "drums": "dr_cruise"}},
+    "B": {"name": "CRUISE", "role": "main", "progression": "cruise", "energy": "e_cruise", "fill": "dr_fill",
+          "patterns": {"chords": "ch_pulse", "bass": "bs_8", "drums": "dr_cruise"}},
+    "C": {"name": "OVERDRIVE", "role": "lift", "progression": "over", "energy": "e_over", "fill": "dr_fill",
+          "params": {"chords.ed_flt": 46}, "fx": {"dfdbk": 52},
+          "patterns": {"chords": "ch_arp", "bass": "bs_16", "drums": "dr_over"}},
+    "D": {"name": "TUNNEL", "role": "breakdown", "progression": "tunnel", "energy": "e_tunnel", "transition": 2,
+          "params": {"chords.rev": 64, "bass.CUT": 46}, "fx": {"rsize": 112, "dfdbk": 58},
+          "patterns": {"chords": "ch_hold", "bass": "bs_hold", "drums": "dr_tunnel"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "DRIVING": {"swap": {"bs_8": "bs_16"}, "fx": {"duck": 28}, "energy_bias": 0.12},
+    "DREAMY": {"sounds": {"chords": "WARM PAD"}, "params": {"chords.CUT": 64, "chords.sgate": 96, "chords.chor": 96, "chords.rev": 70,
+               "lead.dly": 70}, "fx": {"rsize": 112, "dfdbk": 62, "dmix": 96}, "energy_bias": -0.04},
+    "DARK": {"sounds": {"chords": "DARK STR"}, "params": {"chords.level": 92, "chords.CUT": 48, "bass.CUT": 48, "lead.TONE": 76},
+             "fx": {"dcolor": 40, "rdamp": 76}},
+    "HEAVY": {"params": {"bass.dist": 34, "bass.CUT": 66, "chords.DRV": 30}, "energy_bias": 0.12}
+  },
+  "macros": {
+    "COLOR": [{"to": "chords.~bright", "min": -36, "max": 30, "curve": "s"},
+              {"to": "bass.~bright", "min": -24, "max": 20},
+              {"to": "lead.@BRIGHT", "min": -40, "max": 20},
+              {"to": "g.dcolor", "min": -20, "max": 24}],
+    "MOTION": [{"to": "chords.sgate", "min": -24, "max": 30},
+               {"to": "bass.sgate", "min": -30, "max": 20},
+               {"to": "chords.ld_flt", "min": -4, "max": 16, "smooth": "slow"},
+               {"to": "lead.@MOVE", "min": -20, "max": 24},
+               {"to": "g.cdepth", "min": -30, "max": 24}],
+    "SPACE": [{"to": "chords+lead.rev", "min": -30, "max": 30, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 8},
+              {"to": "g.dfdbk", "min": -30, "max": 26},
+              {"to": "lead.dly", "min": -36, "max": 30},
+              {"to": "chords.dly", "min": -16, "max": 24},
+              {"to": "drums.rev", "min": -24, "max": 24}],
+    "ENERGY": [{"to": "chords.level", "min": 4, "max": -6},
+               {"to": "drums.level", "min": -10, "max": 8},
+               {"to": "bass.dist", "min": -6, "max": 18},
+               {"to": "chords.~bright", "min": -10, "max": 14}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -4}, {"to": "g.drrev", "add": -20},
+                                                     {"to": "g.dfdbk", "add": -24}, {"to": "*.level", "add": -5}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.@RESO", "add": -16}, {"to": "chords.@RESO", "add": -10}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.cdepth", "add": -24}, {"to": "chords.ld_flt", "add": -10},
+                                                      {"to": "lead.@MOVE", "add": -12}]}
+  ],
+  "energy": {
+    "e_ignite": {"bands": [
+      {"from": 0.00, "layers": ["chords", "lead"]},
+      {"from": 0.61, "layers": ["chords", "bass", "lead"]},
+      {"from": 0.82, "layers": "all", "drums": ["kick"]}]},
+    "e_cruise": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["chords", "lead"], "chords": "x...x...x...x..."},
+      {"from": 0.30, "layers": "all", "drums": ["kick"], "chords": "x.x.x.x.x.x.x.x.", "bass": "x.x.x.x.x.x.x.x."},
+      {"from": 0.45, "layers": "all", "drums": ["kick", "snare", "hat"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.75, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_over": {"density_lanes": ["hat", "open"], "bands": [
+      {"from": 0.00, "layers": ["chords", "bass", "lead"]},
+      {"from": 0.30, "layers": "all", "drums": ["kick", "snare", "clap"]},
+      {"from": 0.45, "layers": "all", "drums": ["kick", "snare", "clap", "hat", "open"], "density": "x.x.x.x.x.x.x.x.",
+       "fills": true},
+      {"from": 0.75, "layers": "all", "fills": true, "ratchets": true}]},
+    "e_tunnel": {"bands": [
+      {"from": 0.00, "layers": ["chords", "lead"]},
+      {"from": 0.45, "layers": ["chords", "bass", "lead"]},
+      {"from": 0.80, "layers": "all"}]}
+  },
+  "smart_keys": {"track": "lead", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord",
+                 "tonic": "A3", "range": ["C3", "A6"]},
+  "guard": {
+    "notes": {"lead": {"max_poly": 2, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["E1", "E3"]}},
+    "record": {"quantize": 0.8},
+    "sound": {"ranges": {"bass.RES": [0, 80], "chords.RES": [0, 70], "g.dfdbk": [0, 88]}, "max_level": 116, "max_dfdbk": 88},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.55], "pulse": "OFF", "beat": "GROOVE"}
+}
