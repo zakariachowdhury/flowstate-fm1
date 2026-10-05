@@ -155,8 +155,8 @@ It lets go after 2 s under the release level (1/16 under the ceiling: 80 % for t
 ### 2.6 Arrangement timing
 
 Arrangement timing is not new code; it was verified in this phase.
-- A scene or variation asked for while playing commits on the next bar. A scene's 2- and 4-bar transitions arrive in
-  Phase 11.
+- A scene asked for while playing commits on its transition's bar line (1, 2 or 4 bars, or the phrase; Phase 11), a
+  variation on the next bar.
 - ENERGY bands:
   - layers change on the bar (`mute_change: 2bars`: every second bar);
   - drum lanes, density and play masks change on the beat (`density_change: bar`: the bar);
@@ -309,7 +309,6 @@ within 3 LU of each other at their defaults.
 
 ## 7. Not covered yet
 
-- A scene's 2- and 4-bar transitions, and seamless World switches, arrive in Phase 11.
 - LIVE ECHO's feedback limit (`GL_ECHO_DFDBK`) applies once LIVE FX exists (Phase 13).
 - `GL_CPU_FULL` and the CPU budget need recalibrating against the device's `cpu_q8` (Phase 17).
 - `tools/validate-world` (Phase 16) will wrap `worldc check` and these sweeps for a single World.

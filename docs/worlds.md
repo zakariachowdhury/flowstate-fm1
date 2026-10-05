@@ -329,7 +329,7 @@ All four scenes are required.
 | `role` | `intro main lift breakdown` |
 | `progression` | the progression's name |
 | `energy` | an energy table's name ([§12](#12-energy)), or absent |
-| `transition` | 1, 2 or 4 bars (default 1): how a change to this scene is quantised (Phase 11) |
+| `transition` | 1, 2 or 4 bars, `"bar"` (1) or `"phrase"` (the length of the progression playing when it is asked for); default 1: a change to this scene lands on a bar line that many bars from the section start, with a fill on the bar before it when the drums play |
 | `patterns` | per track: a pattern name, or `null` (absent). A track not listed is absent too. |
 | `patterns.<drums>` | a pattern name (the GROOVE), `null`, or `{BEAT: name}` for `MINIMAL GROOVE BUSY BREAK`. A BEAT without a pattern plays the GROOVE. |
 | `fill` | a drum pattern, played on the last bar of each phrase when the ENERGY band allows fills |
@@ -522,7 +522,10 @@ compensation, drive, brightness) play on top.
 - a change begins at least `min_band_bars` bars after the one before;
 - stopped, at once; a scene change brings its own table, on its bar.
 
-Phase 11 adds BEAT (MINIMAL, GROOVE, BUSY, BREAK) on top of these masks, and the fills' place in scene transitions.
+BEAT (MINIMAL, GROOVE, BUSY, BREAK) applies on top of these masks (Phase 11): a BEAT the scene has no pattern for
+plays its GROOVE through a mask, MINIMAL kick, kick 2, snare, clap and rim (and never a fill), BUSY every density step
+with ratchets, BREAK kick, kick 2, snare and snare 2 with the hats on the second eighth of each beat. A scene change
+plays a fill on the bar before its line (the new scene's `fill`, else the current one's) when the drums are playing.
 
 ---
 

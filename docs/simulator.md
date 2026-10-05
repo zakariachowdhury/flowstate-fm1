@@ -135,13 +135,17 @@ it includes, or their order, differ from `felucca.c`'s (hardware-only files apar
 
 What happens while playing (`firmware/src/world.c`, "requests and accessors"):
 
-- **A scene or a variation** is staged by the main loop (`world_stage`) and committed by the audio interrupt on the
-  next 4/4 bar, the same bar check SAVE + key uses (`seq.c` `live_block`). Every track restarts from its step 0 on that
-  bar. The sequencer's own notes are released there, so nothing hangs; the keys track keeps its loop and the held keys
-  sound on (SLOOP's behaviour). A newer request replaces one not yet committed. Stopped, it applies at once.
-- **Another World**: on the next bar the transport stops; the main loop then loads the new World and starts it
-  again, within two blocks (1.5 ms) in the simulator. It is a restart on the bar, not a seamless change: the old
-  World's tails are cut. A seamless switch is a Phase 11 item. From SLOOP (no World active) the switch is immediate.
+- **A scene or a variation** is staged by the main loop (`world_stage`) and committed by the audio interrupt on its
+  boundary (Phase 11): a scene on the bar line its `transition` names (every 1, 2 or 4 bars, or every phrase, counted
+  from the section start), a variation on the next bar line. A scene restarts every track from its step 0 on that bar;
+  a variation keeps the clock running (phase-locked). The sequencer's own notes are released there, so nothing hangs;
+  the keys track keeps its loop in phase and the held keys sound on. Levels, pans, sends and the other values that
+  click when they jump glide over about 50 ms. A newer request replaces one not yet committed. Stopped, it applies at
+  once. The Studio shows when it lands: `NEXT BAR`, `IN 2 BARS`, `NEXT PHRASE`.
+- **Another World** while one plays (Phase 11): the main loop decodes the new World's patterns and stages its default
+  scene while the old one plays on; the interrupt commits it on the next bar without stopping. The FX tails ring on,
+  the old voices release (or fade on an engine change), the keys loop is cleared, the macros ramp in from neutral. From
+  SLOOP (no World active) the transport stops and the World starts.
 - A request made in the first audio block of a bar lands on that bar: the interrupt sees a bar at the block after the
   clock crosses it, and the bar keeps its exact phase (`seq_reset_tracks(clk_pos)`).
 
@@ -352,8 +356,9 @@ The group takes about 7 s.
 - **Not present.** USB (MIDI, the web editor, updates, console), TRS MIDI.
 - **Output level.** The DAC's −6 dB is applied, and the MASTER pot starts fully up (on the device it is wherever the
   knob is). CoreAudio resamples when the output does not run at 44.1 kHz.
-- **Worlds.** A scene or variation change is quantised to one bar (a scene's 2- and 4-bar transitions, fills and
-  held-note continuity are Phase 11). Another World while playing restarts on the bar. The device screen is the
+- **Worlds.** A scene lands on its transition's bar line (1, 2 or 4 bars, or the phrase), with a fill on the bar
+  before it when the drums play; a variation on the next bar. Another World while playing switches on the bar without
+  a stop (Phase 11). The device screen is the
   firmware's PLAY MODE (Phase 9, `firmware/src/ui_play.c`; its screens: `docs/images/play-*.png`), and the FM-1 panel
   (Tab) drives it: PRESETS chooses a World (PLAY loads it), SELECT a scene, ALGORITHM a variation, K1–K4 the macros.
   The Studio follows what the device does (a World chosen there, PLAY MODE, LEAVE WORLD), and the device screen shows
@@ -367,6 +372,6 @@ The Studio's model (`studio_t`) and `host_world` are where later phases show up;
 | --- | --- | --- |
 | `keys`, `keys_smart`, `chord` | SLOOP's keys; the chord when the harmony runtime gives it | `SMART MELODY` and the chord (Phase 6 part B: `wrt.keys_on`, `harm_chord_name`) |
 | `macro[]`, `macro_live` | a World's macro positions (Phase 7), a project's KNOB 1–4 | SOUND SHAPE, MOVEMENT and LIVE FX on the same controls (Phase 13) |
-| `pending`, scene changes | a commit on the next bar, a World switch by a restart | transitions of 2 and 4 bars, seamless World switches (Phase 11) |
+| `pending`, `when`, scene changes | a commit on its transition's line (`host_world`'s `bars_left`, `phrase`), a World switch on the bar without a stop (Phase 11) | — |
 | `w[]` | the factory Worlds, a World file, SLOOP projects | user Worlds from the World store (Phase 14) |
 | `rec`, `loop` (`host_state`) | PLAY REC's state and the keys loop's notes (Phase 10) | — |

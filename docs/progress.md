@@ -569,3 +569,97 @@ REC, UNDO READY), and the REC/EDIT LEDs, follow the real state.
 
 **Next.** Phase 11: the scene system polish. Seamless World switching while playing, held notes and tails across
 transitions, 2- and 4-bar transitions, and BEAT masks.
+
+## Phase 11: Scene system polish (2026-10-05)
+
+**Done.** Scene changes and World switches now feel like part of the music. As built: design §7.1.
+
+**Transitions** (`world.c` `wreq_block`).
+- A scene lands on the bar line its `transition` names: every 1, 2 or 4 bars, or every phrase (new: `"phrase"`, the
+  length of the progression playing; `"bar"` = 1), counted from the section start. A variation lands on the next bar
+  line. Nothing ever commits mid-beat.
+- A request while one waits replaces it, and the commit happens on the new request's line.
+- A scene restarts every track from step 0 on its bar. A variation now keeps the clock running (phase-locked): only the
+  tracks whose pattern changes release their notes, so a held pad note is not cut.
+- SCENES says when the change lands: `CHANGES NEXT BAR`, `CHANGES IN n BARS` or `CHANGES NEXT PHRASE`. The simulator's
+  Studio shows the same.
+- ADVANCED: `world_immediate(1)` commits a scene or variation at the next block, with the clock running on. It is an
+  API only; no Advanced control calls it yet.
+
+**Fills.** While a scene change waits for the next bar line, that bar plays a fill: the new scene's, else the current
+one's, from the beat it was asked on. It plays only while the drums play (a pattern, not muted, not left out by the
+band), never with BEAT MINIMAL, and it goes through the band's lanes and density like every step.
+
+**Seamless World switch.** The Phase 6 stop → load → start is gone.
+- `world_service` decodes the next World's patterns into the existing pool while the old World plays on from `trk[]`.
+  The pool is read only at commits, BEAT swaps and fills, and none of them can happen meanwhile. No second 10 KB pool.
+- The new World's default scene is staged; the ISR commits it on the next bar with no transport stop.
+- The FX buses are untouched, so tails ring on. The old voices release (or fade on an engine change), held keys are
+  released, the keys loop and its ring are cleared (D14), and the new tempo applies from the bar.
+- The macros go to the new World's defaults and the overlay ramps in from neutral. The main loop's macro evaluation
+  waits until the commit (`wrt.swp`).
+- From SLOOP while playing it is still a stop, then the World and PLAY.
+
+**Smoothness.**
+- While playing, a commit glides the values that click when they jump: level, pan, DIST, the sends, the engine's
+  continuous EDIT values when the engine stays, and the bus globals (reverb, delay feedback and mix, DUST, the DJ
+  filter...). The glide covers about 50 ms (`macro.c` `wgl_*`).
+- In a World, each part's level and pan gains and the delay mix ramp per sample over every block, so neither a glide,
+  a macro nor a knob zippers.
+- A delay time change crossfades the old tap into the new one over 46 ms (`fx.c`).
+- Harmony, key maps, swing and the patterns flip exactly on the bar.
+- SLOOP mode is untouched.
+
+**BEAT.** A BEAT the scene has no pattern for plays its GROOVE through a mask, intersected with the band's:
+- MINIMAL: kick, kick 2, snare, clap and rim.
+- BUSY: every density step, and the ratchets.
+- BREAK: kick, kick 2, snare and snare 2, with the hats on the second eighth of each beat.
+
+A BEAT changes on the next bar line. PULSE was already as design §9.2.
+
+**Verified.**
+- `./tests/run_tests.sh` passes all 38 groups. New: `scene_test`, 105 checks under ASan/UBSan, and the compiler's
+  transition checks (`worldc_test`):
+  - every factory World with a keys loop and a held key, through A→B, B→C, C→D, D→A and 12 random requests (some
+    replaced on their way): each commit on the first block of its line, a scene from step 0 once, a variation
+    phase-locked, the held key sounding on, the loop in phase, nothing left after STOP;
+  - fills, four World switches, BEAT masks, ADVANCED's immediate commits, a phrase transition, the glides.
+- `ui_play_test`, `play_rec_test`, `guard_test`, `macro_test` and `smartkeys_test` were updated for the 2- and 4-bar
+  transitions and the glides. The simulator's script checks that NEON RAIN's C waits for its 2-bar line.
+- Both regression builds match the 83 goldens.
+
+Clicks and tails:
+
+| Measurement | Result |
+| --- | --- |
+| Largest sample step at a commit over the render's largest elsewhere | 0.38–0.81× (scenes), 0.52× (switches) |
+| The wet bus, 12 ms after a commit over 12 ms before | at worst −4.7 dB |
+| The quietest 5 ms around a World switch | −36 dBFS (no gap) |
+| Lone held note: a level / pan / delay-mix jump as before Phase 11 | 2.70× (a click) |
+| Lone held note: the same jump through a commit | 0.87× |
+| Lone held note: a delay time jump without the crossfade | 7.75× on the wet bus |
+| Lone held note: the same change crossfaded | 1.00× |
+
+**Renders for the owner.** `build/renders/worlds/<id>-scenes.wav` for each factory World: A, B, C, D on their lines
+while playing, a key held across two changes, then a switch to the next World, STOP and a tail. 30–54 s each, peaks
+−3.6 to −3.8 dBFS, nothing at full scale, every commit clean.
+
+**Sizes.**
+- Image 555,008 B (+2,284 B). **26.5 KB** of the app slot is left.
+- RAM `.data` + `.bss` 71,088 B of 98,304 B (+608 B).
+
+**Deviations** (design §7.1):
+- `"phrase"` and `"bar"` transitions were added to the format.
+- A variation no longer restarts the clock.
+- The overlay ramps in from neutral rather than gliding from the old World's targets (those are other parameters).
+- No fill leads into a World switch, because the pool already holds the next World.
+
+**Left for later.**
+- A control for ADVANCED's immediate transitions (Phase 14).
+- The factory Worlds author no per-BEAT patterns yet.
+- Sends, DIST and engine values step per block while they glide (they feed the buses or the voices, where it is not
+  heard); enum values change at once.
+- A World switch asked for while playing, then STOP before its bar, waits for PLAY and lands on bar 0 (a stopped
+  request loads at once, as before).
+
+**Next.** Phase 12: variations.

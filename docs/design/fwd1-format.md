@@ -248,7 +248,7 @@ Each record is `24 + 3·npairs` bytes.
 | 11 | 1 | role | 0 intro, 1 main, 2 lift, 3 breakdown |
 | 12 | 1 | prog | `< PROGS count` |
 | 13 | 1 | energy | `< ENERGY count`, or 255 |
-| 14 | 1 | transition | 1, 2 or 4 bars |
+| 14 | 1 | transition | 1, 2 or 4 bars; 0: the phrase (the playing progression's length, Phase 11) |
 | 15 | 1 | fill | a **drum** pattern, or 255 |
 | 16 | 3 | pat[3] | per synth track: a **synth** pattern, or 255. The Smart Keys track's entry must be 255 (it plays the user loop). |
 | 19 | 4 | beat[4] | the drum pattern per BEAT (0 MINIMAL, 1 GROOVE, 2 BUSY, 3 BREAK): a **drum** pattern, or 255 |
@@ -370,7 +370,7 @@ Each table is `u16 density_lanes, u8 nbands` (1–4), then 12-byte bands:
 | 4 | 2 | dens_steps | a 16-step mask applied to `density_lanes` |
 | 6 | 6 | play[3] | per synth track, a 16-step mask: a NOTE step whose bit is clear plays as REST |
 
-All masks are neutral when all ones. worldc requires the Smart Keys track in every band's layers, and the firmware never mutes it. `firmware/src/arrange.c` applies the bands (design §5.7); BEAT joins them in Phase 11.
+All masks are neutral when all ones. worldc requires the Smart Keys track in every band's layers, and the firmware never mutes it. `firmware/src/arrange.c` applies the bands (design §5.7) and the BEAT masks with them (Phase 11).
 
 ### GUARD
 
