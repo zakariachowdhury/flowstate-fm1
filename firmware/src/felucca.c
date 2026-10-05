@@ -54,6 +54,7 @@
 #include "smartkeys.c"       /* Smart Keys: key maps, sk_note, MIDI, polyphony (needs seq.c's kb_*, input_off) */
 #include "macro.c"           /* the macros: COLOR MOTION SPACE ENERGY, their target table and the ISR overlay */
 #include "arrange.c"         /* ENERGY as arrangement: the band's layers, lanes, density and play masks, fills */
+#include "play_rec.c"        /* PLAY REC: the keys loop, its take, overdub, undo ring and micro-timing (guard.c, seq.c) */
 #endif
 #include "audio.c"
 #include "panel.c"

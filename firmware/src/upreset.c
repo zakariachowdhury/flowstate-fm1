@@ -98,7 +98,7 @@ static void up_pat_from(up_rec_t *r, const step_t *st)   /* the first 16 steps -
     uint32_t i;
     for (i = 0; i < 16u; i++) {
         r->note[i] = st[i].time == ST_NOTE && st[i].n ? st[i].note[0] : 0u;
-        r->flags[i] = st[i].time == ST_TIE ? 4u : st[i].flags;
+        r->flags[i] = st[i].time == ST_TIE ? 4u : (uint8_t)(st[i].flags & (SF_ACCENT | SF_SLIDE));   /* (b2-4: micro-timing) */
         up_pat_norm(&r->note[i], &r->flags[i]);
     }
 }

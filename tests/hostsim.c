@@ -50,6 +50,7 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #include "../firmware/src/smartkeys.c"
 #include "../firmware/src/macro.c"
 #include "../firmware/src/arrange.c"
+#include "../firmware/src/play_rec.c"
 #endif
 #define inst (trk[0])                   /* the single-part renders below: part 1 */
 

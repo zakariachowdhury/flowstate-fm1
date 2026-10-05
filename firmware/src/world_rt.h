@@ -20,6 +20,8 @@ typedef struct {
     uint8_t prog, energy, fill;  /* their progression, energy table and fill (pool index), WF_NONE = none */
     uint8_t beat;                /* the BEAT (WF_BEAT_*): which scene drum pattern plays */
     uint8_t cur_pat[NTRK];       /* the pool entry each track's steps came from (written back on a change) */
+    uint32_t koff;               /* PLAY REC (play_rec.c): added to the keys track's grid step (seq.c trk_grid), so its
+                                  * loop goes on in phase through a scene's clock restart; 0 while stopped */
     uint32_t id;                 /* world_id of the loaded World */
     uint32_t factory_ok;         /* world_boot: bit per factory World that passed wb_check */
 } wrt_t;

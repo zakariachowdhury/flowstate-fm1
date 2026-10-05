@@ -16,15 +16,17 @@
  *             the World's range), ALGORITHM = VARIATION, K1..K4 = COLOR MOTION SPACE ENERGY, 10 units a detent
  *             (FX / ENV / LFO held: their page's four), ARP = PULSE, SEQ = BEAT, REC, EDIT, SCL, GLO, SAVE, HOME,
  *             OCT- / OCT+
- *   lights    design 8.4: PLAY the beat, REC its state, the keys pressed (on), the chord's tones and the tonic (dim)
- * REC is a stand-in until Phase 10 records (play_rec.c): it walks the states and shows their screens, and never
- * writes a step. The fonts lack the spec's glyphs (a triangle, square, disc, heavy line, sparkle, electric arrow,
- * chevron): they are drawn with the canvas. */
+ *   lights    design 8.4: PLAY the beat, REC its state, EDIT dim while there is an undo, the keys pressed (on), the
+ *             chord's tones and the tonic (dim)
+ *   REC       play_rec.c records (UI spec 7): REC arms / takes / closes the take on its bar / toggles overdub, REC
+ *             held 1.5 s clears the loop; EDIT tapped: UNDO, EDIT held + OCT+: REDO (+ OCT-: UNDO, SLOOP's pair).
+ *             RECORDING (its bars as dots) while the take runs, LOOP n (layers) after it and while overdubbing
+ * The fonts lack the spec's glyphs (a triangle, square, disc, heavy line, sparkle, electric arrow, chevron): they are
+ * drawn with the canvas. */
 
 enum { PS_FIRST, PS_HOME, PS_MACRO, PS_WORLDS, PS_SCENES, PS_VARS, PS_PULSE, PS_BEAT, PS_PAGE, PS_REC, PS_LOOP,
        PS_SAVE, PS_ADVDLG, PS_COUNT };
 enum { PG_LIVEFX, PG_SHAPE, PG_MOVE };             /* PS_PAGE: controls 12..15, 4..7, 8..11 */
-enum { PR_EMPTY, PR_ARMED, PR_TAKE, PR_LOOP, PR_OVERDUB, PR_COUNT };   /* REC (Phase 10 replaces the stand-in) */
 enum { PH_NONE, PH_EDIT, PH_CLEAR };               /* a hold's ring: EDIT for ADVANCED, REC to clear the loop */
 #define PL_ADV_MS 2000u                            /* EDIT held untouched: the ADVANCED dialog / back to PLAY */
 #define PL_RING_MS 500u                            /* .. the ring shows from here */
@@ -61,7 +63,7 @@ static struct {
     uint8_t hot;                 /* the CONTROLS column turned last (white), 4 = none */
     uint8_t browse;              /* CHOOSE WORLD: the highlighted factory World */
     uint8_t row;                 /* SAVE: the highlighted row */
-    uint8_t rec, rec_prev;       /* PR_*; before the press that became a hold */
+    uint8_t rec_seen, rec_prev;  /* play_rec.c's PR_* as last seen; before the press that became a hold */
     uint8_t hold;                /* PH_* */
     uint8_t edit_eat;            /* EDIT's release is not a tap (it opened the dialog, or came from SLOOP's UI) */
     uint8_t force;               /* every band again */
@@ -70,7 +72,6 @@ static struct {
     uint8_t cpage, ring;         /* as drawn: the CONTROLS band showed a page; the middle band a hold's ring */
     uint32_t t;                  /* the overlay's last touch (its timeout), ms */
     uint32_t loop_t;             /* LOOP shown until */
-    uint32_t rec_beat;           /* TAKE: clk_beat at its start */
     uint32_t hold_t0;
     uint32_t glo_t;              /* GLO's last tap */
     uint32_t toast_t;
@@ -224,9 +225,9 @@ static void pl_toast(const char *s)
 }
 static uint32_t pl_rest(void)                      /* the screen the overlays go back to */
 {
-    if (pl.rec == PR_ARMED || pl.rec == PR_TAKE)
+    if (prec.st == PR_ARMED || prec.st == PR_TAKE)
         return PS_REC;
-    if (pl.rec == PR_OVERDUB)
+    if (prec.st == PR_OVERDUB)
         return PS_LOOP;
     return pl.played ? PS_HOME : PS_FIRST;
 }
@@ -264,11 +265,6 @@ static void pl_pulse_set(uint32_t i)               /* design 9.2: the keys track
     for (k = 0; k < 4u; k++)
         p[P_AMODE + k] = WB_PULSE[i][k];
     p[P_AHOLD] = 0;
-}
-static uint32_t pl_loop_bars(void)                 /* the keys loop: 1..4 bars at 1/16 (world.c sets its LEN) */
-{
-    uint32_t b = (uint32_t)trk[pl_keys_trk()].p[P_SLEN] / 16u;
-    return b < 1u ? 1u : b > 4u ? 4u : b;
 }
 static void pl_cancel_pending(void)                /* a scene / variation asked for: forgotten (the one playing stays) */
 {
@@ -312,11 +308,16 @@ static void pl_enter(void)                         /* the PLAY screens from now 
     pl.edit_eat = 1;
     pl.hot = 4;
     pl.force = 1;
+    fm1_irq_off();
+    prec_sync();                                   /* (ADVANCED may have changed the loop: LOOP or EMPTY for it) */
+    fm1_irq_on();
+    pl.rec_seen = prec.st;
     pl.scr = (uint8_t)pl_rest();
     pl.t = fm1_ms;
 }
 static void play_adv_enter(void)                   /* PLAY -> ADVANCED: SLOOP's UI over the World (design 8.3) */
 {
+    prec_adv();                                    /* (an overdub ends, a take closes on its bar) */
     pl_ui_reset();
     wrt.mode = WM_ADV;
     wrt.keys_on = 0;                               /* the keys: SLOOP's kb_map; the macros stay where they are */
@@ -342,10 +343,7 @@ static int play_world(const uint8_t *b, uint32_t n)
 {
     int rc;
     if (wrt.mode != WM_SLOOP) {
-        rc = world_switch(b, n);
-        if (!rc)
-            pl.rec = PR_EMPTY;
-        return rc;
+        return world_switch(b, n);
     }
     song.rec = 0;
     rec_wait = 0;
@@ -357,7 +355,6 @@ static int play_world(const uint8_t *b, uint32_t n)
         wpark_restore();
         return rc;
     }
-    pl.rec = PR_EMPTY;
     pl_enter();
     return 0;
 }
@@ -392,7 +389,6 @@ static void play_leave(void)                       /* a World session -> SLOOP: 
     wpark_restore();
     pl_ui_reset();
     wrt.mode = WM_SLOOP;
-    pl.rec = PR_EMPTY;
     layers_init();
     go_home();
     lcd_fill(0, 0, 240, 240, C_BLACK);
@@ -462,7 +458,6 @@ static void pl_world_go(uint32_t i, int reset)
         return;
     }
     pl.played = 1;
-    pl.rec = PR_EMPTY;
     pl_screen(PS_HOME);
     if (stopped) {
         if (!reset)
@@ -496,44 +491,42 @@ static void pl_tempo(int32_t s)                    /* GLO + SELECT: the tempo, i
     song.g[G_BPM] = (int16_t)clamp(song.g[G_BPM] + s, (int32_t)lo, (int32_t)hi);
 }
 
-/* ---- REC: a stand-in for Phase 10 (play_rec.c), design 9.1's states with nothing recorded */
+/* ---- REC (play_rec.c records; design 9.1, UI spec 7) */
 static void pl_rec_press(void)
 {
-    switch (pl.rec) {
-    case PR_EMPTY:
-        pl.rec = song.playing ? PR_TAKE : PR_ARMED;
-        pl.rec_beat = clk_beat;
-        break;
-    case PR_ARMED:
-        pl.rec = PR_EMPTY;
-        break;
-    case PR_TAKE:                                  /* (the take closes early: the loop is what was played) */
-    case PR_OVERDUB:
-        pl.rec = PR_LOOP;
+    prec_rec();
+    pl.rec_seen = prec.st;
+    if (prec.st == PR_LOOP) {                      /* (overdub off: LOOP a moment) */
         pl.loop_t = fm1_ms + 2500u;
-        break;
-    default:
-        pl.rec = PR_OVERDUB;
-        break;
+        pl_screen(PS_LOOP);
+    } else {
+        pl_screen(pl_rest());
     }
-    pl_screen(pl.rec == PR_LOOP ? PS_LOOP : pl_rest());
 }
-static void pl_rec_service(void)                   /* every pass: ARMED waits for a note, TAKE runs one loop length */
+static void pl_undo(int redo)                      /* EDIT: UNDO; EDIT + OCT+: REDO */
 {
-    if (pl.rec == PR_TAKE) {
-        if (!song.playing && !transport_req) {
-            pl.rec = PR_EMPTY;                     /* (stopped during the take: nothing kept) */
-            pl_screen(pl_rest());
-            return;
-        }
-        if (clk_beat < pl.rec_beat)
-            pl.rec_beat = clk_beat;                /* (the clock started again: a scene on its bar) */
-        if ((clk_beat - pl.rec_beat) / 4u >= pl_loop_bars()) {
-            pl.rec = PR_LOOP;                      /* one loop length: it loops */
-            pl.loop_t = fm1_ms + 2500u;
-            pl_screen(PS_LOOP);
-        }
+    if (!prec_undo(redo)) {
+        pl_toast(redo ? "NOTHING TO REDO" : "NOTHING TO UNDO");
+        return;
     }
+    pl_toast(redo ? "REDONE" : "UNDONE");
+    pl.rec_seen = prec.st;
+    if (prec.st == PR_LOOP)
+        pl.loop_t = fm1_ms + 2500u;
+    pl_screen(prec.st == PR_LOOP ? PS_LOOP : pl_rest());
+}
+static void pl_rec_service(void)                   /* every pass: what the audio ISR did (a take closed on its bar) */
+{
+    uint32_t st = prec.st;
+    if (st == pl.rec_seen)
+        return;
+    if (st == PR_LOOP && pl.rec_seen == PR_TAKE) {
+        pl.loop_t = fm1_ms + 2500u;                /* the take loops: LOOP 1 a moment */
+        pl_screen(PS_LOOP);
+    } else if (pl.scr == PS_REC || pl.scr == PS_LOOP || pl.scr == PS_HOME || pl.scr == PS_FIRST) {
+        pl_screen(pl_rest());
+    }
+    pl.rec_seen = (uint8_t)st;
 }
 
 /* ------------------------------------------------------------------- input --- */
@@ -592,8 +585,10 @@ static void play_input(void)
         for (k = 0; k < NE; k++)
             es[k] = 0;
     }
-    /* EDIT: tapped, UNDO (Phase 10); held 2 s with nothing else, the ADVANCED dialog (a ring from 0.5 s) */
+    /* EDIT: tapped, UNDO; held 2 s with nothing else, the ADVANCED dialog (a ring from 0.5 s) */
     if (rel & PL_BT(B_EDIT)) {
+        if (!pl.edit_eat && pl_tap(B_EDIT, now))
+            pl_undo(0);
         if (pl.hold == PH_EDIT)
             pl.hold = PH_NONE;
         pl.edit_eat = 0;
@@ -614,34 +609,34 @@ static void play_input(void)
                 pl_screen(pl_rest());
         }
     }
-    /* REC: the stand-in acts on the press; held with a loop, the press is undone and a ring clears it */
+    /* REC: acts on the press; held with a loop, the press is undone and a ring clears it (an undo brings it back).
+     * Armed, a keys note or PLAY starts the take and the transport (play_rec.c) */
     if (pr & PL_BT(B_REC)) {
-        pl.rec_prev = pl.rec;
+        pl.rec_prev = prec.st;
         pl_rec_press();
     } else if ((down & PL_BT(B_REC)) && pl.bt0[B_REC] && (pl.rec_prev == PR_LOOP || pl.rec_prev == PR_OVERDUB)) {
         uint32_t held = now - (pl.bt0[B_REC] & ~1u);
         if (held >= PL_CLEAR_MS && pl.hold == PH_CLEAR) {
             pl.hold = PH_NONE;
-            pl.rec = pl.rec_prev = PR_EMPTY;
+            prec_clear();
+            pl.rec_seen = prec.st;
+            pl.rec_prev = PR_EMPTY;
             pl.bt0[B_REC] = 0;
             pl_screen(pl_rest());
             pl_toast("LOOP CLEARED");
         } else if (held >= PL_CLEAR0_MS && pl.hold == PH_NONE) {
-            pl.rec = pl.rec_prev;                  /* (a hold, not a press) */
+            if (prec.st != pl.rec_prev)
+                prec_rec();                        /* (a hold, not a press: overdub as it was) */
+            pl.rec_seen = prec.st;
             pl.hold = PH_CLEAR;
             pl.hold_t0 = (pl.bt0[B_REC] & ~1u) + PL_CLEAR0_MS;
-            pl_screen(pl.rec == PR_OVERDUB ? PS_LOOP : PS_HOME);
+            pl_screen(prec.st == PR_OVERDUB ? PS_LOOP : PS_HOME);
         }
     }
     if ((rel & PL_BT(B_REC)) && pl.hold == PH_CLEAR)
         pl.hold = PH_NONE;                         /* let go before the end: nothing */
-    if (pl.rec == PR_ARMED && (notes || (pr & PL_BT(B_PLAY)))) {
-        pl.rec = PR_TAKE;                          /* the first note (or PLAY) starts the take and the transport */
-        pl.rec_beat = 0;
-        pl.played = 1;
-        if (!song.playing && !transport_req)
-            transport_req = 1;
-        pr &= ~PL_BT(B_PLAY);
+    if ((pr & PL_BT(B_PLAY)) && prec.st == PR_ARMED && !song.playing) {
+        pl.played = 1;                             /* (PLAY armed: the take starts with the transport) */
         pl_screen(PS_REC);
     }
     /* FX / ENV / LFO: their page while held (the knobs are its four); tapped, it stays a moment */
@@ -725,7 +720,9 @@ static void play_input(void)
     }
     if (pr & (PL_BT(B_OCTDN) | PL_BT(B_OCTUP))) {
         uint32_t both = PL_BT(B_OCTDN) | PL_BT(B_OCTUP);
-        if ((down & both) == both)
+        if (down & PL_BT(B_EDIT))
+            pl_undo((pr & PL_BT(B_OCTUP)) != 0u);  /* EDIT held: + OCT+ REDO, + OCT- UNDO (SLOOP's pair) */
+        else if ((down & both) == both)
             song.octave = 0;
         else if (pr & PL_BT(B_OCTDN))
             song.octave = (int8_t)(song.octave > -3 ? song.octave - 1 : -3);
@@ -863,8 +860,9 @@ static void pl_append(char *b, uint32_t n, const char *s) { str_cpy(b + str_len(
 
 static void pl_brand(void)
 {
-    uint32_t st = pl.toast_t ? 9u : pl.scr == PS_FIRST ? 1u : pl.rec == PR_TAKE || pl.rec == PR_OVERDUB ? 2u :
-                  pl.rec == PR_ARMED ? 3u + ((fm1_ms / 250u) & 1u) : song.playing ? 5u : 6u;
+    uint32_t r = prec.st, st = pl.toast_t ? 9u : pl.scr == PS_FIRST ? 1u :
+                                prec.arm || r == PR_ARMED ? 3u + ((fm1_ms / 250u) & 1u) :
+                                r == PR_TAKE || r == PR_OVERDUB ? 2u : song.playing ? 5u : 6u;
     if (!pl_need(PB_BRAND, pl_hash(st, st == 9u ? pl.toast : "")))
         return;
     pl_band(0, 20);
@@ -1182,34 +1180,34 @@ static void pl_vars(void)                          /* VARIATION 03 / sparkle / D
 }
 static void pl_rec_screen(void)                    /* RECORDING... / the bar dots / PLAY SOMETHING / SMART KEYS ACTIVE */
 {
-    uint32_t n = pl_loop_bars(), done = 0, i;
-    if (pl.rec == PR_TAKE && clk_beat >= pl.rec_beat)
-        done = (clk_beat - pl.rec_beat) / 4u + 1u;  /* (the bar under way counts) */
+    uint32_t done = prec_bars(), i;               /* (a take is 4 bars at most: a dot a bar, filled as they pass) */
     pl_line(PB_B1, 20, 36, 22, &FONT_L, "RECORDING...", C_WHITE);
-    if (pl_need(PB_B2, n * 16u + done)) {
+    if (pl_need(PB_B2, 64u + done)) {
         pl_band(56, 20);
-        for (i = 0; i < n; i++)
-            pl_disc(120 - 16 * ((int32_t)n - 1) + 32 * (int32_t)i, 66, 6, i < done ? PL_VIO : PL_DIM);
+        for (i = 0; i < 4u; i++)
+            pl_disc(72 + 32 * (int32_t)i, 66, 6, i < done ? PL_VIO : PL_DIM);
         pl_end();
     }
     pl_line(PB_B3, 76, 56, 96, &FONT_S, "PLAY SOMETHING", C_WHITE);
     pl_line(PB_B4, 132, 24, 136, &FONT_S, "SMART KEYS ACTIVE", PL_LAV);
 }
-static void pl_loop_screen(void)                   /* LOOP 1 / its bars / PLAYING + REC / TAP KEYS TO ADD MORE · UNDO READY */
+static void pl_loop_screen(void)                   /* LOOP n / its bars / PLAYING + REC / TAP KEYS TO ADD MORE · UNDO READY */
 {
     const track_t *t = &trk[pl_keys_trk()];
-    uint32_t len = trk_len(t), cnt[8] = {0}, i, sig = 3u;
-    for (i = 0; i < len && i < NSTEP; i++)         /* the loop's notes in eighths of it */
+    uint32_t len = trk_len(t), cnt[8] = {0}, i, sig, now = song.playing ? t->seq_idx % len * 8u / len : 8u;
+    char b[12] = "LOOP ";
+    for (i = 0; i < len && i < NSTEP; i++)         /* the loop's notes in eighths of it; the eighth playing white */
         if (t->step[i].time == ST_NOTE)
             cnt[i * 8u / len] += t->step[i].n;
-    for (i = 0; i < 8u; i++)
+    for (sig = now, i = 0; i < 8u; i++)
         sig = sig * 7u + (cnt[i] > 4u ? 4u : cnt[i]);
-    pl_line(PB_B1, 20, 36, 22, &FONT_L, "LOOP 1", C_WHITE);
+    fmt_int(b + 5, prec.layers ? prec.layers : 1);
+    pl_line(PB_B1, 20, 36, 22, &FONT_L, b, C_WHITE);
     if (pl_need(PB_B2, sig)) {
         pl_band(56, 20);
         for (i = 0; i < 8u; i++) {
             int32_t h = 3 + 4 * (int32_t)(cnt[i] > 4u ? 4u : cnt[i]);
-            pl_rect(66 + 11 * (int32_t)i + (i >= 4u ? 12 : 0), 75 - h, 8, h, PL_VIO);
+            pl_rect(66 + 11 * (int32_t)i + (i >= 4u ? 12 : 0), 75 - h, 8, h, i == now ? C_WHITE : PL_VIO);
         }
         pl_end();
     }
@@ -1217,13 +1215,13 @@ static void pl_loop_screen(void)                   /* LOOP 1 / its bars / PLAYIN
         pl_stage(PB_B3);
         return;
     }
-    if (pl_need(PB_B3, pl.rec == PR_OVERDUB ? 0x77u : 0x78u)) {
+    if (pl_need(PB_B3, prec.st == PR_OVERDUB ? 0x77u : 0x78u)) {
         pl_band(76, 56);
-        pl_text_c(120, 82, &FONT_S, pl.rec == PR_OVERDUB ? "PLAYING + REC" : "PLAYING", C_WHITE);
+        pl_text_c(120, 82, &FONT_S, prec.st == PR_OVERDUB ? "PLAYING + REC" : "PLAYING", C_WHITE);
         pl_text_c(120, 106, &FONT_S, "TAP KEYS TO ADD MORE", PL_LAV);   /* (the spec's line, wrapped: 240 px) */
         pl_end();
     }
-    pl_line(PB_B4, 132, 24, 136, &FONT_S, "UNDO READY", PL_LAV);
+    pl_line(PB_B4, 132, 24, 136, &FONT_S, prec.rc ? "UNDO READY" : "", PL_LAV);
 }
 static void pl_advdlg(void)                        /* ADVANCED MODE / electric arrow / FULL SLOOP CONTROL / ENTER / CANCEL */
 {
@@ -1290,12 +1288,12 @@ static void pl_timeouts(void)
     if (pl.scr == PS_PAGE && pl.held)
         to = 0;
     if (pl.scr == PS_LOOP) {
-        if (pl.rec == PR_OVERDUB)
+        if (prec.st == PR_OVERDUB)
             to = 0;
-        else if (pl.rec != PR_LOOP || (int32_t)(now - pl.loop_t) >= 0)
+        else if (prec.st != PR_LOOP || (int32_t)(now - pl.loop_t) >= 0)
             to = 1;
     }
-    if (pl.scr == PS_REC && pl.rec != PR_ARMED && pl.rec != PR_TAKE)
+    if (pl.scr == PS_REC && prec.st != PR_ARMED && prec.st != PR_TAKE)
         to = 1;
     if (pl.scr == PS_FIRST || pl.scr == PS_HOME) {
         if (pl.scr != pl_rest())
@@ -1373,16 +1371,17 @@ static void play_leds(void)                        /* H19 (ui_input.c ui_leds): 
 {
     uint8_t nl[FM1_NCOL] = {0}, dl[FM1_NCOL] = {0};
     uint32_t down = fm1_in.buttons, k, keys, dim, c, b125 = (fm1_ms / 125u) & 1u, b250 = (fm1_ms / 250u) & 1u;
-    uint32_t pulse = pl_pulse(), shape = 0, move = 0;
+    uint32_t pulse = pl_pulse(), shape = 0, move = 0, rec = prec.st;
     for (k = 4; k < 8u; k++) {
         shape |= macro_pos(k) != MC_HOME[k];
         move |= macro_pos(k + 4u) != MC_HOME[k + 4u];
     }
     led_put(nl, panel.btn[B_PLAY], play_led());
-    led_put(nl, panel.btn[B_REC], pl.hold == PH_CLEAR ? (fm1_ms / 60u) & 1u : pl.rec == PR_ARMED ? b125 :
-                                  pl.rec == PR_TAKE ? 1 : pl.rec == PR_OVERDUB ? b250 : 0);
-    led_put(dl, panel.btn[B_REC], pl.rec == PR_LOOP);                  /* a loop exists */
-    led_put(nl, panel.btn[B_EDIT], (down & PL_BT(B_EDIT)) != 0u);      /* (dim: undo available, Phase 10) */
+    led_put(nl, panel.btn[B_REC], pl.hold == PH_CLEAR ? (fm1_ms / 60u) & 1u : prec.arm || rec == PR_ARMED ? b125 :
+                                  rec == PR_TAKE ? 1 : rec == PR_OVERDUB ? b250 : 0);
+    led_put(dl, panel.btn[B_REC], rec == PR_LOOP);                     /* a loop exists */
+    led_put(nl, panel.btn[B_EDIT], (down & PL_BT(B_EDIT)) != 0u);
+    led_put(dl, panel.btn[B_EDIT], prec.rc && rec != PR_ARMED && rec != PR_TAKE);   /* an undo is ready */
     led_put(nl, panel.btn[B_ARP], pulse != 0u);                        /* not at their defaults */
     led_put(nl, panel.btn[B_SEQ], wrt.beat != WF_BEAT_GROOVE);
     led_put(nl, panel.btn[B_ENV], (down & PL_BT(B_ENV)) != 0u);
@@ -1390,7 +1389,7 @@ static void play_leds(void)                        /* H19 (ui_input.c ui_leds): 
     led_put(nl, panel.btn[B_LFO], (down & PL_BT(B_LFO)) != 0u);
     led_put(dl, panel.btn[B_LFO], (int)move);
     led_put(nl, panel.btn[B_FX], (down & PL_BT(B_FX)) != 0u);
-    led_put(dl, panel.btn[B_SAVE], pl.rec >= PR_LOOP);                 /* a loop not saved */
+    led_put(dl, panel.btn[B_SAVE], rec >= PR_LOOP);                    /* a loop not saved (in a user World) */
     led_put(nl, panel.btn[B_OCTDN], song.octave < 0);
     led_put(nl, panel.btn[B_OCTUP], song.octave > 0);
     keys = fm1_in.notes & 0x7FFFFFFu;              /* on: pressed; dim: the chord's tones and the tonic (sk_chord_keys) */
@@ -1455,7 +1454,6 @@ static void play_boot(const wplay_t *s, int restore)
         song.octave = (int8_t)clamp(s->octave, -3, 3);
     }
     pl.played = restore && s->first;
-    pl.rec = PR_EMPTY;
     pl_enter();
     if (restore && s->mode == WM_ADV)
         play_adv_enter();

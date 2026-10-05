@@ -3,9 +3,11 @@
  * decisions D12, D13). Main loop.
  *
  *   OBJ_WSESSION (storage.c, 0xF9000 / 0xFA000 in the Flowstate region): the PLAYSTATE (world_rt.h wplay_t): the
- *   mode, the World, scene, variation, the 16 controls, PULSE, BEAT, octave, tempo, whether PLAY was ever pressed.
- *   Saved as SLOOP's autosave is (project.c): stopped, nothing sounding, 2.5 s without input, 20 s after the last
- *   save, only when it changed. Phase 10 appends the keys loop, Phase 14 the overrides and user Worlds.
+ *   mode, the World, scene, variation, the 16 controls, PULSE, BEAT, octave, tempo, whether PLAY was ever pressed;
+ *   then the keys loop (play_rec.c): u8 steps (0: none), u8 layers, its steps (10 B each: at most 690 B in all,
+ *   under ST_LOW_MAX). Saved as SLOOP's autosave is (project.c): stopped, nothing sounding, 2.5 s without input,
+ *   20 s after the last save, only when it changed. The record is built on the main loop's stack (st_save reads
+ *   the current copy into st_buf first). Phase 14 appends the overrides and user Worlds.
  *
  *   wsession_tick   project.c autosave_tick (H18), every pass: the session when it changed; while a World is active
  *                   SLOOP's autosave waits (the fence: the user's SLOOP project in flash stays as it is)
@@ -94,16 +96,39 @@ static void wplay_capture(wplay_t *s)              /* the session now (SLOOP: th
     wss = *s;                                      /* (the last World's state: what SLOOP keeps, PLAY MODE goes back to) */
 }
 
+#define WSS_LOOP sizeof(wplay_t)                   /* the keys loop's record in the session: after the PLAYSTATE */
+#define WSS_MAX (WSS_LOOP + 2u + NSTEP * sizeof(step_t))
+_Static_assert(WSS_MAX <= ST_LOW_MAX, "the session fits under offset 0xF00 of its sector");
+static uint32_t wss_record(uint8_t *b, const wplay_t *s)   /* the session record (the PLAYSTATE, the loop): its size */
+{
+    const track_t *t = &trk[wrt.keys_trk % NPART];
+    uint32_t n = s->mode != WM_SLOOP && wrt.active && prec_has(t) ? trk_len(t) : 0u;
+    memcpy(b, s, sizeof *s);
+    b[WSS_LOOP] = (uint8_t)n;
+    b[WSS_LOOP + 1u] = prec.layers;
+    memcpy(b + WSS_LOOP + 2u, t->step, n * sizeof(step_t));
+    return WSS_LOOP + 2u + n * (uint32_t)sizeof(step_t);
+}
+static uint32_t wss_now(void)                      /* the session now: its hash */
+{
+    uint8_t b[WSS_MAX];
+    wplay_t s;
+    wplay_capture(&s);
+    return proj_hash(b, wss_record(b, &s));
+}
+
 static int wsession_save(void)                     /* the session now; 0 = in flash */
 {
 #if FELUCCA_FLASH
+    uint8_t b[WSS_MAX] __attribute__((aligned(4)));
     wplay_t s;
-    uint32_t h;
+    uint32_t h, n;
     wplay_capture(&s);
-    h = proj_hash(&s, sizeof s);
+    n = wss_record(b, &s);
+    h = proj_hash(b, n);
     if (h == wss_hash)
         return 0;
-    if (!flash_ok || st_save(OBJ_WSESSION, &s, sizeof s))
+    if (!flash_ok || st_save(OBJ_WSESSION, b, n))
         return -1;
     wss = s;
     wss_hash = h;
@@ -129,12 +154,8 @@ static int wsession_tick(void)
         wss_ms = now;
         return 1;
     }
-    {
-        wplay_t s;
-        wplay_capture(&s);
-        if (proj_hash(&s, sizeof s) == wss_hash)
-            return wrt.active;
-    }
+    if (wss_now() == wss_hash)
+        return wrt.active;
     wsession_save();
     wss_ms = now;
     return 1;
@@ -145,27 +166,29 @@ static int wsession_tick(void)
 
 static void wsession_boot(void)
 {
-    int ok = 0;
+    int ok = 0, n = 0;
     memset(&wss, 0, sizeof wss);
 #if FELUCCA_FLASH
     if (flash_ok) {
-        int n = st_load(OBJ_WSESSION, &wss, sizeof wss);
+        n = st_load(OBJ_WSESSION, st_buf, ST_LOW_MAX);   /* (the whole record, where st_save built it) */
+        memcpy(&wss, st_buf, n < (int)sizeof wss ? (n > 0 ? (uint32_t)n : 0u) : sizeof wss);
         ok = n >= 12 && wss.magic == WP_MAGIC && wss.mode <= WM_ADV;
         if (ok && (uint32_t)n < sizeof wss)        /* (an older, shorter record: the rest at its defaults) */
             memset((uint8_t *)&wss + n, 0, sizeof wss - (uint32_t)n);
         if (!ok)
             memset(&wss, 0, sizeof wss);
-        wss_hash = ok ? proj_hash(&wss, sizeof wss) : 0u;
+        wss_hash = ok ? proj_hash(st_buf, (uint32_t)n) : 0u;
     }
 #endif
     if (!ok)
         wss.mode = WM_PLAY;                        /* no session (a first boot, or a damaged one): PLAY MODE */
     if (wss_sloop || wss.mode == WM_SLOOP) {       /* SLOOP, as it booted */
-        wplay_t s;
-        wplay_capture(&s);
-        wss_hash = proj_hash(&s, sizeof s);        /* (nothing to save until the mode changes) */
+        wss_hash = wss_now();                      /* (nothing to save until the mode changes) */
         return;
     }
     play_boot(&wss, ok);
+    if (ok && wrt.active && wrt.id == wss.world && (uint32_t)n >= WSS_LOOP + 2u &&
+        (uint32_t)n >= WSS_LOOP + 2u + st_buf[WSS_LOOP] * (uint32_t)sizeof(step_t))   /* (play_boot leaves st_buf) */
+        prec_load((const step_t *)(st_buf + WSS_LOOP + 2u), st_buf[WSS_LOOP], st_buf[WSS_LOOP + 1u]);
     wpark_dirty = wpark_dirty && autosave_hash;    /* (a first boot parks the power-on project: nothing to keep) */
 }

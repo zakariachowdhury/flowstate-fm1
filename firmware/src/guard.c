@@ -6,8 +6,9 @@
  *
  *   notes        the keys track's range (an octave at least) and polyphony (smartkeys.c, H7-H9: gnote_t); loop
  *                follow (H12: a user-loop note that is an avoid note over the sounding chord plays the nearest chord
- *                tone); the record guard PLAY REC calls (Phase 10: a safe note, no duplicate in a step, a length
- *                inside the loop, at most GUARD max_notes a step, the quantise strength)
+ *                tone); the record guard play_rec.c calls (a note in key as it sounded, else a safe one, in range;
+ *                no duplicate in a step; a length inside the loop; at most GUARD max_notes a step; the quantise
+ *                strength)
  *   sound        each macro slot's range (macro.c mc_slot): the descriptor and the hard limits, then the World's
  *                soft caps (max_level, max_reso, max_dfdbk, max_rsize, max_dist, max_dust, GRAIN DENS) and its target
  *                ranges; then over the whole table (macro_eval): how many tracks may distort, and the sound
@@ -28,7 +29,7 @@
  *   guard_byte(g, off)           a fixed field, or its default
  *   guard_note_stage, guard_fold, guard_admit         smartkeys.c (main loop / ISR)
  *   guard_follows(t), guard_loop_note(n)              seq.c, audio ISR (H12)
- *   guard_rec_note, _dup, _room, _len, _quant         PLAY REC (Phase 10)
+ *   guard_rec_note, _dup, _room, _len, _quant         play_rec.c (PLAY REC), audio ISR
  *   guard_range(kind, t, id, e, &lo, &hi)             macro.c mc_slot (main loop)
  *   guard_sound(nt)                                   macro.c macro_eval (main loop)
  *   ov_effective(s, b, c)        what a slot makes of a base value (the ISR, the host's inspector)
@@ -148,10 +149,12 @@ static uint32_t guard_loop_note(uint32_t n)
     return (harm.safe >> (n % 12u) & 1u) ? n : guard_snap(n, harm.ct);
 }
 
-/* ---- the record guard (PLAY REC, Phase 10, design 6.2: play_rec.c through rec_target / step_add) */
-static uint32_t guard_rec_note(const gnote_t *g, uint32_t n)   /* a note to record: safe over the chord, in range */
+/* ---- the record guard (PLAY REC, design 6.2: play_rec.c, through seq.c rec_note / step_add) */
+/* a note to record: in key (the World scale, or a tone of the sounding chord: every Smart Keys note) as it sounded,
+ * else the nearest safe tone; in the range */
+static uint32_t guard_rec_note(const gnote_t *g, uint32_t n)
 {
-    if (harm.ci < hprog[hcur].n)
+    if (harm.ci < hprog[hcur].n && !(((uint32_t)hprog[hcur].scale | harm.ct) >> (n % 12u) & 1u))
         n = guard_loop_note(n);
     return guard_fold(g, (int32_t)n);
 }

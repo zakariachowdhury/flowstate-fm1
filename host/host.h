@@ -217,6 +217,8 @@ typedef struct {
     int filter, master;                      /* the DJ filter (-64..63); the master gain (4096 = unity) */
     int sel;                                 /* the selected track (the keys play it) */
     int voices, gated;                       /* synth voices sounding; those still held (gate on): after STOP 0 */
+    int rec, loop;                           /* PLAY REC (a World): 0 empty, 1 armed, 2 recording the take, 3 a loop,
+                                              * 4 overdub; the keys loop's notes */
 } host_state_t;
 void host_state(host_state_t *s);
 /* what a project file holds, without loading it: tempo, swing and per track the engine, sound, key, mix

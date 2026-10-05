@@ -780,6 +780,10 @@ static void world_commit(void)
                 wrt.cur_pat[t] = (uint8_t)np;
             }
         }
+        if (t == wrt.keys_trk && !wst.sw) {               /* the keys loop's length as it is now (PLAY REC closes */
+            wst.p[t][P_SLEN] = k->p[P_SLEN];             /* a take in the ISR: the stage's copy may be older) */
+            wst.p[t][P_SDIV] = k->p[P_SDIV];
+        }
         memcpy(k->p, wst.p[t], sizeof k->p);
         if (t < NPART)
             k->eng_req = wst.eng[t];
@@ -797,6 +801,7 @@ static void world_commit(void)
     sk_commit(wst.sw);
     arr_commit(&wst.et);                                  /* its ENERGY table, the band at the position (Phase 7) */
     if (wst.sw) {                                         /* a World switch: a different instrument */
+        prec_reset();                                     /* (its keys loop is cleared above: no take, no ring) */
         song.g[G_BPM] = wst.bpm;
         panic_req = (uint8_t)((1u << NTRK) - 1u);
         song.sel = wrt.keys_trk;
@@ -854,6 +859,7 @@ static void world_unload(void)                         /* back to SLOOP's paths 
     wbeat_pat = WF_NONE;
     ov_reset();                                           /* (no macro overlay, no vmod offset: SLOOP's sound) */
     guard_reset();
+    prec_reset();                                         /* (no PLAY REC, no keys grid offset) */
     fm1_irq_on();
 }
 
@@ -1110,8 +1116,9 @@ static void wreq_block(void)           /* world_block: audio ISR, a World playin
     wbeat_pat = WF_NONE;               /* (the stage carries the BEAT)  */
     for (t = 0; t < NTRK; t++)
         seq_release(&trk[t]);          /* the sequencer's notes (not the held keys): nothing hangs */
+    prec_rebase();                     /* (the keys loop, a take: on from where they are, play_rec.c) */
     world_commit();
-    seq_reset_tracks(clk_pos);         /* on the bar: every track from its step 0 */
+    seq_reset_tracks(clk_pos);         /* on the bar: every track from its step 0, the keys loop in its phase */
     wreq.bar = wreq.beat = 0;
 }
 

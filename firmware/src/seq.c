@@ -60,6 +60,15 @@ static uint32_t sk_voicing(uint32_t k, uint32_t n, uint8_t *nt);
 static int sk_admit(void);                             /* H9: the keys track's polyphony cap */
 static int sk_midi_map(track_t *t, uint32_t *note, int on);   /* H8 */
 static uint32_t sk_pulse(const track_t *t, uint32_t *list);   /* H11 */
+/* PLAY REC (play_rec.c): the keys track's loop in PLAY */
+static int prec_owns(const track_t *t);                /* PLAY REC records track t (the keys track in PLAY) */
+static uint32_t prec_note(track_t *t, uint32_t *note, uint32_t *abs, uint32_t *later);   /* the record guard */
+static void prec_micro(step_t *s);                     /* .. and the note's micro-timing */
+static void prec_mark(void);                           /* H10: the undo ring, a layer a pass */
+static int prec_arm(track_t *t);                       /* armed: a keys note starts the transport and the take */
+static void prec_block(void);                          /* H16: arm, close the take on its bar */
+static int prec_defer(const track_t *t, uint32_t idx, uint32_t abs);   /* H14: micro-timing */
+static int prec_wait(track_t *t, uint32_t abs, uint32_t into, uint32_t slen);
 #endif
 
 static uint32_t trk_index(const track_t *t) { return (uint32_t)(t - trk); }
@@ -214,6 +223,10 @@ static uint32_t grid_at(uint32_t den, uint32_t sw, uint32_t *into, uint32_t *len
 static uint32_t trk_grid(const track_t *t, uint32_t *into, uint32_t *len)
 {
     uint32_t den = DIV_DEN[(uint32_t)t->p[P_SDIV] % 6u];
+#if FELUCCA_WORLD
+    if (wrt.koff && t == &trk[wrt.keys_trk % NPART])  /* PLAY REC: the keys loop in phase through a scene's restart */
+        return grid_at(den, swing_units(t->p[P_SSWING] + song.g[G_SWING], BEAT_U / den), into, len) + wrt.koff;
+#endif
     return grid_at(den, swing_units(t->p[P_SSWING] + song.g[G_SWING], BEAT_U / den), into, len);
 }
 static uint32_t trk_len(const track_t *t) { return t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u; }
@@ -231,6 +244,12 @@ static uint32_t undo_sess = 1;           /* UI sessions (seq.c: recording passes
 static void undo_mark(const track_t *t, uint32_t sess)
 {
     uint32_t i = trk_index(t);
+#if FELUCCA_WORLD
+    if (prec_owns(t)) {
+        prec_mark();                                     /* H10: PLAY REC's ring, a layer a pass (play_rec.c) */
+        return;
+    }
+#endif
     if (undo.valid && !undo.undone && undo.trk == i && undo.sess == sess)
         return;                                          /* (this session is marked already) */
     memcpy(undo.st, t->step, sizeof undo.st);
@@ -296,8 +315,17 @@ static void step_add(track_t *t, uint32_t idx, uint32_t note, uint32_t vel, uint
 static void rec_note(track_t *t, uint32_t note, uint32_t vel, uint32_t rat, int hold)
 {
     uint32_t len = trk_len(t), later, abs = rec_target(t, &later), idx = abs % len, k;
+#if FELUCCA_WORLD
+    int pr = prec_owns(t);
+    if (pr && (idx = prec_note(t, &note, &abs, &later)) >= NSTEP)
+        return;                                     /* PLAY REC: the record guard keeps it out (it still sounds) */
+#endif
     undo_mark(t, UNDO_REC(t));
     step_add(t, idx, note, vel, vel_lvl(vel), rat);
+#if FELUCCA_WORLD
+    if (pr)
+        prec_micro(&t->step[idx]);                  /* .. gentle quantise: its micro-timing (play_rec.c) */
+#endif
     t->seq_active = 1;
     if (later) {                                    /* it sounds now: the step must not trigger it again */
         if (t->rskip_abs != abs)
@@ -758,6 +786,10 @@ static void arp_tick(track_t *t, uint32_t adv)
  * note is the downbeat (the transport starts, recording on) */
 static void arm_start(track_t *t)
 {
+#if FELUCCA_WORLD
+    if (prec_arm(t))
+        return;                                   /* PLAY REC armed: this note starts the transport (play_rec.c) */
+#endif
     if (!rec_wait || t != TSEL || song.playing)
         return;
     if (project_empty()) {
@@ -1477,6 +1509,35 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
     }
 }
 
+/* play synth step idx of track t, at grid step abs (slen units long): what live recording sounds already is skipped */
+static void syn_step(track_t *t, uint32_t idx, uint32_t abs, uint32_t slen)
+{
+    const step_t *s = &t->step[idx];
+    uint32_t skip = 0, i, k;
+#if FELUCCA_WORLD
+    step_t lf;
+#endif
+    if (t->rskip_n && t->rskip_abs == abs)
+        for (i = 0; i < s->n; i++)
+            for (k = 0; k < t->rskip_n; k++)
+                if (s->note[i] == t->rskip[k])
+                    skip |= 1u << i;
+    t->rskip_n = 0;
+#if FELUCCA_WORLD
+    if (wrt.active && s->time == ST_NOTE && !arr_plays(trk_index(t), idx)) {
+        static const step_t rest = {{0, 0, 0, 0}, 0, ST_REST, 0, 0, 0, 0};
+        s = &rest;                                   /* H14: the ENERGY band's play mask: this NOTE rests */
+    }
+    if (s->time == ST_NOTE && guard_follows(t)) {   /* H12: the keys loop follows the chord (guard.c) */
+        lf = *s;
+        for (i = 0; i < lf.n; i++)
+            lf.note[i] = (uint8_t)guard_loop_note(lf.note[i]);
+        s = &lf;
+    }
+#endif
+    seq_step(t, s, slen, skip);
+}
+
 static void seq_tick(track_t *t, uint32_t adv)
 {
     uint32_t len = trk_len(t), into, slen, abs, idx;
@@ -1511,33 +1572,17 @@ static void seq_tick(track_t *t, uint32_t adv)
 #endif
             drum_step(t, ds, skip);
         } else {
-            const step_t *s = &t->step[idx];
-            uint32_t skip = 0, i, k;
-#if FELUCCA_WORLD
-            step_t lf;
-#endif
             rec_hold(t, idx, len, abs);
-            if (t->rskip_n && t->rskip_abs == abs)
-                for (i = 0; i < s->n; i++)
-                    for (k = 0; k < t->rskip_n; k++)
-                        if (s->note[i] == t->rskip[k])
-                            skip |= 1u << i;
-            t->rskip_n = 0;
 #if FELUCCA_WORLD
-            if (wrt.active && s->time == ST_NOTE && !arr_plays(trk_index(t), idx)) {
-                static const step_t rest = {{0, 0, 0, 0}, 0, ST_REST, 0, 0, 0, 0};
-                s = &rest;                           /* H14: the ENERGY band's play mask: this NOTE rests */
-            }
-            if (s->time == ST_NOTE && guard_follows(t)) {   /* H12: the keys loop follows the chord (guard.c) */
-                lf = *s;
-                for (i = 0; i < lf.n; i++)
-                    lf.note[i] = (uint8_t)guard_loop_note(lf.note[i]);
-                s = &lf;
-            }
+            if (!prec_defer(t, idx, abs))           /* H14: micro-timing: a step that sounds later in it (play_rec.c) */
 #endif
-            seq_step(t, s, slen, skip);
+                syn_step(t, idx, abs, slen);
         }
     }
+#if FELUCCA_WORLD
+    if (prec_wait(t, abs, into, slen))
+        return;                                      /* H14: the step waits for its micro-timing (its ratchets too) */
+#endif
     seq_ratchets(t, into, slen);
 }
 
@@ -1670,6 +1715,9 @@ static void events_block(uint32_t n)
             input_off(t, d1);
         }
     }
+#if FELUCCA_WORLD
+    prec_block();                                     /* H16: PLAY REC: armed, the take closed on its bar (play_rec.c) */
+#endif
     for (i = 0; i < NTRK; i++)
         seq_tick(&trk[i], adv);
     click_tick();

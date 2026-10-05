@@ -43,6 +43,7 @@
 #include "smartkeys.c"
 #include "macro.c"
 #include "arrange.c"
+#include "play_rec.c"
 #endif
 #include "audio.c"
 #include "panel.c"
@@ -438,6 +439,9 @@ void host_state(host_state_t *s)
         }
 #if FELUCCA_WORLD
     if (wrt.active) {                            /* a World's scenes, not the sections */
+        s->rec = prec.st;
+        for (k = 0; k < NSTEP; k++)
+            s->loop += trk[wrt.keys_trk % NPART].step[k].time == ST_NOTE ? trk[wrt.keys_trk % NPART].step[k].n : 0;
         s->scene = wrt.scene;
         s->scene_next = wst.st == WST_READY && wst.scene != wrt.scene ? wst.scene : -1;
     }
