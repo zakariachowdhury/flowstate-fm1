@@ -47,7 +47,7 @@ $(BIN)/sloop-examples: examples.c $(CORE)
 # output device's latency from CoreAudio (a system framework SDL2 itself uses)
 SDL2_CONFIG ?= sdl2-config
 SDL2 := $(shell command -v $(SDL2_CONFIG) 2>/dev/null)
-SIM := $(addprefix sim/,main.c engine.c audio.c cmd.c canvas.c panel.c)
+SIM := $(addprefix sim/,main.c engine.c studio.c audio.c cmd.c canvas.c keys.c panel.c studio_view.c)
 SIM_LIBS := $(if $(filter Darwin,$(shell uname -s)),-framework CoreAudio)
 ifneq ($(SDL2),)
 sim: $(BIN)/flowstate-sim

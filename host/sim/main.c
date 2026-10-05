@@ -1,11 +1,15 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* flowstate-sim: the FM-1 firmware (SLOOP 2.1, the shared core of Flowstate) in real time on the Mac,
- * through SDL2: the window shows the LCD and the panel, the computer keyboard and the mouse play it, the
- * audio goes to the default output. docs/simulator.md.
+ * through SDL2. Two views: FLOWSTATE STUDIO (UI spec §12: the World, scenes, the four macros, performance
+ * buttons, tracks, the keys) and ADVANCED (the FM-1 itself: the LCD and the whole panel); Tab or the tabs
+ * switch. The computer keyboard and the mouse play it, the audio goes to the default output.
+ * docs/simulator.md.
  *
  *   flowstate-sim [options]
- *   --project FILE.fun4   load this project at boot (as LOAD does)
- *   --demo                examples/projects/groove.fun4, with four scenes of it in sections A..D
+ *   --world NAME          load this (stand-in) World at boot, with its four scenes in sections A..D
+ *   --demo                --world GROOVE (examples/projects/groove.fun4)
+ *   --worlds DIR          the stand-in Worlds: the projects in DIR (default examples/projects)
+ *   --project FILE.fun4   load this project at boot (as LOAD does), no World
  *   --flash FILE          the 1 MiB NOR image: read at boot, written after the firmware writes and at exit
  *                         (SAVE, autosave, sections, settings and user presets survive a restart)
  *   --buffer FRAMES       the audio device's buffer (default 672: 15.2 ms); also the null sink's period
@@ -18,6 +22,7 @@
  *   --stats               the metrics once a second (they are also on the status line)
  *   --wav FILE            what the sink played (headless: all of it; with a window: up to 120 s)
  *   --screen FILE.ppm     the LCD at the end;  --shot FILE.bmp  the whole window at the end (no window needed)
+ *   --advanced            start in ADVANCED (and --shot draws it);  --inspect  the inspector open
  *   --verbose
  * Exit status: 0, or 1 when a script expectation failed or a file could not be read. */
 #define SDL_MAIN_HANDLED
@@ -26,6 +31,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __APPLE__
+#include <pthread.h>
+#endif
 #include "sim.h"
 
 /* SDL 2 on macOS keeps 2 * ceil(15 ms / buffer) AudioQueue buffers in flight under 15 ms, 2 from 15 ms
@@ -37,7 +45,8 @@
 
 static void usage(void)
 {
-    fprintf(stderr, "usage: flowstate-sim [--project FILE.fun4 | --demo] [--flash FILE] [--buffer FRAMES] [--fifo FRAMES]\n"
+    fprintf(stderr, "usage: flowstate-sim [--world NAME | --demo | --project FILE.fun4] [--worlds DIR] [--flash FILE]\n"
+                    "                     [--buffer FRAMES] [--fifo FRAMES] [--advanced] [--inspect]\n"
                     "                     [--headless SECONDS [--device] [--fast]] [--mute-output] [--script TEXT|FILE]\n"
                     "                     [--stats] [--wav FILE] [--screen FILE.ppm] [--shot FILE.bmp] [--verbose]\n");
     exit(2);
@@ -47,7 +56,7 @@ static sim_dev_t dev;
 static sim_opts_t opt;
 static struct {                                  /* the window: frames shown and the drawing's cost */
     uint32_t frames;
-    double draw_sum, draw_max;
+    double draw_sum, draw_max, up_sum;           /* drawing the view; handing it to SDL (the texture) */
 } disp;
 
 /* ---- the metrics, as words */
@@ -61,7 +70,7 @@ static void status_lines(const sim_snap_t *s, const sim_sink_stats_t *k, char *l
 {
     const host_state_t *st = &s->st;
     double fm, qm, lat = latency_ms(k, &fm, &qm);
-    char mute[5], hal[24] = "";
+    char mute[5], hal[24] = "", drift[24];
     int i;
     if (dev.hal_rate)
         snprintf(hal, sizeof hal, " + %.1f hal", dev.hal_frames * 1e3 / dev.hal_rate);
@@ -78,9 +87,10 @@ static void status_lines(const sim_snap_t *s, const sim_sink_stats_t *k, char *l
         snprintf(l2, n, "measuring ...");
         return;
     }
+    snprintf(drift, sizeof drift, opt.fast ? "-" : "%+.0fppm", k->drift_ppm);
     snprintf(l2, n, "LATENCY %.1f ms = %.1f fifo + %.1f queue%s  UNDERRUNS %llu  FILL %.0f..%.0f  CPU %.1f%% max %.0f  "
-             "PASS sd %.1f  DRIFT %+.0fppm", lat, fm, qm, hal, (unsigned long long)k->underruns_total, k->fill_min,
-             k->fill_max, s->fw.cpu_avg, s->fw.cpu_max, s->fw.pass_ms_sd, k->drift_ppm);
+             "PASS sd %.1f  DRIFT %s", lat, fm, qm, hal, (unsigned long long)k->underruns_total, k->fill_min,
+             k->fill_max, s->fw.cpu_avg, s->fw.cpu_max, s->fw.pass_ms_sd, drift);
 }
 static void print_stats(const sim_snap_t *s, const sim_sink_stats_t *k)
 {
@@ -97,10 +107,11 @@ static void print_stats(const sim_snap_t *s, const sim_sink_stats_t *k)
            s->fw.ui_us_max, s->fw.pass_ms, s->fw.pass_ms_min, s->fw.pass_ms_max, s->fw.pass_ms_sd, drift,
            s->fw.rms_db, s->fw.peak_db);
     if (!opt.headless) {                         /* (once a second, with the sink's windows) */
-        printf("        window: %u frames shown, drawing %.2f ms (max %.2f)\n", disp.frames,
-               disp.frames ? 1e3 * disp.draw_sum / disp.frames : 0, 1e3 * disp.draw_max);
+        printf("        window: %u frames shown, drawing %.2f ms (max %.2f), texture upload %.2f ms\n", disp.frames,
+               disp.frames ? 1e3 * disp.draw_sum / disp.frames : 0, 1e3 * disp.draw_max,
+               disp.frames ? 1e3 * disp.up_sum / disp.frames : 0);
         disp.frames = 0;
-        disp.draw_sum = disp.draw_max = 0;
+        disp.draw_sum = disp.draw_max = disp.up_sum = 0;
     }
     fflush(stdout);
 }
@@ -153,6 +164,30 @@ static void report(const sim_snap_t *s, const sim_sink_stats_t *k, uint64_t rend
     fflush(stdout);
 }
 
+/* ---- the window: a view, the tabs over it, the inspector */
+void tabs_draw(canvas_t *c, int advanced)
+{
+    static const char *const T[2] = {"STUDIO", "ADVANCED"};
+    int i;
+    for (i = 0; i < 2; i++) {
+        int x = TAB_X + i * (TAB_W + 4), on = i == advanced;
+        uint32_t accent = RGBX(124, 96, 255);
+        c_frame(c, x, TAB_Y, TAB_W, TAB_H, 8.0f, 1.0f, on ? accent : RGBX(52, 54, 64),
+                on ? c_mix(RGBX(19, 20, 25), accent, 120) : RGBX(22, 23, 28));
+        c_text_c(c, x + TAB_W / 2, TAB_Y + 7, T[i], on ? RGBX(240, 240, 246) : RGBX(128, 132, 146));
+    }
+}
+static void draw(canvas_t *c, const sim_snap_t *s, int advanced, int inspect, const char *l1, const char *l2)
+{
+    if (advanced)
+        panel_draw(c, s, l1, l2);
+    else
+        studio_view_draw(c, s, l1, l2);
+    if (inspect)
+        inspector_draw(c, s);
+    tabs_draw(c, advanced);
+}
+
 static const char *base_dir(void)
 {
     static char b[1024];
@@ -174,13 +209,18 @@ int main(int argc, char **argv)
     SDL_Window *win = NULL;
     SDL_Renderer *ren = NULL;
     SDL_Texture *tex = NULL;
-    canvas_t cv = {NULL, PANEL_W, PANEL_H};
+    canvas_t cv = {NULL, SIM_W, SIM_H};
+    int advanced, inspect;
     char l1[256] = "", l2[256] = "";
     opt.buffer = DEFAULT_BUFFER;
     for (i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         if (!strcmp(a, "--project") && v) opt.project = v, i++;
         else if (!strcmp(a, "--demo")) opt.demo = 1;
+        else if (!strcmp(a, "--world") && v) opt.world = v, i++;
+        else if (!strcmp(a, "--worlds") && v) opt.worlds = v, i++;
+        else if (!strcmp(a, "--advanced")) opt.advanced = 1;
+        else if (!strcmp(a, "--inspect")) opt.inspect = 1;
         else if (!strcmp(a, "--flash") && v) opt.flash = v, i++;
         else if (!strcmp(a, "--buffer") && v) opt.buffer = atoi(v), i++;
         else if (!strcmp(a, "--fifo") && v) opt.fifo = atoi(v), i++;
@@ -199,6 +239,10 @@ int main(int argc, char **argv)
     if (opt.buffer < 32 || opt.buffer > 8192 || opt.fifo < 0 || opt.fifo > (int)SIM_FIFO_CAP - 1024 ||
         opt.headless < 0 || (opt.fast && (!opt.headless || opt.device)) || (opt.device && !opt.headless))
         usage();
+    if (opt.demo && !opt.world)
+        opt.world = "GROOVE";
+    advanced = opt.advanced;
+    inspect = opt.inspect;
     if (opt.script) {
         char err[256];
         if (cmd_script(opt.script, &steps, &nsteps, err, sizeof err)) {
@@ -212,21 +256,24 @@ int main(int argc, char **argv)
     }
     opt.base = base_dir();
     printf("flowstate-sim: %s, the real firmware (engines, sequencer, FX, UI, flash) in real time\n", host_version());
-    panel_init(!opt.headless);
+    keys_init(!opt.headless);
     if (!opt.headless || opt.verbose)
-        panel_print_mapping();
-    if (!(cv.px = calloc((size_t)PANEL_W * PANEL_H, 4)))
+        keys_print_mapping();
+    if (!(cv.px = calloc((size_t)SIM_W * SIM_H, 4)))
         return 1;
     if (!opt.headless) {
+#ifdef __APPLE__
+        pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);   /* (the window: never an efficiency core) */
+#endif
         SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
         SDL_Rect ub;
-        int ww = PANEL_W, wh = PANEL_H;
+        int ww = SIM_W, wh = SIM_H;
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");   /* (as the preview: crisp pixels) */
         if (SDL_GetDisplayUsableBounds(0, &ub) == 0 && ub.h - 40 < wh) {   /* a small screen: smaller, same shape */
             wh = ub.h - 40;
-            ww = PANEL_W * wh / PANEL_H;
+            ww = SIM_W * wh / SIM_H;
         }
-        win = SDL_CreateWindow("flowstate-sim - the FM-1 firmware in real time", SDL_WINDOWPOS_CENTERED,
+        win = SDL_CreateWindow("FLOWSTATE STUDIO - flowstate-sim", SDL_WINDOWPOS_CENTERED,
                                SDL_WINDOWPOS_CENTERED, ww, wh, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE);
         if (!win) {
             fprintf(stderr, "flowstate-sim: SDL_CreateWindow: %s\n", SDL_GetError());
@@ -235,8 +282,8 @@ int main(int argc, char **argv)
         ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
         if (!ren)
             ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
-        SDL_RenderSetLogicalSize(ren, PANEL_W, PANEL_H);   /* scaled, letterboxed; the mouse in panel units */
-        tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, PANEL_W, PANEL_H);
+        SDL_RenderSetLogicalSize(ren, SIM_W, SIM_H);   /* scaled, letterboxed; the mouse in window units */
+        tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SIM_W, SIM_H);
         SDL_StopTextInput();                     /* no press-and-hold accent popup on held letters */
     }
     sink_open(&opt, &dev);
@@ -281,14 +328,45 @@ int main(int argc, char **argv)
                 case SDL_QUIT: quit = 1; break;
                 case SDL_WINDOWEVENT:
                     if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
-                        panel_focus_lost();
+                        keys_focus_lost();
+                    seen = 0;                    /* (redraw) */
                     break;
                 case SDL_KEYDOWN:
-                case SDL_KEYUP: panel_key(&e.key, e.type == SDL_KEYDOWN, &quit); break;
+                case SDL_KEYUP:
+                    switch (keys_event(&e.key, e.type == SDL_KEYDOWN, !advanced)) {
+                    case KA_QUIT:                /* Esc: the inspector, then a World being chosen, then quit */
+                        if (inspect)
+                            inspect = 0;
+                        else if (snap.studio.browse >= 0 || snap.studio.pending >= 0)
+                            keys_send(OP_WORLD, WA_CANCEL, 0, 0);
+                        else
+                            quit = 1;
+                        break;
+                    case KA_VIEW: advanced = !advanced; break;
+                    case KA_INSPECT: inspect = !inspect; break;
+                    default: break;
+                    }
+                    seen = 0;
+                    break;
                 case SDL_MOUSEBUTTONDOWN:
+                    if (e.button.y >= TAB_Y && e.button.y < TAB_Y + TAB_H && e.button.x >= TAB_X &&
+                        e.button.x < TAB_X + 2 * TAB_W + 4) {   /* the tabs */
+                        advanced = e.button.x >= TAB_X + TAB_W + 4;
+                        seen = 0;
+                        break;
+                    }
+                    if (inspect && e.button.x >= 560)   /* (the inspector covers that side) */
+                        break;
+                    /* fall through */
                 case SDL_MOUSEBUTTONUP:
                 case SDL_MOUSEMOTION:
-                case SDL_MOUSEWHEEL: panel_mouse(&e); break;
+                case SDL_MOUSEWHEEL:
+                    if (advanced)
+                        panel_mouse(&e);
+                    else
+                        studio_view_mouse(&e, &snap);
+                    seen = 0;
+                    break;
                 default: break;
                 }
             }
@@ -306,9 +384,10 @@ int main(int argc, char **argv)
             {
                 double t0 = sim_now(), dt;
                 status_lines(&snap, &ks, l1, l2, sizeof l1);
-                panel_draw(&cv, &snap, l1, l2);
-                SDL_UpdateTexture(tex, NULL, cv.px, PANEL_W * 4);
+                draw(&cv, &snap, advanced, inspect, l1, l2);
                 dt = sim_now() - t0;
+                SDL_UpdateTexture(tex, NULL, cv.px, SIM_W * 4);
+                disp.up_sum += sim_now() - t0 - dt;
                 disp.frames++;
                 disp.draw_sum += dt;
                 disp.draw_max = dt > disp.draw_max ? dt : disp.draw_max;
@@ -327,7 +406,7 @@ int main(int argc, char **argv)
     sink_stats(&ks);
     if (opt.shot) {
         status_lines(&snap, &ks, l1, l2, sizeof l1);
-        panel_draw(&cv, &snap, l1, l2);
+        draw(&cv, &snap, advanced, inspect, l1, l2);
         if (c_save_bmp(&cv, opt.shot)) {
             fprintf(stderr, "flowstate-sim: cannot write %s\n", opt.shot);
             rc = 1;

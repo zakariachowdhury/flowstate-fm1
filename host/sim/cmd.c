@@ -14,18 +14,24 @@
  *   key K [down|up]            K: 1..27 or F3..G5; without down / up a tap (held for one main-loop pass)
  *   button NAME [down|up]      FX SCL ENV LFO EDIT GLO HOME SAVE ARP SEQ PLAY REC OCT- OCT+
  *   turn ENC STEPS             SELECT ALGO PRESET K1..K4 MASTER (+ = clockwise)
+ *   world NAME|N|next|prev     choose a World (the current one plays on); confirm loads it (at once while
+ *   confirm | cancel           stopped, on the next bar while playing); cancel forgets the choice
+ *   macro NAME|N V|+S|-S       COLOR MOTION SPACE ENERGY (1..4), 0..100
+ *   select N                   the track the keys play (1..4)
  *   print                      the state on stdout
- *   expect FIELD OP VALUE      playing scene next bpm filter mute1..4 level1..4 rms peak time master;
- *                              = != < <= > >=; a number, A..D or - (no scene). A failure: exit status 1
+ *   expect FIELD OP VALUE      playing scene next bpm filter mute1..4 level1..4 macro1..4 sel rms peak time master
+ *                              (numbers; A..D or - for a scene), world browse pending (a World's name or -);
+ *                              = != < <= > >= (names: = !=). A failure: exit status 1
  *   quit */
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "sim.h"
 
 static const char *const FIELD[F_NF] = {"playing", "scene", "next", "bpm", "filter", "mute", "level", "rms",
-                                        "peak", "time", "master"};
+                                        "peak", "time", "master", "macro", "sel", "world", "browse", "pending"};
 const char *cmd_field_name(int f) { return f >= 0 && f < F_NF ? FIELD[f] : "?"; }
 const char *cmd_scene_name(int s)
 {
@@ -108,6 +114,34 @@ static int parse(char **w, int n, sim_cmd_t *c)
         c->rel = b[0] == '+' || b[0] == '-';
         if (!num(b, &c->v))
             return -1;
+    } else if (ieq(w[0], "world") && n == 2) {
+        c->op = OP_WORLD;
+        if (ieq(a, "next") || ieq(a, "prev")) {
+            c->a = WA_STEP;
+            c->v = ieq(a, "next") ? 1 : -1;
+        } else if (num(a, &c->v)) {
+            c->a = WA_PICK;
+            c->v--;
+        } else {
+            c->a = WA_NAME;
+            snprintf(c->s, sizeof c->s, "%s", a);
+        }
+    } else if ((ieq(w[0], "confirm") || ieq(w[0], "cancel")) && n == 1) {
+        c->op = OP_WORLD;
+        c->a = ieq(w[0], "confirm") ? WA_CONFIRM : WA_CANCEL;
+    } else if (ieq(w[0], "macro") && n == 3) {
+        for (i = 0; i < 4 && !ieq(a, MACRO_NAME[i]); i++)
+            ;
+        if (i == 4 && (!num(a, &v) || v < 1 || v > 4))
+            return -1;
+        c->op = OP_MACRO;
+        c->a = (uint8_t)(i < 4 ? i : v - 1);
+        c->rel = b[0] == '+' || b[0] == '-';
+        if (!num(b, &c->v))
+            return -1;
+    } else if (ieq(w[0], "select") && n == 2 && num(a, &v) && v >= 1 && v <= 4) {
+        c->op = OP_SELECT;
+        c->a = (uint8_t)(v - 1);
     } else if (ieq(w[0], "master") && n == 2 && num(a, &c->v)) {
         c->op = OP_MASTER;
     } else if ((ieq(w[0], "key") || ieq(w[0], "button")) && (n == 2 || n == 3)) {
@@ -140,11 +174,12 @@ static int parse(char **w, int n, sim_cmd_t *c)
         c->op = OP_EXPECT;
         for (f = 0; f < F_NF; f++) {
             size_t l = strlen(FIELD[f]);
-            if ((f == F_MUTE || f == F_LEVEL) && !strncmp(a, FIELD[f], l) && a[l] >= '1' && a[l] <= '4' && !a[l + 1]) {
+            int indexed = f == F_MUTE || f == F_LEVEL || f == F_MACRO;
+            if (indexed && !strncmp(a, FIELD[f], l) && a[l] >= '1' && a[l] <= '4' && !a[l + 1]) {
                 c->rel = (uint8_t)(a[l] - '1');
                 break;
             }
-            if (f != F_MUTE && f != F_LEVEL && ieq(a, FIELD[f]))
+            if (!indexed && ieq(a, FIELD[f]))
                 break;
         }
         for (i = 0; i < 6 && strcmp(b, OPS[i]); i++)
@@ -153,7 +188,11 @@ static int parse(char **w, int n, sim_cmd_t *c)
             return -1;
         c->a = (uint8_t)f;
         c->cmp = (uint8_t)i;
-        if (f == F_SCENE || f == F_NEXT) {
+        if (f >= F_WORLD) {
+            if (c->cmp > CMP_NE)
+                return -1;
+            snprintf(c->s, sizeof c->s, "%s", w[3]);
+        } else if (f == F_SCENE || f == F_NEXT) {
             if (scene_of(w[3]) < -1)
                 return -1;
             c->v = scene_of(w[3]);

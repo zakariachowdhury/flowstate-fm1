@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include "sim.h"
 #include "ring.h"
@@ -164,6 +165,8 @@ static double field(int f, int trk, const host_state_t *st)
     case F_PEAK: return meter_peak();
     case F_TIME: return (double)host_frames() / HOST_FS;
     case F_MASTER: return E.master_adc;
+    case F_MACRO: return studio_macro(trk);
+    case F_SEL: return st->sel + 1;
     default: return 0;
     }
 }
@@ -176,6 +179,9 @@ static void print_state(void)
            cmd_scene_name(st.scene_next), st.beat, st.bpm, st.filter, st.t[0].mute, st.t[1].mute, st.t[2].mute,
            st.t[3].mute, st.t[0].level, st.t[1].level, st.t[2].level, st.t[3].level, E.master_adc, meter_rms(),
            meter_peak());
+    printf("       world=%s browse=%s pending=%s macros=%d,%d,%d,%d sel=%d\n", studio_name_field(F_WORLD),
+           studio_name_field(F_BROWSE), studio_name_field(F_PENDING), studio_macro(0), studio_macro(1), studio_macro(2),
+           studio_macro(3), st.sel + 1);
     fflush(stdout);
 }
 static void expect(const sim_cmd_t *c)
@@ -185,6 +191,16 @@ static void expect(const sim_cmd_t *c)
     double v, want = c->v;
     int ok;
     host_state(&st);
+    if (c->a >= F_WORLD) {                       /* a World's name */
+        const char *got = studio_name_field(c->a);
+        ok = !strcasecmp(got, c->s) == (c->cmp == CMP_EQ);
+        printf("expect: t=%.3f %s %s %s: %s (%s)\n", (double)host_frames() / HOST_FS, cmd_field_name(c->a),
+               OPS[c->cmp], c->s, ok ? "ok" : "FAIL", got);
+        fflush(stdout);
+        if (!ok)
+            AT_ADD(&E.failures, 1);
+        return;
+    }
     v = field(c->a, c->rel, &st);
     switch (c->cmp) {
     case CMP_EQ: ok = v == want; break;
@@ -199,7 +215,7 @@ static void expect(const sim_cmd_t *c)
                OPS[c->cmp], cmd_scene_name(c->v), ok ? "ok" : "FAIL", cmd_scene_name((int)v));
     else
         printf("expect: t=%.3f %s%s %s %d: %s (%.1f)\n", (double)host_frames() / HOST_FS, cmd_field_name(c->a),
-               c->a == F_MUTE || c->a == F_LEVEL ? (const char *[]){"1", "2", "3", "4"}[c->rel & 3] : "",
+               c->a == F_MUTE || c->a == F_LEVEL || c->a == F_MACRO ? (const char *[]){"1", "2", "3", "4"}[c->rel & 3] : "",
                OPS[c->cmp], c->v, ok ? "ok" : "FAIL", v);
     fflush(stdout);
     if (!ok)
@@ -266,6 +282,9 @@ static void exec(const sim_cmd_t *c)
         E.master_adc = c->v < 0 ? 0 : c->v > 1023 ? 1023 : c->v;
         host_master_pot(E.master_adc);
         break;
+    case OP_MACRO:
+    case OP_WORLD:
+    case OP_SELECT: studio_exec(c); break;
     case OP_PRINT: print_state(); break;
     case OP_EXPECT: expect(c); break;
     case OP_QUIT: AT_STORE(&E.done, 1); break;
@@ -309,8 +328,11 @@ static void publish(void)
         s->led_key[i] = (uint8_t)host_led(14u + i);
     s->notes = E.cur_notes;
     s->buttons = E.cur_btns;
-    if (E.booted)
+    if (E.booted) {
         host_state(&s->st);
+        studio_fill(&s->studio);
+        s->nparams = host_track_params((uint32_t)s->st.sel, s->params, SIM_PARAMS);
+    }
     s->fw = E.fw;
     seq_write_end(&snap[k].lock);
     AT_STORE(&snap_latest, k);
@@ -419,6 +441,7 @@ static void render_block(void)
     uint32_t i;
     take_cmds(0);
     run_script();
+    studio_block();
     apply_inputs();
     if (E.blocks % HOST_FRAME_BLOCKS == 0)
         ui_pass();
@@ -453,45 +476,6 @@ static void on_yield(const int16_t *pcm, uint32_t frames, void *ctx)
     }
 }
 
-static int find_example(char *path, size_t n, const char *name)
-{
-    const char *dirs[3] = {E.o.base, "", NULL};
-    int i;
-    for (i = 0; i < 2; i++) {
-        FILE *f;
-        snprintf(path, n, "%s%sexamples/projects/%s", dirs[i] ? dirs[i] : "", dirs[i] && *dirs[i] ? "../../" : "",
-                 name);
-        if ((f = fopen(path, "rb"))) {
-            fclose(f);
-            return 0;
-        }
-    }
-    return -1;
-}
-
-/* --demo: groove (120 BPM, A minor) as the working project, and four scenes of it in sections A..D, told
- * apart by which tracks play (1 bass, 2 keys, 3 flute, 4 drums): A all, B no drums or bass (breakdown),
- * C drums and bass, D drums and keys. Musical Worlds replace this in Phase 5. */
-static int demo(void)
-{
-    static const uint8_t MUTED[4] = {0x0, 0x9, 0x6, 0x5};
-    char path[1024];
-    int s, k;
-    if (find_example(path, sizeof path, "groove.fun4") || host_project_load(path) < 0) {
-        fprintf(stderr, "flowstate-sim: --demo: cannot load examples/projects/groove.fun4\n");
-        return -1;
-    }
-    for (s = 0; s < 4; s++) {
-        for (k = 0; k < HOST_NTRK; k++)
-            host_track_set((uint32_t)k, HOST_T_MUTE, MUTED[s] >> k & 1);
-        host_section_store((uint32_t)s);
-    }
-    host_scene(0);                               /* (stopped: A is the working project) */
-    if (E.o.verbose)
-        printf("demo: %s; sections A all, B keys + flute, C drums + bass, D drums + keys\n", path);
-    return 0;
-}
-
 static int SDLCALL fw_thread(void *u)
 {
     (void)u;
@@ -503,13 +487,16 @@ static int SDLCALL fw_thread(void *u)
         return 1;
     }
     E.master_adc = 1023;                         /* (host_boot: the pot fully up, unity) */
-    if ((E.o.demo && demo()) || (E.o.project && host_project_load(E.o.project) < 0)) {
+    studio_init(&E.o);                           /* the stand-in Worlds; --demo: GROOVE */
+    if ((E.o.world && studio_load(E.o.world)) || (E.o.project && host_project_load(E.o.project) < 0)) {
         if (E.o.project)
             fprintf(stderr, "flowstate-sim: %s: cannot load the project\n", E.o.project);
         AT_STORE(&E.failures, E.failures + 1);
         AT_STORE(&E.done, 1);
         return 1;
     }
+    if (E.o.project)
+        studio_project_loaded(E.o.project);
     E.flash_seen = host_flash_changes();
     E.flash_dirty = E.o.flash != NULL;           /* (a new image, or the boot wrote: save it once) */
     E.flash_t = sim_now();
