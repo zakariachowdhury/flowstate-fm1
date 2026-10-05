@@ -3,6 +3,9 @@
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 # Host tests (no hardware). Run from the repo root after ./build.sh:
 #   tests/run_tests.sh
+#   tests/run_tests.sh --host-only   without ./build.sh (no toolchain, Docker or SDK): makes build/gen if
+#                                    missing (tools/build.py --gen-only), skips the tests that need the target
+#                                    build (M-UPGRADE entry, update loader, target cost of the render loops)
 #
 # Regression suite (tests/regress.c, tests/target_budget.py; details at the top of regress.c):
 #   golden renders  every engine x preset, the drum kit, voice modes, FX sends, a 4-track mix: one hash
@@ -25,7 +28,19 @@ CC="${CC:-cc} -O1 -Wall -Wno-unused-function"
 fail=0
 run() { echo "== $1"; shift; "$@" || fail=1; }
 
-[ -f build/felucca.fwsc ] || { echo "run ./build.sh first"; exit 1; }
+host_only=0
+case "$1" in
+    "") ;;
+    --host-only) host_only=1 ;;
+    *) echo "usage: tests/run_tests.sh [--host-only]"; exit 2 ;;
+esac
+target() { if [ $host_only = 1 ]; then echo "== skip $1 (needs the target build)"; else run "$@"; fi; }
+
+if [ $host_only = 1 ]; then
+    [ -d build/gen ] || python3 tools/build.py --gen-only
+else
+    [ -f build/felucca.fwsc ] || { echo "run ./build.sh first"; exit 1; }
+fi
 
 $CC -o "$OUT/storage_test" tests/storage_test.c
 run "flash storage (A/B, torn writes)" "$OUT/storage_test"
@@ -63,12 +78,14 @@ $CC -o "$OUT/midi_uart_test" tests/midi_uart_test.c
 run "TRS MIDI parser" "$OUT/midi_uart_test"
 
 $CC -o "$OUT/ota_test" tests/ota_test.c
-run "M-UPGRADE entry" "$OUT/ota_test" build/felucca.fwsc
+target "M-UPGRADE entry" "$OUT/ota_test" build/felucca.fwsc
 
-head -c 200000 build/felucca.bin > "$OUT/old_app.bin"
-python3 tools/fm1pkg_make.py "$OUT/old_app.bin" build/loader/ota.bin "$OUT/old.fwsc" >/dev/null
+if [ $host_only = 0 ]; then
+    head -c 200000 build/felucca.bin > "$OUT/old_app.bin"
+    python3 tools/fm1pkg_make.py "$OUT/old_app.bin" build/loader/ota.bin "$OUT/old.fwsc" >/dev/null
+fi
 $CC -o "$OUT/ldr_test" tests/ldr_test.c
-run "update loader: other app -> this build" "$OUT/ldr_test" "$OUT/old.fwsc" build/felucca.fwsc
+target "update loader: other app -> this build" "$OUT/ldr_test" "$OUT/old.fwsc" build/felucca.fwsc
 
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/hostsim" tests/hostsim.c -lm
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/scale_test" tests/scale_test.c -lm
@@ -85,7 +102,7 @@ $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/regress" tests/regress.c -lm
 run "regression: golden renders, health, voices, CPU budget" "$OUT/regress" tests/golden.txt tests/cpu_baseline.txt
 # SLICE (tests/slice_test.c) needs a FELUCCA_SLICE=1 build; the engine is not built by default
 
-run "regression: target cost of the render loops" python3 tests/target_budget.py \
+target "regression: target cost of the render loops" python3 tests/target_budget.py \
     build/felucca.dis tests/target_budget.txt
 
 run "installer CLI (fm1_install.py) against a simulated FM-1" python3 tests/install_test.py
