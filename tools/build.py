@@ -36,7 +36,9 @@ APP_XIP = 0x02000120                # app.bin offset 0 in the XIP map; the SPL j
 APP_SLOT = fm1pkg_make.APP_SLOT
 LOADER_LOAD = 0x01C0A800
 LOADER_NAME = b"usb_hid_ota.bin"    # the file name the SPL looks for
-DOCKER_IMAGE = os.environ.get("JIELI_DOCKER_IMAGE", "debian:bookworm-slim")
+DOCKER_IMAGE = os.environ.get("JIELI_DOCKER_IMAGE",    # pinned by digest (multi-arch index; run as linux/amd64)
+                              "debian:bookworm-slim@sha256:"
+                              "3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251")
 CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
