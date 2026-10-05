@@ -1168,21 +1168,25 @@ static uint32_t host_mix(uint32_t a, uint32_t b, uint32_t t)   /* 0xRRGGBB, t 0.
 }
 int host_text(uint32_t *px, int stride, int w, int h, int x, int y, int large, const char *s, uint32_t rgb)
 {
-    const felucca_font_t *f = large ? &FONT_L : &FONT_S;   /* as gfx.c cv_text: 4-bit alpha */
+    const felucca_font_t *f = large ? &FONT_L : &FONT_S;   /* as gfx.c cv_text: 4-bit alpha, k x k blocks */
+    uint32_t k = f->scale;
     for (; *s; s++) {
-        uint32_t gi = glyph(f, (uint8_t)*s), bw = f->bw[gi], bpr = (bw + 1u) / 2u, gx, gy;
+        uint32_t gi = glyph(f, (uint8_t)*s), bw = f->bw[gi], bpr = (bw + 1u) / 2u, gx, gy, dx, dy;
         const uint8_t *gd = f->data + f->off[gi];
-        for (gy = 0; gy < f->h; gy++)
+        for (gy = 0; gy < f->h / k; gy++)
             for (gx = 0; gx < bw; gx++) {
                 uint32_t a = gd[gy * bpr + gx / 2u];
-                int cx = x - f->pad + (int)gx, cy = y + (int)gy;
                 a = (gx & 1u) ? (a & 15u) : (a >> 4);
-                if (a && cx >= 0 && cx < w && cy >= 0 && cy < h) {
-                    uint32_t *d = &px[cy * stride + cx];
-                    *d = host_mix(*d, rgb, a * 17u);
-                }
+                for (dy = 0; a && dy < k; dy++)
+                    for (dx = 0; dx < k; dx++) {
+                        int cx = x - f->pad + (int)(gx * k + dx), cy = y + (int)(gy * k + dy);
+                        if (cx >= 0 && cx < w && cy >= 0 && cy < h) {
+                            uint32_t *d = &px[cy * stride + cx];
+                            *d = host_mix(*d, rgb, a * 17u);
+                        }
+                    }
             }
-        x += f->adv[gi];
+        x += f->adv[gi] * (int)k;
     }
     return x;
 }
