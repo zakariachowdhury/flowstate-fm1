@@ -72,6 +72,7 @@ Build options (environment, `0` or `1`; defaults in `firmware/src/felucca.c`):
 | `FELUCCA_OTA` | 1 | update entry (needs `FELUCCA_FLASH`) |
 | `FELUCCA_CDC` | 1 | USB serial console |
 | `FELUCCA_UART` | 0 | TRS MIDI IN (not tested on hardware) |
+| `FELUCCA_WORLD` | 1 | Musical Worlds, PLAY MODE (`world.c`; [docs/worlds.md](docs/worlds.md)); 0 builds SLOOP alone |
 
 ## Samples
 

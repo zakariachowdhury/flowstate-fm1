@@ -113,7 +113,7 @@ felucca.c:20-47  engines.c … voice.c slicer.c fx.c usb.c arranger.c seq.c     
 + #endif
 felucca.c:48-57  audio.c panel.c ui.c ui_song.c ui_studio.c icons.c ui_draw.c ui_layers.c ui_menu.c ui_input.c
 + #if FELUCCA_WORLD
-+   world.c  ui_play.c                                                         (need preset_fill from ui.c, gfx, ui_*)
++   world.c  ui_play.c                                                         (world.c: preset_fill (params.c); ui_play.c: gfx, ui_*)
 + #endif
 felucca.c:64-115 [storage.c] upreset.c project.c(arranger_scene.c)
 + #if FELUCCA_WORLD
@@ -149,7 +149,7 @@ Every hook is inert while `wrt.active == 0`. That is the bit-identity argument, 
 | H18 | `project.c:382` `autosave_tick` | `if (wrt.active) { wsession_tick(); return; }` (fence, [§10.4](#104-session-and-autosave-fence)) | SLOOP autosave |
 | H19 | `ui_input.c:595`, `ui_input.c:121`, `ui_draw.c:918` | `if (ui_play_on()) { play_input(); return; }` and the same for LEDs and drawing | SLOOP UI |
 | H20 | `ui_layers.c:28-37` | `play_layers_init()` next to `layers_init()` | — |
-| H21 | `ui.c:237-273` | Extract a pure `preset_fill(int16_t *p, const engine_t *e, uint32_t pi)`; `apply_preset_to` calls it (bit-identical refactor, Phase 5) | — |
+| H21 | `ui.c:237-273` | Extract a pure `preset_fill(int16_t *p, const engine_t *e, uint32_t pi)` (placed in `params.c` with `param_kept`, so that `world.c` needs no UI code); `apply_preset_to` calls it (bit-identical refactor, Phase 5) | — |
 | H22 | `main.c:93-94` | `world_boot()` after `autosave_resume()`: reads the session, loads the World, sets the UI mode | SLOOP boot when there is no session or its mode is SLOOP |
 | H23 | `storage.c:23`, `:51-60`; `hal/fm1_flash.h:38-49` | New object ids and sectors; `FL_STORE_OK` gains `0xE5000–0xFC000` | — |
 | H24 | `ui_menu.c` menu items | `PLAY MODE` and `LEAVE WORLD` (Advanced only) | — |
@@ -251,7 +251,7 @@ JSON has no comments, so every object accepts a `"notes"` string that the compil
   - common parameters, as lowercase `P_*` enum names (`level atk dec sus rel ed_flt … chord`);
   - engine parameters, as that engine's `edit[]` labels (`CUT`, `RES`, `IDX`, …). These are resolved against the track's engine, because `P_E0..E7` mean different things per engine.
 - Enum values may be given by name (`"WAVE": "SAW"`).
-- The compiler reads the descriptor and preset tables from `build/host/world_dump_params` (a host tool that prints `TP`, `GP`, `ENGINES[]` and `DRUM_KIT_NAMES` as JSON), so the C tables stay the single source.
+- The compiler reads the descriptor and preset tables from `worlds/schema/sloop-params.json`, which the host tool `tools/dump_params.c` prints from `TP`, `GP`, `ENGINES[]`, the drum kits and lanes. The JSON is committed, so the build needs no host compiler, and a test fails when it is stale. The C tables stay the single source.
 - Values are absolute and are checked against the descriptor range.
 
 **Targets** (macros, rules, guard ranges):
@@ -264,7 +264,7 @@ JSON has no comments, so every object accepts a `"notes"` string that the compil
 | `<track>.~bright`, `<track>.~shape` | Q8 vmod offset (smooth) | `pad.~bright` |
 | `g.<name>` | a whitelisted global | `g.dfdbk` |
 
-**Drum patterns.** One string per lane. The lane names are SLOOP's: `kick kick2 snare clap hat open pedal rim snare2 tomlo tomhi crash ride shaker conga bell`. One character per step:
+**Drum patterns.** One string per lane. The lane names are the format's (`WF_LANE_IDS` in `world_fmt.h`, in the order of SLOOP's lanes in `drums.c`): `kick kick2 snare clap hat open pedal rim snare2 tomlo tomhi crash ride shaker conga bell`. SLOOP's own names, lowercase without spaces, are accepted too. One character per step:
 
 | Character | Step |
 | --- | --- |
@@ -368,7 +368,7 @@ Later steps win. Variation pattern `swap`s apply to whatever the scene selects. 
 
 ### 2.5 Compiled blob `FWD1`
 
-Little-endian, byte-aligned. The parser never casts the blob to a struct; it reads bytes with explicit bounds.
+Little-endian, byte-aligned. The parser never casts the blob to a struct; it reads bytes with explicit bounds. The byte-level specification, which fills the gaps of the table below, is [fwd1-format.md](fwd1-format.md) (normative).
 
 ```
 off  size  field
@@ -377,7 +377,7 @@ off  size  field
 5    1     flags: b0 USER, b1 SESSION (delta), others 0
 6    2     L = total length, 24 ≤ L ≤ 3840
 8    4     world_id = FNV-1a-32(id)
-12   4     CRC-32 (zlib, = storage.c st_crc32) over bytes [16, L)
+12   4     CRC-32 (zlib, = storage.c st_crc32) over bytes [0, 12) and [16, L)   (fwd1-format.md: the header too)
 16   1     nsec (1..16)
 17   3     reserved, 0
 20   4·n   section table {u8 type, u8 count, u16 len}; payloads follow contiguously in table order
@@ -643,7 +643,7 @@ A mapping is `{ctl, kind, track mask, id, curve, class, min, max}`:
 
 ### 5.3 Engine role table
 
-Roles let one mapping mean "brightness" or "resonance" whatever engine the track runs. The table is `const uint8_t ENG_ROLE[NENGINES][8]` in `macro.c`, exported by `world_dump_params`. `—` means none, and the mapping is then skipped.
+Roles let one mapping mean "brightness" or "resonance" whatever engine the track runs. The table is `WF_ENG_ROLE` in `world_fmt.h` (defined in Phase 5, read by `macro.c`), exported by `tools/dump_params.c`. `—` means none, and the mapping is then skipped.
 
 | Engine | BRIGHT | RESO | DRIVE | SHAPE | DETUNE | AIR | MOVE | BODY |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -1182,7 +1182,7 @@ The real risk is musical: macros switch on stepped-cost stages (DIST, DUST, GRAI
 
 **1. Schema** (`world.schema.json`, by a built-in minimal validator; no new pip dependency).
 
-**2. Semantics** (Python, with `world_dump_params` JSON):
+**2. Semantics** (Python, with `worlds/schema/sloop-params.json`):
 - metadata charset and lengths;
 - engines and presets exist; parameter names valid for the track's engine;
 - no structural or banned targets; global whitelist;
