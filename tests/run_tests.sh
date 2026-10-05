@@ -129,15 +129,24 @@ render_test() {
 }
 run "host renderer: example projects, 16 bars each, clean and deterministic (sloop-render, sloop-examples)" render_test
 
-# the real-time simulator (host/sim, needs SDL2): the demo headless, 5 s through the null sink in real time
-# (no window, no sound): PLAY, a scene switch on the next bar, mutes, tempo and filter, the audio heard and
-# then silenced (the script's expectations), exactly 5 s played, a clean exit. Then --fast twice: the same
-# bytes each time and, when real time had no underrun, the same bytes as real time (nothing dropped or doubled)
-SIM_SCRIPT='1 play; 2.5 expect playing = 1; 2.5 expect scene = A; 2.5 expect rms > -30
-    2.6 scene B; 2.7 expect next = B; 2.7 expect scene = A
-    3.2 expect scene = B; 3.2 expect mute1 = 1; 3.2 expect mute4 = 1; 3.2 expect mute2 = 0
+# the real-time simulator (host/sim, needs SDL2): the demo (the stand-in World GROOVE, starting on scene B)
+# headless, 5 s through the null sink in real time (no window, no sound): PLAY, a scene switch on the next bar,
+# mutes, tempo and filter, the audio heard and then silenced (the script's expectations), exactly 5 s played, a
+# clean exit. Then --fast twice: the same bytes each time and, when real time had no underrun, the same bytes
+# as real time (nothing dropped or doubled). Then FLOWSTATE STUDIO, --fast: choose a World while one plays,
+# confirm, it loads on the bar; a scene, a mute and back, a level, a macro; the Studio and ADVANCED drawn (--shot)
+SIM_SCRIPT='1 play; 2.5 expect playing = 1; 2.5 expect scene = B; 2.5 expect rms > -30
+    2.6 scene A; 2.7 expect next = A; 2.7 expect scene = B
+    3.2 expect scene = A; 3.2 expect mute1 = 1; 3.2 expect mute4 = 1; 3.2 expect mute2 = 0
     3.3 mute 4; 3.4 expect mute4 = 0; 3.5 mute 2 on; 3.5 mute 3 on; 3.5 mute 4 on
     3.6 bpm +2; 3.6 filter -20; 3.7 expect bpm = 122; 3.7 expect filter = -20; 4.9 expect rms < -45'
+STUDIO_SCRIPT='0.95 expect world = GROOVE; 1 play
+    1.2 world AMBIENT; 1.3 expect browse = AMBIENT; 1.3 expect world = GROOVE
+    1.5 confirm; 1.6 expect pending = AMBIENT; 1.6 expect world = GROOVE
+    3.05 expect world = AMBIENT; 3.05 expect bpm = 70; 3.05 expect playing = 1; 3.05 expect scene = B
+    3.3 scene D; 3.4 expect next = D; 6.6 expect scene = D; 6.6 expect mute4 = 1
+    6.7 mute 2; 6.8 expect mute2 = 1; 6.9 mute 2; 7.0 expect mute2 = 0
+    7.1 level 1 90; 7.2 expect level1 = 90; 7.3 macro COLOR +10; 7.4 expect macro1 = 60'
 sim_test() {
     sim=build/host-bin/flowstate-sim
     $sim --demo --headless 5 --script "$SIM_SCRIPT" --wav "$OUT/sim-rt.wav" > "$OUT/sim-rt.txt" ||
@@ -149,7 +158,8 @@ sim_test() {
     [ "$n" -ge 220500 ] && [ "$n" -le $((220500 + 736)) ] || { echo "rendered $n frames for 220500 played"; return 1; }
     [ "$(wc -c < "$OUT/sim-rt.wav" | tr -d ' ')" -eq $((44 + 220500 * 4)) ] || { echo "sim-rt.wav: wrong size"; return 1; }
     $sim --demo --headless 5 --fast --script "$SIM_SCRIPT" --wav "$OUT/sim-fast.wav" > "$OUT/sim-fast.txt" || return 1
-    $sim --demo --headless 5 --fast --script "$SIM_SCRIPT" --wav "$OUT/sim-fast2.wav" > /dev/null || return 1
+    $sim --demo --headless 5 --fast --script "$SIM_SCRIPT" --wav "$OUT/sim-fast2.wav" --advanced \
+        --shot "$OUT/sim-advanced.bmp" > /dev/null || return 1
     cmp "$OUT/sim-fast.wav" "$OUT/sim-fast2.wav" || return 1
     if grep -q 'underruns 0, 0 frames missing' "$OUT/sim-rt.txt"; then
         cmp "$OUT/sim-rt.wav" "$OUT/sim-fast.wav" || return 1
@@ -158,9 +168,18 @@ sim_test() {
         grep 'underruns' "$OUT/sim-rt.txt"
         echo "simulator: underruns in real time (a busy machine?): not compared with --fast; --fast twice the same bytes"
     fi
+    $sim --demo --headless 7.5 --fast --script "$STUDIO_SCRIPT" --shot "$OUT/sim-studio.bmp" > "$OUT/sim-studio.txt" ||
+        { cat "$OUT/sim-studio.txt"; return 1; }
+    grep '^expect' "$OUT/sim-studio.txt"
+    [ "$(grep -c '^expect: .*: ok' "$OUT/sim-studio.txt")" -eq 16 ] || { echo "not every Studio expectation ran"; return 1; }
+    for f in sim-studio sim-advanced; do                  # 1000 x 872, 24 bits: drawn, not compared
+        [ "$(wc -c < "$OUT/$f.bmp" | tr -d ' ')" -eq $((54 + 3000 * 872)) ] || { echo "$f.bmp: not drawn"; return 1; }
+    done
+    echo "simulator: FLOWSTATE STUDIO: a World chosen while one plays, loaded on the bar; scene, mute, level, macro;" \
+         "$OUT/sim-studio.bmp, $OUT/sim-advanced.bmp"
 }
 if command -v sdl2-config >/dev/null 2>&1; then
-    run "simulator: real time headless (flowstate-sim): PLAY, scene on the bar, mutes, audio, frames, clean exit" sim_test
+    run "simulator: real time headless (flowstate-sim): PLAY, scene on the bar, mutes, audio, frames; the Studio" sim_test
 else
     echo "== skip simulator (no SDL2: brew install sdl2; only build/host-bin/flowstate-sim needs it)"
 fi
