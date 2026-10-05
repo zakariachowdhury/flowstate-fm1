@@ -214,6 +214,7 @@
 #define WF_BEAT_BREAK 3
 #define WF_NBEATS 4
 #define WF_SCOPE_G 4                 /* a scoped pair's scope: 0..3 a track (id: P_*), 4 the globals (id: G_*) */
+#define WF_SCOPE_CTL 5               /* VARS only (Phase 12): a macro default, id 0..3 (COLOR .. ENERGY), u8 value 0..250 */
 #define WF_SCENE_NAMES "A B C D"
 
 /* -------------------------------------------------------------------- VARS --- */

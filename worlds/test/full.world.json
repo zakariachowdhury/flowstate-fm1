@@ -51,8 +51,9 @@
   },
   "variations": {
     "ORIGINAL": {},
-    "AIRY": {"params": {"pad.rev": 80, "keys.rev": 60}, "fx": {"rsize": 110}, "energy_bias": -0.1},
-    "DARK": {"params": {"pad.CUT": 38, "keys.CUT": 50}, "fx": {"dcolor": 30}},
+    "AIRY": {"params": {"pad.rev": 80, "keys.rev": 60}, "fx": {"rsize": 110}, "energy_bias": -0.1,
+             "macros": {"SPACE": 0.7, "COLOR": 0.6}},
+    "DARK": {"params": {"pad.CUT": 38, "keys.CUT": 50}, "fx": {"dcolor": 30}, "macros": {"COLOR": 0.3}},
     "PULSING": {"swap": {"bass_main": "bass_drive"}, "energy_bias": 0.1},
     "HEAVY": {"sounds": {"pad": "DARK STR", "drums": "909"}, "params": {"bass.DRV": 40}}
   },

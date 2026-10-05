@@ -33,6 +33,7 @@ import re
 import struct
 import sys
 import zlib
+from fractions import Fraction
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -356,7 +357,8 @@ class Schema:
                 ap = s.get("additionalProperties", True)
                 if ap is False:
                     allowed = ", ".join(props) if props else "none"
-                    out.append(f"{jp(path, k)}: unknown key (allowed: {allowed})")
+                    why = s.get("x-refused", {}).get(k)  # (a field refused on purpose: the reason)
+                    out.append(f"{jp(path, k)}: {why}" if why else f"{jp(path, k)}: unknown key (allowed: {allowed})")
                 elif isinstance(ap, dict):
                     self.check(x, ap, jp(path, k), out)
 
@@ -1237,6 +1239,17 @@ class Compiler:
         return self.resolve(path, name, prog)
 
     # ---- VARS
+    # a variation keeps the World's identity (spec 6): the format leaves it no tempo, key, scale, progression, swing,
+    # drum pattern or Smart Keys setting to change (root / scale are fixed parameters, swing NOVAR, the rest
+    # structural; the schema's "x-refused" names the fields someone might try, with the reason)
+    VAR_GROOVE_TRACKS = 2                # more tracks of the groove changed at once (patterns, the drum kit): a warning
+
+    def same_class(self, a, b):
+        """pool entries a, b: the same length, or whole bars of which one divides the other"""
+        la, lb = (Fraction(len(self.pool[x]["steps"]), PR.div_den[self.pool[x]["div"]]) for x in (a, b))
+        bars = la % 4 == 0 and lb % 4 == 0
+        return la == lb or (bars and (la % lb == 0 or lb % la == 0))
+
     def variations(self):
         src = self.s.get("variations", {"ORIGINAL": {}})
         self.vr = []
@@ -1285,11 +1298,31 @@ class Compiler:
                                    f"where {to} (chord tokens) differs; a swap maps one pattern to one. Give {fr} "
                                    f"chord tokens, or swap a pattern that plays over one progression only")
                         break
+                    if bix != NONE and not self.same_class(a, bix):
+                        la, lb = (len(self.pool[x]["steps"]) / PR.div_den[self.pool[x]["div"]] for x in (a, bix))
+                        self.e(sp, f"{fr} -> {to}: a swap keeps the pattern's length class ({fr}: {la:g} beats, {to}: "
+                                   f"{lb:g}): the same length, or whole bars that divide each other (1, 2, 4 bars), "
+                                   f"so the groove stays in phase")
+                        break
                     if a != bix and (a, bix) not in rec["swaps"]:
                         rec["swaps"].append((a, bix))
                 if not hit:
                     self.w(sp, f"no scene plays {fr}: the swap does nothing")
             rec["pairs"] = self.scoped_pairs(path, v.get("params"), v.get("fx"), "var")
+            for cn, x in (v.get("macros") or {}).items():   # macro defaults (Phase 12): {WF_SCOPE_CTL, ctl, u8 position}
+                mp = jp(jp(path, "macros"), cn)
+                if cn not in CTL_NAMES[:4]:
+                    self.e(mp, f"a macro default is one of {', '.join(CTL_NAMES[:4])}")
+                elif not isinstance(x, (int, float)) or isinstance(x, bool) or not 0 <= x <= 1:
+                    self.e(mp, "a position 0..1")
+                else:
+                    u = int(round(x * UNIT))
+                    rec["pairs"].append((F["WF_SCOPE_CTL"], CTL_NAMES.index(cn), u - 256 if u > 127 else u))
+            groove = {self.pool[a]["t"] for a, _ in rec["swaps"]} | {t for t, _ in rec["sounds"] if t == TRK_DRUM}
+            if len(groove) > self.VAR_GROOVE_TRACKS:
+                self.w(path, f"changes {len(groove)} tracks of the groove at once ("
+                             f"{', '.join(self.trk[t]['name'] if t < TRK_DRUM else 'the drum kit' for t in sorted(groove))}"
+                             f"): it may not sound like the same World")
             self.vr.append(rec)
         if not 1 <= len(self.vr) <= F["WF_MAX_VARS"]:
             self.e("$.variations", f"1..{F['WF_MAX_VARS']} variations")
@@ -2278,11 +2311,14 @@ def decompile(b):
             for a, bb in v["swaps"]:
                 sw.setdefault(f"p{a}", f"p{bb}")
             rec["swap"] = sw
-        params, fxs = spairs(v["pairs"])
+        params, fxs = spairs([p for p in v["pairs"] if p[0] != F["WF_SCOPE_CTL"]])
         if params:
             rec["params"] = params
         if fxs:
             rec["fx"] = fxs
+        mc = {CTL_NAMES[i]: (x & 255) / UNIT for sc, i, x in v["pairs"] if sc == F["WF_SCOPE_CTL"]}
+        if mc:
+            rec["macros"] = mc
         vs[v["name"]] = rec
     w["variations"] = vs
     if ir["curves"]:

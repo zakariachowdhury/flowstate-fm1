@@ -171,13 +171,28 @@
     },
     "variation": {
       "type": "object", "additionalProperties": false,
+      "x-refused": {
+        "tempo": "a variation keeps the World's identity: it cannot change the tempo",
+        "bpm": "a variation keeps the World's identity: it cannot change the tempo",
+        "key": "a variation keeps the World's identity: it cannot change the key",
+        "root": "a variation keeps the World's identity: it cannot change the key",
+        "scale": "a variation keeps the World's identity: it cannot change the scale",
+        "progression": "a variation keeps the World's identity: it cannot change the harmony",
+        "progressions": "a variation keeps the World's identity: it cannot change the harmony",
+        "swing": "a variation keeps the World's identity: it cannot change the groove (swing)",
+        "beat": "a variation keeps the World's identity: it cannot change the groove (BEAT)",
+        "patterns": "a variation keeps the World's identity: it cannot change the scenes' patterns (\"swap\" exchanges a melodic one)",
+        "smart_keys": "a variation keeps the World's identity: it cannot change the Smart Keys"
+      },
       "properties": {
         "notes": {"$ref": "#/$defs/notes"},
         "sounds": {"type": "object", "additionalProperties": {"type": ["string", "integer"]}},
         "params": {"$ref": "#/$defs/values"},
         "fx": {"$ref": "#/$defs/fx"},
         "swap": {"type": "object", "additionalProperties": {"type": "string"}},
-        "energy_bias": {"type": "number", "minimum": -0.25, "maximum": 0.25}
+        "energy_bias": {"type": "number", "minimum": -0.25, "maximum": 0.25},
+        "macros": {"type": "object", "propertyNames": {"enum": ["COLOR", "MOTION", "SPACE", "ENERGY"]},
+                   "additionalProperties": {"$ref": "#/$defs/unit"}}
       }
     },
     "curve": {"anyOf": [

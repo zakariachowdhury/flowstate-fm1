@@ -29,6 +29,7 @@ static wb_ctx_t wnext;                 /* a World switch: the next World (checke
 static uint8_t wbeat_pat, wbeat_m = WF_NONE;   /* BEAT: the drum pattern and masks (arrange.c arr_beat) wreq_block
                                                 * takes on the next bar (wbeat_m WF_NONE: none) */
 static uint8_t wnow;                   /* ADVANCED: a scene or variation commits at once (world_immediate) */
+static uint8_t wvar_on = WF_NONE;      /* the variation whose macro defaults the controls took (wvar_macros) */
 
 static const uint8_t WB_PFIXED[] = {WF_P_FIXED}, WB_PDRUM[] = {WF_P_DRUM}, WB_PSTRUCT[] = {WF_P_STRUCT};
 static const uint8_t WB_GWHITE[] = {WF_G_WHITELIST}, WB_GSTRUCT[] = {WF_G_STRUCT}, WB_GNOVAR[] = {WF_G_NOVAR};
@@ -106,7 +107,10 @@ static int wb_pid_ok(const wb_ctx_t *c, uint32_t t, uint32_t id, int strict)
 static int wb_spairs(const wb_ctx_t *c, const uint8_t *p, uint32_t n, int var)   /* scoped pairs of a scene / variation */
 {
     for (; n; n--, p += WF_SPAIR) {
-        if (p[0] == WF_SCOPE_G) {
+        if (var && p[0] == WF_SCOPE_CTL) {                /* a variation's macro default (Phase 12) */
+            if (p[1] > 3u || p[2] > WF_UNIT)
+                return 0;
+        } else if (p[0] == WF_SCOPE_G) {
             if (!WB_HAS(WB_GWHITE, p[1]) || (var && WB_HAS(WB_GNOVAR, p[1])))
                 return 0;
         } else if (p[0] >= NTRK || !wb_pid_ok(c, p[0], p[1], 1)) {
@@ -594,7 +598,7 @@ static int world_load(const uint8_t *b, uint32_t n)
         wb_pattern(c.b + c.pat[i], &wpool[i]);
     for (i = 0; i < NTRK; i++)
         wrt.cur_pat[i] = WF_NONE;                         /* (the pool is new: nothing to write back into it) */
-    wbeat_m = WF_NONE;
+    wbeat_m = wvar_on = WF_NONE;
     wrt.swp = 0;                                          /* (a World switch staged while playing: replaced) */
     wrt.keys_trk = c.keys;
     wrt.beat = c.b[c.off[WF_S_DEFAULTS] + 7u];
@@ -852,6 +856,34 @@ static void world_commit(uint32_t gl)
     wst.st = WST_APPLIED;
 }
 
+/* Phase 12: a variation committed (or a World loaded), the main loop: each macro (COLOR MOTION SPACE ENERGY) the player
+ * has not turned since the World loaded (macro.c mac.touched) goes to this variation's default (its VARS "macros",
+ * scope WF_SCOPE_CTL pairs), else to the World's DEFAULTS; one the player has turned stays. Playing, the overlay glides
+ * there (macro_eval without snap: each slot at its smoothing class); ENERGY's band follows with its own timing */
+static void wvar_macros(void)
+{
+    const uint8_t *def = wctx.b + wctx.off[WF_S_DEFAULTS], *vr, *q;
+    uint32_t c, n, to[4];
+    if (wrt.var == wvar_on)
+        return;
+    wvar_on = wrt.var;
+    for (c = 0; c < 4u; c++)
+        to[c] = def[2u + c] * 4u;
+    vr = wctx.b + wctx.var[wrt.var] + WF_LABEL_LEN + 1u;  /* nsound, sounds, nswap, swaps, npairs, pairs */
+    q = vr + 2u + 2u * vr[0];
+    q += 2u * q[-1];
+    for (n = *q++; n; n--, q += WF_SPAIR)
+        if (q[0] == WF_SCOPE_CTL)
+            to[q[1] & 3u] = q[2] * 4u;
+    for (c = 0; c < 4u; c++)
+        if (!(mac.touched >> c & 1u) && mac.pos[c] != to[c]) {
+            mac.pos[c] = (uint16_t)to[c];
+            mac.dirty = 1;
+            if (c == MC_ENERGY)
+                arr.req = (uint16_t)to[c];
+        }
+}
+
 /* stage and commit while stopped; the World becomes active (SLOOP's hooks step aside). Playing: world_request stages,
  * wreq_block commits on the boundary */
 static int world_apply(uint32_t scene, uint32_t var)
@@ -873,6 +905,7 @@ static int world_apply(uint32_t scene, uint32_t var)
     wrt.active = 1;
     fm1_irq_on();
     wst.st = WST_FREE;
+    wvar_macros();                                        /* (the variation's macro defaults, Phase 12) */
     macro_eval();                                         /* the macros' table now (a World: at its targets) */
     return WE_OK;
 }
@@ -1033,9 +1066,11 @@ static void wsv_free(void)             /* an APPLIED stage FREE again; after a W
         wrt.id = wb_u32(wctx.b + 8);
         wb_macros(0);
         mac.snap = wrt.swp = wreq.sw = 0;
+        wvar_on = WF_NONE;
     }
     wst.st = WST_FREE;
     mac.dirty = 1;                     /* new bases: the guard's combinations and distorted tracks judged again */
+    wvar_macros();                     /* (a new variation: its macro defaults, gliding) */
 }
 
 static int world_request(uint32_t scene, uint32_t var)

@@ -54,6 +54,7 @@ static struct {
     const uint8_t *maps, *curves, *rules;   /* the loaded World's sections (wb_check checked them) */
     uint8_t nmaps, ncurves, nrules;
     uint8_t dirty;                       /* a position, the World or an engine changed: evaluate */
+    uint16_t touched;                    /* controls macro_set moved since the World loaded (world.c wvar_macros) */
     uint8_t snap;                        /* the next table starts at its targets (a World loaded) */
     uint8_t eng[NPART];                  /* the engines the last table resolved the roles for */
     uint8_t n, over;                     /* slots in the last table; targets that found no slot (> OV_MAX) */
@@ -83,6 +84,7 @@ static void macro_load(const uint8_t *maps, uint32_t nmaps, const uint8_t *curve
             mac.pos[8u + i] = (uint16_t)(def[12u + i] * 4u);
         }
         mac.snap = 1;
+        mac.touched = 0;
         arr.req = mac.pos[MC_ENERGY];
     }
     mac.dirty = 1;
@@ -93,6 +95,7 @@ static void macro_set(uint32_t c, int32_t v)
     if (c >= WF_NCTL)
         return;
     v = clamp(v, 0, 1000);
+    mac.touched |= (uint16_t)(1u << c);                  /* (the player's: a variation's default leaves it) */
     if (mac.pos[c] != v) {
         mac.pos[c] = (uint16_t)v;
         mac.dirty = 1;
