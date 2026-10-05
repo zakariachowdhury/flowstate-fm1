@@ -13,6 +13,7 @@ build notes, see [BUILDING.md](../BUILDING.md).
 | Python 3.9 or newer with Pillow | the generators (`tools/gen_*.py`) and the package tools |
 | Docker Desktop, with Rosetta on Apple silicon | runs the JieLi toolchain (below) |
 | Node.js 18 or newer (optional) | the web page tests |
+| SDL2 (optional, `brew install sdl2`) | the real-time simulator, [simulator.md](simulator.md) |
 | About 300 MB of disk and network access once | toolchain, SDK files, container image |
 
 The JieLi toolchain (clang 4.0.1 for the pi32v2 core of the FM-1's AC79 chip) exists only as
@@ -135,13 +136,13 @@ checked with a toolchain and SDK files freshly installed by the scripts above, a
 ## Tests
 
 ```
-./tests/run_tests.sh               # all 25 groups; run ./build.sh first (about 80 s)
+./tests/run_tests.sh               # all 26 groups; run ./build.sh first (about 90 s)
 ./tests/run_tests.sh --host-only   # no ./build.sh, toolchain, Docker or SDK needed
 ```
 
 `--host-only` creates `build/gen` with `tools/build.py --gen-only` if it is missing. It skips the
 three groups that need the target build, marked "skip" below. The web tests run only when `node` is
-installed.
+installed, the simulator test only when `sdl2-config` is (both runs).
 
 | # | Group | Source | `--host-only` |
 | --- | --- | --- | --- |
@@ -170,6 +171,7 @@ installed.
 | 23 | installer CLI against a simulated FM-1 (no mido needed) | `tests/install_test.py` | runs |
 | 24 | web pages: editor protocol, samples, packages, update protocol | `web/test_web.mjs` | runs (with Node) |
 | 25 | host renderer: the example projects, 16 bars each, clean and the same bytes twice; `examples/projects/` as `host/examples.c` makes them | `host/render.c`, `host/examples.c` | runs |
+| 26 | simulator: 5 s headless in real time (PLAY, a scene on the bar, mutes, audio, frames), the same bytes as `--fast` | `host/sim/` | runs (with SDL2) |
 
 Environment:
 
@@ -243,6 +245,11 @@ build/host-bin/sloop-render --song examples/projects/ambient.fun4,examples/proje
 ```
 
 A render runs at about 200 times realtime: 16 bars of `examples/projects/ambient.fun4` (59 s) take 0.3 s.
+
+**`flowstate-sim`** plays the same firmware in real time, in a window with the LCD and the panel, through the
+Mac's audio output (it needs SDL2). `build/host-bin/flowstate-sim --demo` starts it; Option+Space plays. Its
+options, keys, threads, latency measurements and known differences from the device are in
+[simulator.md](simulator.md).
 
 **`sloop-examples [DIR]`** writes the three example projects in `examples/projects/` (or DIR):
 `ambient.fun4`, `groove.fun4` and `cinematic.fun4`. It builds them with the firmware's own functions
