@@ -16,6 +16,9 @@
 #include "libc.c"
 #include "lcd.c"
 #include "gfx.c"
+#ifndef FELUCCA_WORLD
+#define FELUCCA_WORLD 1          /* Musical Worlds (PLAY MODE); 0 = SLOOP alone. With no World active the hooks */
+#endif                           /* take SLOOP's paths (docs/design/play-mode-architecture.md 1.3, 1.4) */
 #include "core.h"
 #include "engines.c"
 #include "drums.c"
@@ -55,6 +58,9 @@
 #include "ui_layers.c"       /* hold a function button: what the keys and knobs do (TE style) */
 #include "ui_menu.c"
 #include "ui_input.c"
+#if FELUCCA_WORLD
+#include "world.c"           /* Musical Worlds: blob check, pattern pool, stage, commit (needs preset_fill) */
+#endif
 #ifndef FELUCCA_FLASH
 #define FELUCCA_FLASH 1          /* flash driver + storage.c */
 #endif

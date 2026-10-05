@@ -223,21 +223,11 @@ static int seq_is_empty(const track_t *t) { return track_empty(t); }
 
 static void track_defaults_steps(track_t *t) { steps_clear(t); }
 
-/* what loading a sound (factory or user preset) leaves alone: the mix (LEVEL, PAN, MUTE:
- * the TRACKS faders), the pattern parameters (LEN, DIV, SWING, GATE) and the key the part plays
- * in (ROOT, SCALE, QNT, CHORD: the song's; SCL + key sets the root of every part). The SLICER is
- * part of the sound: a factory preset turns it OFF (its defaults), a user preset brings its own */
-static int param_kept(uint32_t i)
-{
-    return i == P_LEVEL || i == P_PAN || i == P_MUTE || (i >= P_SLEN && i <= P_SGATE) ||
-           (i >= P_ROOT && i <= P_QUANT) || i == P_CHORD;
-}
-
-/* preset pi of the engine the track asked for: the whole sound (not the pattern parameters) */
+/* preset pi of the engine the track asked for: the whole sound (not the pattern parameters; params.c
+ * param_kept, preset_fill) */
 static void apply_preset_to(track_t *t, uint32_t pi)
 {
     const engine_t *e = ENGINES[t->eng_req % NENGINES];
-    uint32_t i;
     if (is_drum(t))
         return;
     panic_req |= (uint8_t)(1u << trk_index(t));       /* MONO/POLY may change: release what sounds */
@@ -248,26 +238,7 @@ static void apply_preset_to(track_t *t, uint32_t pi)
         return;
     pi %= e->npresets;
     t->preset = (uint8_t)pi;
-    for (i = 0; i < P_E0; i++)                        /* the rest of the sound to its defaults: a preset */
-        if (!param_kept(i))
-            t->p[i] = TP[i].def;                     /* sounds the same after any edit (not the pattern, not the mix) */
-    for (i = 0; i < 8u; i++)
-        t->p[P_E0 + i] = (int16_t)e->presets[pi].e[i];
-    t->p[P_ATK] = e->presets[pi].env[0];
-    t->p[P_DEC] = e->presets[pi].env[1];
-    t->p[P_SUS] = e->presets[pi].env[2];
-    t->p[P_REL] = e->presets[pi].env[3];
-    t->p[P_ED_FLT] = e->presets[pi].fenv;
-    t->p[P_VOICE] = e->presets[pi].mono ? V_LEGATO : V_POLY;   /* mono presets keep the legato feel */
-    {   /* the rest of the patch: sends, arpeggiator (never a pattern: LIVE) */
-        static const uint8_t FX_DEF[4] = {0, 24, 28, 36};
-        const preset_t *pr = &e->presets[pi];
-        for (i = 0; i < 4u; i++) {
-            t->p[P_DIST + i] = (int16_t)(pr->fx[i] ? pr->fx[i] - 1 : FX_DEF[i]);
-            t->p[P_AMODE + i] = (int16_t)(pr->arp[i] ? pr->arp[i] - 1 : TP[P_AMODE + i].def);
-        }
-        preset_extras(t->p, pr);                     /* glide, pitch / LFO modulation, voice mode */
-    }
+    preset_fill(t->p, e, pi);
 }
 
 /* the engine's defaults and its first preset. With the audio IRQ off: the ISR sees the old engine with

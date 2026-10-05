@@ -18,6 +18,9 @@ enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 #define FELUCCA_SLICE 0          /* the SLICE engine (eng_slice.c): kept in the tree, not built by default */
 #endif
 #define NENGINES (9 + FELUCCA_SLICE)   /* SLICE, when built, comes last: the other engines keep their numbers */
+#ifndef FELUCCA_WORLD
+#define FELUCCA_WORLD 0          /* Musical Worlds (PLAY MODE, world.c): felucca.c sets 1; the tests keep 0 */
+#endif
 #define UP_SLOTS 32u             /* user presets (upreset.c) */
 
 /* ------------------------------------------------------- parameters --- */
@@ -277,3 +280,6 @@ static volatile uint32_t fm1_ms;  /* milliseconds since boot (TIMER4-based, TIME
 /* Two early failed boots -> USB recovery; recovery reset -> mask-ROM UBOOT. */
 #include "bootguard.h"
 bootguard_t bootguard __attribute__((section(".noinit")));
+#if FELUCCA_WORLD
+#include "world_rt.h"            /* the state the Musical World code shares with the audio ISR */
+#endif

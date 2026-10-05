@@ -91,6 +91,9 @@ static void felucca_init(void)
     song.sel = 0;
     song.master_q12 = 2048;
     autosave_resume();                        /* the project as it was left (project.c) */
+#if FELUCCA_WORLD
+    world_boot();                             /* world.c (H22): checks the factory Worlds; SLOOP boots as before */
+#endif
     layers_init();                            /* the panel's layer buttons for the keys (ui_layers.c) */
     go_home();
     ui.force = 1;

@@ -1497,7 +1497,12 @@ static void events_block(uint32_t n)
             seq_reset_tracks(arrangement_clock.phase);   /* (the remainder: exactly on the bar) */
         }
     } else if (song.playing) {
-        live_block();
+#if FELUCCA_WORLD
+        if (wrt.active)
+            world_block();                          /* a World: its scenes, not the sections (world.c, H15) */
+        else
+#endif
+            live_block();
     }
 #endif
     pr = panic_req;

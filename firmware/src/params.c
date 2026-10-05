@@ -93,6 +93,41 @@ static void preset_extras(int16_t *p, const preset_t *pr)
     }
 }
 
+/* what loading a sound (factory or user preset) leaves alone: the mix (LEVEL, PAN, MUTE:
+ * the TRACKS faders), the pattern parameters (LEN, DIV, SWING, GATE) and the key the part plays
+ * in (ROOT, SCALE, QNT, CHORD: the song's; SCL + key sets the root of every part). The SLICER is
+ * part of the sound: a factory preset turns it OFF (its defaults), a user preset brings its own */
+static int param_kept(uint32_t i)
+{
+    return i == P_LEVEL || i == P_PAN || i == P_MUTE || (i >= P_SLEN && i <= P_SGATE) ||
+           (i >= P_ROOT && i <= P_QUANT) || i == P_CHORD;
+}
+
+/* factory preset pi of engine e into the parameters p of a track: the whole sound, not the pattern parameters,
+ * the mix or the key (param_kept). Pure (no track, no UI): ui.c apply_preset_to and world.c's stage builder */
+static void preset_fill(int16_t *p, const engine_t *e, uint32_t pi)
+{
+    static const uint8_t FX_DEF[4] = {0, 24, 28, 36};
+    const preset_t *pr = &e->presets[pi];
+    uint32_t i;
+    for (i = 0; i < P_E0; i++)                        /* the rest of the sound to its defaults: a preset */
+        if (!param_kept(i))
+            p[i] = TP[i].def;                        /* sounds the same after any edit (not the pattern, not the mix) */
+    for (i = 0; i < 8u; i++)
+        p[P_E0 + i] = (int16_t)pr->e[i];
+    p[P_ATK] = pr->env[0];
+    p[P_DEC] = pr->env[1];
+    p[P_SUS] = pr->env[2];
+    p[P_REL] = pr->env[3];
+    p[P_ED_FLT] = pr->fenv;
+    p[P_VOICE] = pr->mono ? V_LEGATO : V_POLY;       /* mono presets keep the legato feel */
+    for (i = 0; i < 4u; i++) {                        /* the rest of the patch: sends, arpeggiator (never a pattern: LIVE) */
+        p[P_DIST + i] = (int16_t)(pr->fx[i] ? pr->fx[i] - 1 : FX_DEF[i]);
+        p[P_AMODE + i] = (int16_t)(pr->arp[i] ? pr->arp[i] - 1 : TP[P_AMODE + i].def);
+    }
+    preset_extras(p, pr);                            /* glide, pitch / LFO modulation, voice mode */
+}
+
 
 static const param_desc_t GP[G_COUNT] = {
     [G_BPM] = PD("BPM", F_BPM, 40, 240, 90),
