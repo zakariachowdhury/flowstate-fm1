@@ -80,7 +80,7 @@ extern const char *const MACRO_NAME[4];  /* COLOR MOTION SPACE ENERGY */
 
 /* ---- the Studio's model of what plays (studio.c fills it on the firmware thread, the views draw it): the
  * Musical Worlds (world.c), a World file being authored, and SLOOP projects. */
-#define STUDIO_WORLDS 32
+#define STUDIO_WORLDS 64                  /* the factory library (30), MY WORLDS (10), a file, the SLOOP projects */
 enum { SK_WORLD, SK_FILE, SK_PROJECT, SK_USER };   /* a factory World, a World file (--world PATH), a SLOOP project,
                                                      * a user World (MY WORLDS, Phase 14: the flash image's slots) */
 typedef struct {
