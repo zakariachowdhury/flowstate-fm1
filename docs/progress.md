@@ -948,3 +948,47 @@ Worlds and the session survive a restart (checked: saved, quit, started again, N
 - Phase 17 should check on hardware that the update loader and recovery leave `0xE5000–0xF8FFF` alone (Q2).
 
 **Next.** Phase 15: the authoring tool.
+
+## Phase 16: Automated World validation (2026-10-05)
+
+*Built before Phase 15 on purpose: the authoring tool uses it for "test all macros / estimate CPU / estimate flash".*
+
+**Done.** `tools/validate-world` (a wrapper for `tools/validate_world.py`) validates World files, directories or
+factory ids. It prints the 17-item checklist of the owner's spec:
+- metadata, presets, engines, patterns, scenes, variation, scale, harmony, Smart Keys, macro ranges, Guardrails;
+- CPU budget, RAM budget, flash budget;
+- no clipping, no invalid feedback, no invalid parameter IDs.
+
+It exits 1 on any failure. `--json` gives a `validate-world/1` report for the authoring tool. Guide:
+[validation.md](validation.md).
+
+**How.**
+- **Static items** come from `worldc.py`'s compiler and model; its messages are mapped onto items by JSON path.
+- **Render items** come from `tests/guard_sweep.c` over the macro grid:
+  - quick: 372 renders, about 5 s per World;
+  - `--full`: every scene × variation × the 4-D grid, plus the corners of controls 4–15; about 40 s.
+- **Budgets:**
+  - pattern pool: 16;
+  - overlay targets: 48 (also checked with every control up);
+  - blob: 3,072 B factory / 3,840 B user;
+  - CPU: 2,300 host instructions/sample mean, 2,700 for a DMA half;
+  - the factory set: at most 50 % of the app-slot room the code leaves.
+
+**Verified.**
+- `tests/validate_test.py` (about 20 s):
+  - the four factory Worlds pass all 17 items;
+  - 19 Worlds in `worlds/test/bad` each fail exactly their item, one of them (a runaway echo) only in the render;
+  - the JSON schema;
+  - every failure keyword of the sweep reaching its item.
+- NEON RAIN `--full`: 4,072 renders, clean. Worst tail −60.2 dBFS; loudness jumps 7.2 / 11.6 LU.
+
+**Left for later.**
+- The per-World decompile round trip and parser fuzz, per-chord Smart Keys ranges and the ENERGY loudness rule stay
+  in `run_tests.sh`.
+- Phase 17 recalibrates the CPU limits.
+- `FACTORY_SHARE` needs revisiting when Phase 18 frees flash.
+
+**Commit:** `cebcbcb`.
+
+**Next.** Phase 15: the World authoring tool. Then Phase 17 (hardware, which needs the owner's FM-1) and Phase 18
+(the factory library).
