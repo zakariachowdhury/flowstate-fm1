@@ -7,6 +7,8 @@ firmware plays that blob in PLAY MODE.
 
 Where to look:
 - This guide covers every key and the notation.
+- The authoring tool edits all of it in a local web page, checks it as you type, and plays it in the simulator:
+  [authoring.md](authoring.md) (`./tools/world-author`).
 - The binary format is in [design/fwd1-format.md](design/fwd1-format.md).
 - The architecture is in [design/play-mode-architecture.md](design/play-mode-architecture.md).
 
@@ -45,6 +47,7 @@ python3 tools/worldc.py names ANALOG               # one engine
 python3 tools/worldc.py check worlds/factory/neon_rain.world.json
 python3 tools/worldc.py compile worlds/factory/neon_rain.world.json -o /tmp/neon.wblob
 python3 tools/worldc.py decompile /tmp/neon.wblob  # what the device gets, as JSON (absolute notes)
+./tools/world-author                               # the authoring tool: forms, checks, the model, the simulator
 ```
 
 **Listening to a World** (until the simulator plays Worlds): `tests/world_render.c` runs a compiled blob through
@@ -830,7 +833,7 @@ writes the tempo playing into META. At most 64 parameter overrides plus one soun
 
 | Row | Does |
 | --- | --- |
-| SAVE AS USER WORLD | A new slot: the World's name with the next free number (`NEON RAIN 2`, `NEON RAIN 3`; a user World's own number is replaced: from `NEON RAIN 2` comes `NEON RAIN 3`), shortened to fit 14 characters (`MIDNIGHT DRI 2`). All 10 slots used: `MY WORLDS FULL`. Renaming is for the Mac tool. |
+| SAVE AS USER WORLD | A new slot: the World's name with the next free number (`NEON RAIN 2`, `NEON RAIN 3`; a user World's own number is replaced: from `NEON RAIN 2` comes `NEON RAIN 3`), shortened to fit 14 characters (`MIDNIGHT DRI 2`). All 10 slots used: `MY WORLDS FULL`. Renaming is for the Mac (`tools/worldc.py rename`). |
 | SAVE | Saves over the user World loaded, keeping its slot and name. A factory World behaves as SAVE AS. |
 | RESET WORLD | Asks first (SAVE again). A factory World loads again without the edits, pool edits or loop. A user World loads as last saved. While playing, it lands on the next bar. |
 | DELETE USER WORLD | Asks first. Erases the user World loaded (both copies). It plays on, unsaved. A factory World: `NOT A USER WORLD`. |

@@ -992,3 +992,109 @@ It exits 1 on any failure. `--json` gives a `validate-world/1` report for the au
 
 **Next.** Phase 15: the World authoring tool. Then Phase 17 (hardware, which needs the owner's FM-1) and Phase 18
 (the factory library).
+
+## Phase 15: The World authoring tool (2026-10-05)
+
+*Built after Phase 16, whose `validate-world --json` it runs to test all macros and to estimate CPU and flash.*
+
+**Done.** `./tools/world-author` opens a local web page that edits Musical Worlds, checks them as you type, and plays
+them in the simulator. JSON stays the source of truth (D16). As built: design §12.2.1. Guide:
+[authoring.md](authoring.md).
+
+![The authoring tool](images/author.png)
+
+**The server** (`tools/world_author.py`, stdlib).
+- It listens on 127.0.0.1, on a free port, and opens the page (`open`; `--no-browser`). It answers only its own Host
+  and JSON bodies, and serves `web/author.html` and `/api/...` only.
+- **Files** are refs into `worlds/factory`, `worlds/user` and the directory given. A traversal is refused (403).
+  The factory Worlds are read-only unless `--allow-factory`: Save As writes a copy under `worlds/user/`.
+- **Saves** are atomic, and refuse a file changed on disk since it was loaded. The layout is stable: keys in the
+  guide's order, named entries in the author's order (the variations' order is meaningful), a value on one line when
+  it fits, drum lanes one a line. The four factory files reformat to the same JSON, and a second save changes
+  nothing.
+- **The API:** state, list, load, save, new (a template that validates clean: 17 items, 561 B), names, check (errors
+  with JSON paths and checklist items), compile, model (worldc's `Model` at any positions, batched), harmony (chord
+  names as harmony.c spells them, tones, the 27 Smart Keys over every chord, as smartkeys.c maps them), pattern (the
+  steps as compiled), validate (a background job: `--static`, then quick or `--full`), job, export (`build/author/<id>/`:
+  `.wblob`, a C array, the JSON), import, preview.
+- **Preview** spawns `build/host-bin/flowstate-sim --world FILE` once and keeps it; it reloads the file on every save.
+  Without the binary it says `make -C host`.
+
+**The page** (`web/author.html`, one file, 1,690 lines). No library, no URL: a CSP allows only its server. It has 12
+tabs:
+
+| Tab | Covers (the owner's list) |
+| --- | --- |
+| World | title, category, BPM and its range, key, scale, swing (1–6) |
+| Harmony | progressions as chips with their chord names, beats, a palette of numerals (7) |
+| Tracks | role, engine, the presets of that engine, the drum kit, parameters with their ranges, global FX (8, 9, 11) |
+| Patterns | a drum lane grid (16/32/64, `x X s g 2 3 4`), a melodic step editor, and a roll of the notes as compiled (10) |
+| Scenes | A–D: progression, ENERGY, transition, fill, patterns (drums per BEAT), params, FX (12) |
+| Variations | ORIGINAL and up to 7: sounds, params, FX, swaps, energy bias, macro defaults (13) |
+| Macros | COLOR, MOTION, SPACE, ENERGY and the 12 controls; built-in mappings shown; curve plot with the model's values; test all macros; rules, curves, ENERGY tables (14–18, 22) |
+| Smart Keys | track, mode, melody scale, tonic, range, white and black keys; the 27 keys over any chord (19) |
+| Guardrails | every GUARD field with its default, safe ranges, combinations (18, 20) |
+| Defaults | scene, variation, PULSE, BEAT, the 12 positions |
+| Validate | the 17 items, the CPU, flash and RAM budget bars (22–24) |
+| JSON | the source itself, for anything else |
+
+Around the tabs:
+- **The problems panel** lists worldc's errors and warnings on every edit. A click goes to the field, which is
+  outlined, and the tabs count their errors.
+- **Save, Save As, Export, Import** (item 25) and **Preview** (item 21) are in the header.
+- **The diagnostics drawer** (Alt+D, hidden by default) shows every hidden target at chosen positions of the 16
+  controls: base, offset, effective, normalised, range, smoothing, mappings.
+
+**worldc** (Phase 14's leftovers).
+- The decoder reads OVERRIDES on a USER blob.
+- `worldc import USER.wblob` folds them into a source: engine and preset, track parameters, globals, swing, kit.
+  The scene and variation values they win over are dropped, and the keys loop is left out.
+- `worldc rename BLOB NAME` rewrites the name, a user World's id and the CRC.
+
+**The Studio fix** (`host/sim`, promised to the owner). While FX, ENV or LFO is held (keyboard, mouse or latched), the
+Studio's four knobs, the wheel and Shift+Z/X … M/, turn the device's KNOB 1–4.
+- **The routing.** `studio.c` checks `host_play_page`. The firmware's LIVE FX, SOUND SHAPE or MOVEMENT page gets the
+  turns, with the device's acceleration.
+- **The labels.** The knob row shows that page's four (FILTER ECHO CRUSH FREEZE, SOFT SHORT BODY TAIL, DRIFT WOBBLE
+  PULSE RATE) with their values. Let go, they are COLOR, MOTION, SPACE and ENERGY again.
+- **Scripts.** `expect` gains `ctl1..ctl16` and `page`.
+
+**Verified.**
+- `./tests/run_tests.sh` and `--host-only` pass every group. New: the authoring group, `tests/author_test.py`, 125
+  checks in about 5 s:
+  - the layout on the factory Worlds;
+  - every endpoint over a temp copy of `worlds/`;
+  - the model against worldc's `Model`, target for target;
+  - the harmony's chords and keys;
+  - a quick validation of NEON RAIN as a job;
+  - the export bytes against worldc;
+  - an import;
+  - the preview with no simulator, and a stand-in spawned once, reused and stopped;
+  - the refusals: factory write, 7 traversals, a foreign Host, a non-JSON body, unknown routes;
+  - the page: it parses, it calls only existing APIs and every one of them, it names no URL;
+  - its notation helpers in node's vm against worldc: scanning, steps, chords, curves, the drum strings.
+- `worldc_test` adds `user_blobs`: OVERRIDES decoded and refused without USER, import, rename, and both CLIs.
+- The simulator group checks 33 Studio expectations (+9): FILTER turned with FX held, COLOR untouched, FILTER home on
+  release, SHORT turned with ENV held and kept.
+- **The page in a browser** (headless Chrome, no window): `?selftest=1` renders every tab, the macro test and the
+  drawer without an error on the four factory Worlds and the template. `docs/images/author.png` is taken the same
+  way.
+
+**Sizes.** No firmware source changes in this phase.
+
+**Deviations** (design §12.2):
+- A stable canonical order, not `sort_keys`, which would reorder the variations.
+- `worldc check` runs on every edit as well as on save.
+- The simulator's `--world FILE` already hot-reloads: no `--author` flag.
+- Validate runs static, quick or full as a job, not a separate "Sweep".
+- The melodic editor is text plus a step grid; the roll shows the compiled notes and is not edited by drawing.
+- The page shows the macros through the model; the running simulator is turned in its own window.
+
+**Left for later.**
+- No live control channel from the page to the running simulator (macro positions, scene changes).
+- Import reads a blob file. MY WORLDS cannot be read from a simulator flash image (`--flash`) yet.
+- One World at a time, and no undo history beyond the fields and the JSON tab.
+- Tested in headless Chrome only (Safari and Firefox not tried). The owner's hands-on pass of the workflow is still to
+  come.
+
+**Next.** Phase 17 (hardware, which needs the owner's FM-1) and Phase 18 (the factory library).

@@ -453,8 +453,9 @@ A user World needs no factory World. The firmware's encoder (`world.c world_enco
 it came from, re-encodes PATTERNS from the RAM pool (the keys loop is one more synth pattern, named by KEYS
 `loop_pat`), and rewrites META's name, category and tempo, and DEFAULTS. Its world id is FNV-1a over its name. The
 design's alternative (the source's id + OVERRIDES + PATCHES) would break when a later firmware changed that factory
-World. A user World is at most 3,584 B (the storage payload under offset 0xF00, design §8.6). worldc's decoder does not
-read type 15 yet (Phase 15).
+World. A user World is at most 3,584 B (the storage payload under offset 0xF00, design §8.6). worldc's decoder reads
+type 15 on a USER blob (Phase 15): `tools/worldc.py import` folds the records into a source, and `rename` rewrites a
+blob's name (a user World's id with it).
 
 ---
 

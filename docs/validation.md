@@ -306,5 +306,6 @@ elsewhere in `tests/run_tests.sh` and are run on the factory and test Worlds, no
 - `world_render --extremes`' ENERGY loudness rule.
 
 `worldc check` stays the quick static check, with the same model; `validate-world` wraps it (it uses the same compiler
-and model, in the same process) and adds the budgets and the sweep. The Phase 15 authoring tool should call
-`validate-world --json` and show the items; "Sweep" in its page is `--full`.
+and model, in the same process) and adds the budgets and the sweep. The Phase 15 authoring tool runs `validate-world
+--json` (static first, then quick or full) as a background job and shows the items and the budgets:
+[authoring.md §5](authoring.md#5-validating).

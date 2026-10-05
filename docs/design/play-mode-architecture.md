@@ -1336,6 +1336,21 @@ The real risk is musical: macros switch on stepped-cost stages (DIST, DUST, GRAI
 - **Audio is always the simulator** running `--author --world that.json`, which hot-reloads on save. There is no second audio engine, and the browser plays nothing.
 - "Sweep" in the page runs `validate-world --sweep` and shows the metrics table and the worst cases.
 
+#### 12.2.1 As built (Phase 15)
+
+`tools/world-author` (`tools/world_author.py`, stdlib) and `web/author.html` (one file, no library, no URL) follow
+this section, with these differences. Guide: [../authoring.md](../authoring.md). Tests: `tests/author_test.py`.
+
+| Here | As built | Why |
+| --- | --- | --- |
+| sorted keys | a stable canonical order: the keys of fixed objects in the order of worlds.md, named entries (variations, patterns, progressions, tables) in the author's order; a value on one line when it fits | `sort_keys` would reorder the variations, whose order is meaningful, and churn the hand-written factory files |
+| `worldc.py check` on save | on every edit (debounced), and on save; the errors carry their JSON path and checklist item, and outline the field | the author sees a mistake where it is made |
+| `--author --world` | `--world FILE`, which already hot-reloads (Phase 6); the server spawns the simulator once and keeps it | no second flag was needed |
+| "Sweep": `validate-world --sweep` | Validate: `--static` first, then quick or `--full`, as a background job with its phase and progress; the 17 items and the CPU, RAM and flash budget bars | the checklist of Phase 16 is the report |
+| — | the model API (`worldc.Model` at any positions, batched) behind the curve plots, "test all macros" and a developer-only diagnostics drawer | the hidden targets, as the simulator's inspector shows them, without audio |
+| — | factory Worlds read-only (`--allow-factory`), refs confined to `worlds/factory`, `worlds/user` and a chosen directory, 127.0.0.1 and its Host header only, a CSP | a local server must not become a file server |
+| — | `worldc import` (a user World blob, its OVERRIDES folded in) and `worldc rename` | Phase 14 left them to the Mac tool |
+
 ### 12.3 validate-world
 
 `tools/validate-world FILE…` exits non-zero on any error. `--json` gives a machine report.

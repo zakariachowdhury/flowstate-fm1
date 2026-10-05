@@ -61,7 +61,7 @@ The program prints the mapping at start, and the window shows a legend.
 | --- | --- | --- |
 | The 27 keys, F3–G5 | white `Z X C V B N M , . / Q W E R T Y`, black `S D F H J L ; ' 3 4 6` | the FM-1's keys |
 | Buttons (held while the key is down) | `U I O P` FX SCL ENV LFO · `7 8 9 0` EDIT GLO HOME SAVE · `[ ]` ARP SEQ · `Space` PLAY · `Return` REC · `- =` OCT− OCT+ | the panel's buttons, layers included (GLO + key 1–4 mutes, SAVE + key 1–4 plays a section, …) |
-| Encoders (key repeat keeps turning) | `← →` PRESETS · `↓ ↑` ALGORITHM · `shift ← →` SELECT · `shift Z X`, `C V`, `B N`, `M ,` · `shift ↓ ↑` MASTER | `shift Z X` … `M ,` are COLOR, MOTION, SPACE and ENERGY in STUDIO (2 a press), and KNOB 1–4 in ADVANCED |
+| Encoders (key repeat keeps turning) | `← →` PRESETS · `↓ ↑` ALGORITHM · `shift ← →` SELECT · `shift Z X`, `C V`, `B N`, `M ,` · `shift ↓ ↑` MASTER | `shift Z X` … `M ,` are COLOR, MOTION, SPACE and ENERGY in STUDIO (2 a press), and KNOB 1–4 in ADVANCED. In STUDIO with FX, ENV or LFO held (the key, the mouse or a latch) they are the device's KNOB 1–4, so its LIVE FX, SOUND SHAPE or MOVEMENT page gets them (Phase 15) |
 | Commands (Option held) | `Space` PLAY / STOP · `1`–`4` scene A–D · `V` / `shift V` the next / previous variation · `5`–`8` mute track 1–4 · `← →` DJ filter −/+4 · `0` filter off · `↓ ↑` tempo −/+1 BPM · `W` / `shift W` choose a World · `Return` load it · `I` the inspector | direct calls, below |
 | | `Tab` | STUDIO / ADVANCED |
 | | `Esc` | closes the inspector, else cancels a World being chosen or waiting for its bar, else quits |
@@ -96,7 +96,7 @@ from the Studio's model of what plays (`studio_t` in `host/sim/sim.h`), which th
 | Top | `FLOWSTATE STUDIO`, playing or stopped, the tempo; the World, `· SCENE B`, its category, key and tempo, its blurb (or a message: `RELOADED`, `WORLD ERROR …`); the device's screen at its own size |
 | Choosing a World | `<` `>`, the title, or Option+W highlight an entry of `CHOOSE WORLD`: the four factory Worlds (in the firmware's order, by category), the World file when there is one, then `SLOOP PROJECTS`, then `MY WORLDS` (Phase 14: the user Worlds in the flash image, `USER WORLD` on the right). The current one plays on. LOAD (or a second click, or Option+Return) confirms: at once while stopped, **on the next bar** while playing (design D10). CANCEL, a click outside or Esc forgets it |
 | Middle | A B C D with the World's scene names; the one playing filled, the one asked for marked `NEXT BAR`, then `CHANGES NEXT BAR: C LIFT · DREAMY`. `VAR < DREAMY >`: the variation, `n/N`; a click on its left or right half (or the wheel, or Option+V) asks for the previous or next one, on the next bar |
-| Controls | COLOR MOTION SPACE ENERGY, 0–100, with DARK/BRIGHT, STILL/ALIVE, CLOSE/HUGE, SPARSE/INTENSE. With a World they are its **macros** (`firmware/src/macro.c`, `host_macro_set`; the World's defaults when it loads): what each moves is the World's, and the line under them names the World and the ENERGY band playing (`ENERGY band 3/4: PAD BASS LEAD DRUMS`). With a SLOOP project they turn SLOOP's KNOB 1–4 by the same steps, and the line says so |
+| Controls | COLOR MOTION SPACE ENERGY, 0–100, with DARK/BRIGHT, STILL/ALIVE, CLOSE/HUGE, SPARSE/INTENSE. With a World they are its **macros** (`firmware/src/macro.c`, `host_macro_set`; the World's defaults when it loads): what each moves is the World's, and the line under them names the World and the ENERGY band playing (`ENERGY band 3/4: PAD BASS LEAD DRUMS`). With a SLOOP project they turn SLOOP's KNOB 1–4 by the same steps, and the line says so. **While FX, ENV or LFO is held** in PLAY MODE (keyboard, mouse or latched), the knobs, the wheel and `shift Z X` … `M ,` turn the device's KNOB 1–4 (`host_turn`: 1 % a detent, faster turns accelerate as on the device), so the firmware's LIVE FX, SOUND SHAPE or MOVEMENT page gets them (`ui_play.c`), and the row relabels to that page's four with their values: FILTER ECHO CRUSH FREEZE, SOFT SHORT BODY TAIL, DRIFT WOBBLE PULSE RATE (`host_play_page`). Let go, they are the macros again; LIVE FX goes home, the other two keep their positions |
 | Performance | PLAY · REC · PULSE · BEAT · FX, with their LEDs: the FM-1's PLAY, REC, ARP, SEQ and FX buttons, held while the mouse is down (FX is a hold), right-click latches. REC is PLAY MODE's recorder (Phase 10, below), as is the panel's REC (`Return`) |
 | Tracks | Four strips named by the World's roles (PAD CHORDS BASS LEAD KEYS TEXTURE DRUMS), with a mute box, a level (LVL; the drum track's GLO > DRUMS level) and the sound; the track the keys play is underlined. A mute stays through scene changes (it is the player's) |
 | Input | `KEYS: SMART MELODY` once Smart Keys map the keys (`wrt.keys_on`, Phase 6 part B); until then `KEYS: SLOOP` with the track, key, scale and snap the keys use. `CHORD Dm` when the harmony runtime names the chord playing. The 27 keys with their LEDs and computer keys |
@@ -201,10 +201,12 @@ old World playing, and worldc's message, which names the place, shows on the sta
   `macro COLOR..ENERGY|1..4 V|±S` (0..100: a World's macro, or a project's KNOB 1–4), `select N`. A name with spaces
   takes `_`: `world MIDNIGHT_DRIVE`.
 - **Expectations:** `expect FIELD OP VALUE`. The numeric fields are `playing scene next bpm filter mute1..4 level1..4
-  macro1..4 sel voices gated rec loop rms peak time master`; `rms` and `peak` are the output's last 0.5 s, in dBFS;
+  macro1..4 sel voices gated rec loop rms peak time master ctl1..ctl16 page`; `rms` and `peak` are the output's last 0.5 s, in dBFS;
   `voices` counts the synth voices sounding and `gated` those still held (0 right after STOP: no stuck note); `rec` is
   PLAY REC's state (0 empty, 1 armed, 2 recording the take, 3 a loop, 4 overdub) and `loop` the notes in the keys
-  loop. `world`, `browse`, `pending`, `var` and `varnext` compare a name (or `-`) with `=` or `!=`.
+  loop; `ctl1..ctl16` are the 16 controls 0..100 (COLOR … ENERGY, SOFT … TAIL, DRIFT … RATE, FILTER … FREEZE), and
+  `page` the Studio's knob row (0 the macros, 1 LIVE FX, 2 SOUND SHAPE, 3 MOVEMENT). `world`, `browse`, `pending`, `var`
+  and `varnext` compare a name (or `-`) with `=` or `!=`.
 
 **Recording a phrase headlessly** (NEON RAIN; `key` takes 1–27 or F3–G5):
 
@@ -343,9 +345,11 @@ missing, and the unity-order check. The simulator group:
 3. Runs the same script twice with `--fast` and checks that the WAVs are the same bytes. When the real-time run had no
    underrun, it also checks that its WAV is the same bytes as `--fast`'s, so the threads dropped or doubled nothing. The
    second run draws ADVANCED (`--advanced --shot`).
-4. Runs the Studio with `--fast` and checks 24 expectations: the variation DREAMY asked for and committed on the next
+4. Runs the Studio with `--fast` and checks 33 expectations: the variation DREAMY asked for and committed on the next
    bar (not before); scene C on the bar after; MIDNIGHT DRIVE chosen while NEON RAIN plays on, confirmed, waiting, then
-   switched exactly on NEON RAIN's next bar and playing at its 100 BPM; a mute and back, a level, a macro; STOP with
+   switched exactly on NEON RAIN's next bar and playing at its 100 BPM; a mute and back, a level, a macro; COLOR's knob
+   with FX held turning FILTER (the page shown, COLOR untouched), FILTER home after FX is let go, MOTION's with ENV held
+   turning SHORT, which stays; STOP with
    no voice held (`gated = 0`) and, 2.3 s later, none sounding and the output below −60 dBFS; a SLOOP project loaded.
    It draws the Studio (`--shot`). Both pictures must be written (they are not compared).
 5. Renders every factory World with `sloop-render --world --check` into `build/renders/worlds/<id>-studio.wav` (clean:
