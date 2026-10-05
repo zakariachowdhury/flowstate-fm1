@@ -34,7 +34,9 @@
  *     nothing); the fill plays on the phrase's last bar;
  *  8. ~bright reaches the engines (H3): a part held dry is brighter at COLOR 100 % than at home;
  *  9. engines and reloads: another engine on a track re-resolves its roles; a hot reload keeps the positions; more
- *     targets than slots: the first 48 apply and restore, the rest are counted. */
+ *     targets than slots: the first 48 apply and restore, the rest are counted.
+ * The model includes the built-in mappings of controls 4..15 and the Smart Keys track's windows (Phase 13; their
+ * behaviour at every position: tests/livefx_test.c). */
 #define FELUCCA_WORLD 1
 #define FELUCCA_ARRANGER 1                       /* (events_block's World hook, world_block, is in that branch) */
 #include <stdint.h>
@@ -331,6 +333,16 @@ static mslot_t *m_slot(int kind, int t, int id)
         s->hi = GL_LEVEL_MAX;
     if (kind == MK_P && t < NPART && id >= P_E0 && M_ROLE[m_engine((uint32_t)t)][1] == id - P_E0 && s->hi > GL_RESO_MAX)
         s->hi = GL_RESO_MAX;
+    if (kind == MK_P && t == (int)wrt.keys_trk) {  /* the Smart Keys track's windows (guard_limits.h GL_K*) */
+        static const int W[][3] = {{P_ATK, 0, GL_KATK_MAX}, {P_DEC, GL_KDEC_MIN, 127}, {P_REL, GL_KREL_MIN, GL_KREL_MAX},
+                                   {P_LD_PIT, -GL_KLDPIT_MAX, GL_KLDPIT_MAX}, {P_LD_FLT, -GL_KLDFLT_MAX, GL_KLDFLT_MAX},
+                                   {P_LD_AMP, 0, GL_KLDAMP_MAX}, {P_LRATE, GL_KLRATE_MIN, GL_KLRATE_MAX}};
+        for (i = 0; i < (int)(sizeof W / sizeof W[0]); i++)
+            if (W[i][0] == id) {
+                s->lo = s->lo > W[i][1] ? s->lo : W[i][1];
+                s->hi = s->hi < W[i][2] ? s->hi : W[i][2];
+            }
+    }
     m_guard_range(kind, t, id, &s->lo, &s->hi);
     return s;
 }
@@ -376,6 +388,25 @@ static void m_add(uint32_t tg, uint32_t id, double off, int ctl)
             s->ctls |= 1u << ctl;
     }
 }
+/* the built-in mappings of controls 4..15 (world_fmt.h): a control the World's MAPS name is the World's;
+ * WF_TMASK_KEYS is the Smart Keys track. Moving (home 0): its offset and class, among the World's mappings. At home
+ * (home 1, after the rules): a slot with nothing in it, as the firmware may keep one ramping home, and no class */
+static void m_builtin(const uint16_t *pos, int home)
+{
+    static const uint8_t B[] = WF_CTL_BUILTIN;
+    const uint8_t *p;
+    uint32_t i, named = 0;
+    for (i = 0, p = M_maps; i < M_nmaps; i++, p += WF_MAP_LEN)
+        named |= 1u << p[0] % WF_NCTL;
+    for (i = 0, p = B; i < sizeof B / WF_MAP_LEN; i++, p += WF_MAP_LEN) {
+        if (named >> p[0] & 1u || (pos[p[0]] == M_HOME[p[0]]) != home)
+            continue;
+        m_cur_cls = home ? -1 : p[3] >> 6;
+        m_cur_lim = abs((int8_t)p[4]) > abs((int8_t)p[5]) ? abs((int8_t)p[4]) : abs((int8_t)p[5]);
+        m_add(p[1] & WF_TMASK_KEYS ? (p[1] & ~(uint32_t)WF_TMASK) | 1u << wrt.keys_trk : p[1], p[2],
+              home ? 0 : m_offset(p, pos), (int8_t)p[5] > 0 && !home ? p[0] : -1);
+    }
+}
 static int m_effective(const mslot_t *s, int b, double off, int *edge);
 static void m_eval(const uint16_t *pos)          /* the model's slots at these positions */
 {
@@ -387,12 +418,14 @@ static void m_eval(const uint16_t *pos)          /* the model's slots at these p
         m_cur_lim = abs((int8_t)p[4]) > abs((int8_t)p[5]) ? abs((int8_t)p[4]) : abs((int8_t)p[5]);
         m_add(p[1], p[2], m_offset(p, pos), (int8_t)p[5] > 0 ? p[0] : -1);
     }
+    m_builtin(pos, 0);
     m_cur_cls = -1;
     m_cur_lim = 128;                             /* (a rule's strength: the same Q12 truncation) */
     for (i = 0, p = M_rules; i < M_nrules; i++, p += WF_RULE_HDR + WF_ACT_LEN * p[3])
         for (k = 0; k < p[3]; k++)
             m_add(p[WF_RULE_HDR + WF_ACT_LEN * k], p[WF_RULE_HDR + WF_ACT_LEN * k + 1],
                   (int8_t)p[WF_RULE_HDR + WF_ACT_LEN * k + 2] * m_strength(p, pos), -1);
+    m_builtin(pos, 1);
     for (i = 0; i < (uint32_t)nms; i++) {        /* the target never further than the range's span */
         double span = ms[i].kind >= MK_VC ? GL_VMOD_MAX : ms[i].hi - ms[i].lo;
         ms[i].raw = ms[i].off;

@@ -35,7 +35,10 @@
  *
  * The sample (each point a render of --bars bars, default 2, then the tail):
  *   quick (tests/run_tests.sh)  every scene, its ORIGINAL variation: the 3^4 grid (0, 50, 100 % each macro), and 8
- *                               seeded random points per scene (any variation, any position, half with no player)
+ *                               seeded random points per scene (any variation, any position, half with no player);
+ *                               and the corners of controls 4..15 (Phase 13) with the four macros at 100 %: SOUND
+ *                               SHAPE and MOVEMENT all at 100 % (RATE at 100 and at 0), LIVE FX FILTER at 0 and at
+ *                               100 % with ECHO and CRUSH at 100 % (their tail: ECHO_TAIL s)
  *   --full (SWEEP=full)         every scene x every variation: the 3^4 grid (with the player, and again without) and
  *                               its 8 edge points (one macro at 25 or 75 %, the others at 50 %); and 300 seeded random
  *                               points per World, half of them near the corners (each macro within 10 % of an end),
@@ -55,11 +58,13 @@
 #define JUMP_LU_ALONE 12.0               /* .. and with no player (a lone dark pad opening up moves more) */
 #define EST_SLACK 0.15                   /* guard_cpu_est may be at most 15 % under the measured mean */
 #define TAIL_DB (-60.0)
+#define ECHO_TAIL 10.0                   /* s: the tail of LIVE ECHO at 100 % (tests/livefx_test.c: a slow tempo's echo) */
 #define PEAK_DB (-0.3)
 
 typedef struct {
     uint8_t w, s, v, grid;               /* World, scene, variation; on the 3^4 grid */
     uint8_t keys;                        /* a player's loop on the Smart Keys track */
+    uint8_t ext;                         /* the corner of controls 4..15 (0: the World's defaults; see EXT) */
     uint16_t pos[4];
     /* results */
     double peak, rms, lufs, dc[2], tail_db, silence_s, slew, limin, cpu_mean, cpu_half;
@@ -233,13 +238,17 @@ static uint32_t params_check(uint32_t *checked)
 }
 
 /* ------------------------------------------------------------- one point --- */
+/* the corners of controls 4..15 (SOFT .. FREEZE), -1 the World's default: SOUND SHAPE and MOVEMENT (RATE up, down),
+ * LIVE FX (FILTER low-pass, high-pass) */
+static const int8_t EXT[5][12] = {{0}, {1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1}, {1, 1, 1, 1, 1, 1, 1, 0, -1, -1, -1, -1},
+                                  {-1, -1, -1, -1, -1, -1, -1, -1, 0, 1, 1, -1}, {-1, -1, -1, -1, -1, -1, -1, -1, 1, 1, 1, -1}};
 static void pt_go(const pt_t *p)                 /* the World's positions, stage + commit (stopped) */
 {
     uint32_t c;
     band_t b;
     keys_phrase = p->keys;                       /* a player's loop on the Smart Keys track (world_render --keys) */
     for (c = 0; c < WF_NCTL; c++)
-        ctl_want[c] = c < 4u ? p->pos[c] / 1000.0 : -1;
+        ctl_want[c] = c < 4u ? p->pos[c] / 1000.0 : p->ext ? EXT[p->ext % 5u][c - 4u] : -1;
     if (scene_go(p->s, p->v, -1, &b)) {
         printf("guard_sweep: world_apply %u %u failed\n", p->s, p->v);
         _exit(2);
@@ -379,7 +388,7 @@ static void pt_render(pt_t *p)
     p->limin = lim_max;
     /* STOP and the tail: the peak of its last 0.25 s, voices left; the DC over all of it */
     transport_req = 2;
-    n = (uint32_t)(sw_tail * FS) / CTL * CTL;
+    n = (uint32_t)((p->ext >= 3u ? ECHO_TAIL : sw_tail) * FS) / CTL * CTL;
     q = FS / 4u / CTL * CTL;
     a.peak = 0;
     for (f = 0; f < n; f += CTL) {
@@ -450,6 +459,11 @@ static void make_points(int full)
                 if (!full)
                     for (k = 0; k < 8; k++)
                         add_pt(w, s, sw_rnd() % nv, rnd_pos(0), rnd_pos(0), rnd_pos(0), rnd_pos(0), 0, k % 2u);
+                if (!full && v == 0 && sw_var <= 0)
+                    for (k = 1; k < 5u; k++) {           /* controls 4..15's corners, the macros at 100 % */
+                        add_pt(w, s, v, 1000, 1000, 1000, 1000, 0, 1);
+                        pts[npts - 1u].ext = (uint8_t)k;
+                    }
             }
         if (full)
             for (k = 0; k < 300; k++) {
@@ -708,8 +722,8 @@ int main(int argc, char **argv)
                        p->layers, p->why);
             if (p->fails) {
                 if (f++ < 12)
-                    printf("  FAIL %s %c/%u at %u %u %u %u:%s\n", nm, 'A' + p->s, p->v, p->pos[0], p->pos[1], p->pos[2],
-                           p->pos[3], p->why);
+                    printf("  FAIL %s %c/%u at %u %u %u %u%s:%s\n", nm, 'A' + p->s, p->v, p->pos[0], p->pos[1], p->pos[2],
+                           p->pos[3], p->ext ? (p->ext < 3u ? " (SHAPE+MOVEMENT)" : " (LIVE FX)") : "", p->why);
             }
         }
         jumps(w, &jb, jw);

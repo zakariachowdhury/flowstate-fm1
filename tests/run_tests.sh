@@ -348,7 +348,8 @@ run "macros: model, limits, restore, rules, smoothing, ENERGY bands (ASan/UBSan)
 # same slot tables (ranges, targets, effective values) for every scene x variation at 105 macro positions, on the
 # factory Worlds and the test Worlds guard, full and extreme; `worldc check` on the factory Worlds. Then the sweeps
 # (tests/guard_sweep.c): each detector against a signal made to fail it, and the factory Worlds over the macro space
-# (quick: every scene on the 3^4 grid and 8 random points; SWEEP=full: every scene x variation, with and without a
+# (quick: every scene on the 3^4 grid and 8 random points, and the corners of controls 4..15 with the macros at 100 %;
+# SWEEP=full: every scene x variation, with and without a
 # player, the edges and 300 random points per World, then the injected bugs of tests/guard_mutants.py)
 guard_tests() {
     for w in minimal full extreme guard; do
@@ -393,7 +394,8 @@ run "guardrails: rules, H6, notes, CPU (ASan/UBSan); the worldc model = the C en
 # scenes and variations on the bar; the overlays' timeouts; EDIT held 2 s untouched -> the dialog -> ADVANCED and back;
 # H17 / H26; the LEDs; the redraw cost of each change (pixels sent to the panel); LEAVE WORLD bringing the SLOOP project
 # back bit-identically (and its render); the session across a reboot of the flash image; 20,000 frames of random input
-# with audio (PLAY_FUZZ=n: another length). The screens: $OUT/play-*.ppm
+# with audio (PLAY_FUZZ=n: another length); LIVE FX through the panel (FREEZE, a white key over it, FX let go, ADVANCED;
+# SOUND SHAPE and MOVEMENT kept; Phase 13). The screens: $OUT/play-*.ppm
 ui_play_test() {
     $CC -g -w -fsanitize=address,undefined -fno-sanitize=shift-base -fno-sanitize-recover=undefined -Ihost -Ibuild/host-obj \
         -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/ui_play_test" tests/ui_play_test.c -lm || return 1
@@ -463,5 +465,35 @@ scene_test() {
 }
 run "scenes: transitions on their lines, fills, World switches without a stop, BEAT, ADVANCED, glides, clicks, tails, variations" \
     scene_test
+
+# LIVE FX, SOUND SHAPE and MOVEMENT (Phase 13: macro.c's built-in mappings of controls 4..15 and FREEZE, guard.c
+# guard_live, guard_limits.h's Smart Keys windows, punch.c; design 9.3, 9.4; UI spec 8, 10): tests/livefx_test.c on
+# tests/world_render.c's harness under ASan/UBSan, each scenario in its own process: every control 4..15 at 0 / 0.5 / 1
+# on every factory World and full.world (inside descriptors, ranges and the keys windows; home = the default table;
+# ECHO's feedback caps, CRUSH's gain compensation and DUST cap, FILTER's sides; a World's controls replacing the
+# built-in ones; the first World's values printed); FREEZE and the white keys; a FILTER sweep; FREEZE engaged and let go
+# 1000 times at random while playing (never stuck, then bit-identical to the render without it); FX let go with all
+# four up (a ramp home, no click); renders: ECHO + SPACE at 1 (the tail under -60 dBFS within 10 s), CRUSH at 1 (within
+# 3 LU of dry), SOUND SHAPE / MOVEMENT (with MOTION) / FILTER extremes clean. Then the cost (an -O2 build): host
+# instructions a sample with everything of Phase 13 at 1, under GL_CPU_BUDGET, guard.c's estimate not under it
+livefx_test() {
+    b=""
+    for id in neon_rain midnight_drive frozen_lake dusty_cafe; do
+        python3 tools/worldc.py compile worlds/factory/$id.world.json -o "$OUT/lf-$id.wblob" >/dev/null 2>&1 || return 1
+        b="$b $OUT/lf-$id.wblob"
+    done
+    python3 tools/worldc.py compile worlds/test/full.world.json -o "$OUT/lf-full.wblob" >/dev/null 2>&1 || return 1
+    $CC -g -w -fsanitize=address,undefined -fno-sanitize=shift-base -fno-sanitize-recover=undefined -Ibuild/gen \
+        -Ifirmware/src -o "$OUT/livefx_test" tests/livefx_test.c -lm || return 1
+    # shellcheck disable=SC2086
+    "$OUT/livefx_test" $b "$OUT/lf-full.wblob" > "$OUT/livefx.txt" 2>&1 || { cat "$OUT/livefx.txt"; return 1; }
+    grep -a 'FREEZE: \|release (\|extremes: \|swept\|LUFS; CRUSH' "$OUT/livefx.txt" | sed 's/^livefx: //'
+    echo "LIVE FX: $(grep -ac ' ok$' "$OUT/livefx.txt") checks passed"
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/livefx_cost" tests/livefx_test.c -lm || return 1
+    # shellcheck disable=SC2086
+    "$OUT/livefx_cost" --cost $b || return 1
+}
+run "LIVE FX, SOUND SHAPE, MOVEMENT: bounds, FREEZE, release ramps, tails, loudness, extremes (ASan/UBSan); cost" \
+    livefx_test
 
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }

@@ -14,6 +14,10 @@
  *             tempo; the mode SLOOP; the parked project; offset 0xF00 of the region's sectors left erased
  *   fuzz      20,000 frames of random PLAY MODE input with audio: no crash, the state machine always valid, nothing
  *             drawn off the screen, no note left sounding after STOP
+ *   livefx    LIVE FX through the panel (Phase 13): FX held, K4 = FREEZE engages the punch engine's loop of the beat; a
+ *             white key's punch FX wins while it is held, FREEZE comes back after it; FX let go: the four home, dry;
+ *             FREEZE turned back to 0: dry; ADVANCED entered with FX held: nothing left; SOUND SHAPE and MOVEMENT stay;
+ *             the pages at the UI spec's values (play-livefx, play-shape, play-movement: docs/images)
  *   build/host/ui_play_test OUTDIR [scenario]     (PPMs: OUTDIR/play-*.ppm) */
 #include <stdint.h>
 #include <sys/wait.h>
@@ -698,6 +702,9 @@ static void sc_persist(void)
         press(B_ENV);
         turn(EN_K3, 4);
         release(B_ENV);
+        press(B_LFO);
+        turn(EN_K2, 3);
+        release(B_LFO);
         host_stop();
         c0 = host_flash_changes();
         wait_ms(3000);
@@ -728,6 +735,8 @@ static void sc_persist(void)
               "reboot: PLAY MODE, DUSTY CAFE, scene C, variation 3, stopped");
         check(macro_pos(0) == 550 && macro_pos(3) == 520 && macro_pos(6) == 40 && pl_pulse() == 1 && wrt.beat == 3,
               "reboot: the controls (COLOR: AIRY's default 0.58, then 3 detents down), PULSE, BEAT as they were");
+        check(macro_pos(9) == 30 && macro_pos(11) == 500 && macro_pos(12) == 500 && macro_pos(15) == 0,
+              "reboot: SOUND SHAPE (BODY) and MOVEMENT (WOBBLE) kept; LIVE FX home");
         check(song.octave == 1 && song.g[G_BPM] == 84 && pl.scr == PS_HOME && pl.played,
               "reboot: octave, tempo; HOME (not FIRST: PLAY was pressed)");
         redraw();
@@ -785,6 +794,103 @@ static void sc_persist(void)
     }
     waitpid(pid, &st, 0);
     fails += !WIFEXITED(st) || WEXITSTATUS(st);
+}
+
+/* a control to target with one turn of its knob (70 ms after the last: no acceleration), 10 a detent */
+static void turn_to(uint32_t role, uint32_t c, uint32_t target)
+{
+    wait_ms(70);
+    turn(role, ((int32_t)target - (int32_t)macro_pos(c)) / 10);
+}
+static int live_idle(void)                       /* no LIVE FX target still moved (levels: ENERGY's too) */
+{
+    const ov_tab_t *t = &ovb[ov_live];
+    uint32_t i, p;
+    for (i = 0; i < t->n; i++) {
+        const int16_t *q = t->s[i].ptr;
+        int live = q == &song.g[G_FILT] || q == &song.g[G_DMIX] || q == &song.g[G_DFDBK] || q == &song.g[G_DUST];
+        for (p = 0; p < NPART; p++)
+            live |= q == &trk[p].p[P_DLY];
+        if (t->s[i].kind < OV_VCUT && live && ov_cur[ov_live][i])
+            return 0;
+    }
+    return 1;
+}
+static void sc_livefx(void)
+{
+    uint32_t k, ok;
+    boot(1, NULL);
+    tap(B_PLAY);
+    wait_ms(600);
+    check(song.playing && pl.scr == PS_HOME && punch.req == -1 && punch.cur == -1, "livefx: NEON RAIN playing, dry");
+    press(B_FX);
+    turn_to(EN_K4, 15, 600);
+    frames(3);
+    check(macro_pos(15) == 600 && punch.req == PX_LOOP8 && punch.cur == PX_LOOP8 && punch.g > 0,
+          "FX held, K4 = FREEZE at 60: the punch engine loops half a beat");
+    host_key(9, 1);                              /* a white key while FX is held: REVERSE (key 9, D) */
+    frames(3);
+    check(punch.req == PX_REV && punch.cur == PX_REV, ".. a white key: its punch FX (REVERSE) wins");
+    host_key(9, 0);
+    frames(3);
+    check(punch.req == PX_LOOP8 && punch.cur == PX_LOOP8, ".. the key let go: FREEZE's loop again");
+    turn_to(EN_K4, 15, 0);
+    frames(3);
+    check(punch.req == -1 && punch.cur == -1 && punch.g == 0, ".. FREEZE turned back to 0: dry");
+    turn_to(EN_K4, 15, 900);
+    turn_to(EN_K2, 13, 500);
+    turn_to(EN_K3, 14, 400);
+    turn_to(EN_K1, 12, 200);
+    frames(2);
+    ok = punch.req == PX_LOOP16 && macro_pos(13) == 500 && macro_pos(14) == 400 && macro_pos(12) == 200;
+    release(B_FX);
+    frames(3);
+    check(ok && punch.req == -1 && macro_pos(12) == 500 && macro_pos(13) == 0 && macro_pos(14) == 0 &&
+          macro_pos(15) == 0 && !punch.hold, "FX let go with all four up: FILTER ECHO CRUSH FREEZE home, the loop gone");
+    wait_ms(400);
+    check(punch.cur == -1 && punch.g == 0 && !djf.mode && song.g[G_FILT] == 0 && live_idle(),
+          ".. 400 ms later: dry (the DJ filter off, no LIVE FX slot moving)");
+    press(B_FX);                                 /* FX held into ADVANCED (EDIT held 2 s): nothing left */
+    turn_to(EN_K4, 15, 700);
+    frames(2);
+    ok = punch.req == PX_LOOP8;
+    play_adv_enter();
+    frames(3);
+    release(B_FX);
+    frames(3);
+    check(ok && wrt.mode == WM_ADV && punch.req == -1 && macro_pos(15) == 0, "FREEZE up, into ADVANCED: home, dry");
+    pl_enter();                                  /* (back to PLAY, as EDIT held 2 s does) */
+    frames(3);
+    /* the pages at the UI spec's values, for docs/images */
+    press(B_FX);
+    turn_to(EN_K1, 12, 340);
+    turn_to(EN_K2, 13, 180);
+    redraw();
+    check(seen("LIVE FX") && seen("34") && seen("18") && seen("00"), "LIVE FX: FILTER 34, ECHO 18, CRUSH 00, FREEZE 00");
+    shot("livefx");
+    release(B_FX);
+    press(B_ENV);
+    turn_to(EN_K1, 4, 350);
+    turn_to(EN_K2, 5, 420);
+    turn_to(EN_K3, 6, 650);
+    turn_to(EN_K4, 7, 700);
+    redraw();
+    check(seen("SOUND SHAPE") && seen("35") && seen("42") && seen("65") && seen("70"), "SOUND SHAPE: 35 42 65 70");
+    shot("shape");
+    release(B_ENV);
+    press(B_LFO);
+    turn_to(EN_K1, 8, 200);
+    turn_to(EN_K2, 9, 150);
+    turn_to(EN_K3, 10, 300);
+    turn_to(EN_K4, 11, 420);
+    redraw();
+    check(seen("MOVEMENT") && seen("20") && seen("15") && seen("30") && seen("42"), "MOVEMENT: 20 15 30 42");
+    shot("movement");
+    release(B_LFO);
+    wait_ms(3000);
+    for (k = 4, ok = 1; k < 12; k++)
+        ok &= macro_pos(k) == (uint32_t[]){350, 420, 650, 700, 200, 150, 300, 420}[k - 4];
+    check(ok && pl.scr == PS_HOME, "SOUND SHAPE and MOVEMENT keep their positions (ENV / LFO let go, HOME)");
 }
 
 static uint32_t lcg = 12345u;
@@ -920,6 +1026,8 @@ int main(int argc, char **argv)
         bad += run("persist", sc_persist);
     if (!*only || !strcmp(only, "fuzz"))
         bad += run("fuzz", sc_fuzz_main);
+    if (!*only || !strcmp(only, "livefx"))
+        bad += run("livefx", sc_livefx);
     printf(bad ? "PLAY MODE TEST FAILED\n" : "play mode test: all checks passed\n");
     return bad != 0;
 }
