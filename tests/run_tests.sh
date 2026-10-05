@@ -184,4 +184,59 @@ else
     echo "== skip simulator (no SDL2: brew install sdl2; only build/host-bin/flowstate-sim needs it)"
 fi
 
+# Musical Worlds (Phase 5: docs/design/fwd1-format.md, docs/worlds.md): the compiler (tools/worldc.py) and the
+# firmware's FWD1 parser (firmware/src/world.c, built with FELUCCA_WORLD=1); then the regression suite again with
+# FELUCCA_WORLD=1 against the same goldens (no World active: SLOOP renders bit-identically)
+python3 tools/gen_worlds.py build/gen/felucca_worlds.h >/dev/null || fail=1   # (--host-only may keep an older build/gen)
+run "worlds: worldc (sloop-params.json fresh, schema enums, round trip, notation, errors, size limits, gen_worlds)" \
+    python3 tests/worldc_test.py
+world_test() {
+    python3 tools/worldc.py compile worlds/test/minimal.world.json -o "$OUT/world-minimal.wblob" >/dev/null 2>&1 &&
+        python3 tools/worldc.py compile worlds/test/full.world.json -o "$OUT/world-full.wblob" >/dev/null 2>&1 ||
+        { echo "worldc cannot compile worlds/test"; return 1; }
+    $CC -g -w -fsanitize=address,undefined -fno-sanitize-recover=undefined -Ibuild/gen -Ifirmware/src \
+        -o "$OUT/world_test" tests/world_test.c -lm || return 1
+    "$OUT/world_test" "$OUT/world-minimal.wblob" "$OUT/world-full.wblob"
+}
+run "worlds: FWD1 check, load, stage, commit; truncations, flips, 20000 corruptions (ASan/UBSan); proj_slot untouched" \
+    world_test
+run "worlds: the World modules never name proj_slot (design D6)" sh -c '! grep -n proj_slot firmware/src/world*'
+$CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/regress_world" tests/regress_world.c -lm
+run "regression with FELUCCA_WORLD=1 (world.c built in, no World loaded): the same golden renders" \
+    env -u GOLDEN_UPDATE -u BUDGET_UPDATE "$OUT/regress_world" tests/golden.txt tests/cpu_baseline.txt
+
+# the factory Worlds (worlds/factory, docs/worlds.md "Factory Worlds") through the real firmware with
+# tests/world_render.c (wb_check, world_load, world_apply, PLAY; the ENERGY band at the World's default emulated
+# until Phase 11): each compiles within the factory limit (3,072 B; above 2,048 B a warning); every scene x
+# variation, 4 bars and a 6 s tail, is heard, peaks at most -1 dBFS, has no full-scale sample and no DC, leaves no
+# voice and no echo above -60 dBFS after STOP, stays in the voice budget with no held note stolen, keeps its notes
+# in the scale and their registers; the same as the Phase 5 firmware plays it (--raw: no ENERGY) and with a
+# player's phrase on the Smart Keys; ENERGY bands only add; no macro mapping leaves its range or saturates at
+# 100 %; the Worlds sit within 3 LU of each other at their defaults
+factory_worlds_test() {
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/world_render" tests/world_render.c -lm || return 1
+    : > "$OUT/worlds-loudness.txt"
+    for f in worlds/factory/*.world.json; do
+        [ -f "$f" ] || continue
+        id=$(basename "$f" .world.json)
+        python3 tools/worldc.py compile "$f" -o "$OUT/$id.wblob" > "$OUT/$id.txt" 2>&1 || { cat "$OUT/$id.txt"; return 1; }
+        n=$(wc -c < "$OUT/$id.wblob" | tr -d ' ')
+        [ "$n" -le 3072 ] || { echo "$id: $n B, above the factory limit of 3,072 B"; return 1; }
+        [ "$n" -le 2048 ] || echo "$id: warning: $n B, above the 2,048 B guideline"
+        r="$OUT/world_render"
+        for a in "--scene all --var all" "--scene all --var all --raw" "--scene all --keys" "--bands" "--macros"; do
+            # shellcheck disable=SC2086
+            $r --bars 4 $a --check "$OUT/$id.wblob" >> "$OUT/$id.txt" || { cat "$OUT/$id.txt"; return 1; }
+        done
+        lufs=$(sed -n 's/.*at the defaults \(-*[0-9.]*\) LUFS.*/\1/p' "$OUT/$id.txt" | head -1)
+        echo "$id $lufs" >> "$OUT/worlds-loudness.txt"
+        echo "$id: $n B; $(grep -c '^  [A-D] .* ok' "$OUT/$id.txt") renders clean; at the defaults $lufs LUFS"
+    done
+    awk '{ if (NR == 1 || $2 < lo) lo = $2; if (NR == 1 || $2 > hi) hi = $2 }
+         END { printf "loudness at the defaults: %.2f .. %.2f LUFS (%.2f LU apart)\n", lo, hi, hi - lo; exit (hi - lo > 3) }' \
+        "$OUT/worlds-loudness.txt"
+}
+run "worlds: the factory Worlds, every scene x variation rendered clean (world_render), ENERGY, macros, loudness" \
+    factory_worlds_test
+
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }
