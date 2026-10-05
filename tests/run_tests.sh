@@ -113,4 +113,20 @@ else
     echo "== skip web tests (no node)"
 fi
 
+# host programs (host/): the example projects through the real firmware: 16 bars each, clean (heard, under
+# -0.1 dBFS, no full-scale sample, no DC), the same bytes twice; host/examples.c still makes the committed ones
+make -s -j2 -C host
+render_test() {
+    mkdir -p "$OUT/examples"
+    build/host-bin/sloop-examples "$OUT/examples" >/dev/null || return 1
+    for n in ambient groove cinematic; do
+        build/host-bin/sloop-render --bars 16 --check "examples/projects/$n.fun4" "$OUT/render-$n.wav" || return 1
+        build/host-bin/sloop-render --bars 16 "examples/projects/$n.fun4" "$OUT/render-$n-2.wav" >/dev/null || return 1
+        cmp "$OUT/render-$n.wav" "$OUT/render-$n-2.wav" || return 1
+        cmp "$OUT/examples/$n.fun4" "examples/projects/$n.fun4" || { echo "examples/projects/$n.fun4 is not what host/examples.c makes"; return 1; }
+        echo "render: $n: the same bytes twice; examples/projects/$n.fun4 as host/examples.c makes it"
+    done
+}
+run "host renderer: example projects, 16 bars each, clean and deterministic (sloop-render, sloop-examples)" render_test
+
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }
