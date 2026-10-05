@@ -129,60 +129,79 @@ render_test() {
 }
 run "host renderer: example projects, 16 bars each, clean and deterministic (sloop-render, sloop-examples)" render_test
 
-# the real-time simulator (host/sim, needs SDL2): the demo (the stand-in World GROOVE, starting on scene B)
-# headless, 5 s through the null sink in real time (no window, no sound): PLAY, a scene switch on the next bar,
-# mutes, tempo and filter, the audio heard and then silenced (the script's expectations), exactly 5 s played, a
-# clean exit. Then --fast twice: the same bytes each time and, when real time had no underrun, the same bytes
-# as real time (nothing dropped or doubled). Then FLOWSTATE STUDIO, --fast: choose a World while one plays,
-# confirm, it loads on the bar; a scene, a mute and back, a level, a macro; the Studio and ADVANCED drawn (--shot)
-SIM_SCRIPT='1 play; 2.5 expect playing = 1; 2.5 expect scene = B; 2.5 expect rms > -30
-    2.6 scene A; 2.7 expect next = A; 2.7 expect scene = B
-    3.2 expect scene = A; 3.2 expect mute1 = 1; 3.2 expect mute4 = 1; 3.2 expect mute2 = 0
-    3.3 mute 4; 3.4 expect mute4 = 0; 3.5 mute 2 on; 3.5 mute 3 on; 3.5 mute 4 on
-    3.6 bpm +2; 3.6 filter -20; 3.7 expect bpm = 122; 3.7 expect filter = -20; 4.9 expect rms < -45'
-STUDIO_SCRIPT='0.95 expect world = GROOVE; 1 play
-    1.2 world AMBIENT; 1.3 expect browse = AMBIENT; 1.3 expect world = GROOVE
-    1.5 confirm; 1.6 expect pending = AMBIENT; 1.6 expect world = GROOVE
-    3.05 expect world = AMBIENT; 3.05 expect bpm = 70; 3.05 expect playing = 1; 3.05 expect scene = B
-    3.3 scene D; 3.4 expect next = D; 6.6 expect scene = D; 6.6 expect mute4 = 1
-    6.7 mute 2; 6.8 expect mute2 = 1; 6.9 mute 2; 7.0 expect mute2 = 0
-    7.1 level 1 90; 7.2 expect level1 = 90; 7.3 macro COLOR +10; 7.4 expect macro1 = 60'
+# the real-time simulator (host/sim, needs SDL2) and the World host tools. First the demo (NEON RAIN) headless,
+# 6 s through the null sink in real time (no window, no sound): PLAY, scene C asked for mid-bar and committed
+# exactly on the next bar, mutes, tempo and filter, the audio heard and then silenced (the script's
+# expectations), exactly 6 s played, a clean exit. Then --fast twice: the same bytes each time and, when real
+# time had no underrun, the same bytes as real time (nothing dropped or doubled). Then FLOWSTATE STUDIO, --fast:
+# a variation on the bar, a scene on the bar, another World chosen while one plays and switched on the bar, a
+# mute and back, a level, a macro, STOP with no note left held or sounding, a SLOOP project; the Studio and
+# ADVANCED drawn (--shot). Then sloop-render: every factory World clean (build/renders/worlds), and a scene
+# sequence whose changes land on the bars
+SIM_SCRIPT='0.95 expect world = NEON_RAIN; 1 play; 2.5 expect playing = 1; 2.5 expect scene = B; 2.5 expect rms > -35
+    2.6 scene C; 2.7 expect next = C; 4.30 expect scene = B; 4.40 expect scene = C
+    4.45 mute 4; 4.5 expect mute4 = 1; 4.55 mute 4; 4.6 expect mute4 = 0
+    4.6 bpm +2; 4.6 filter -20; 4.65 expect bpm = 74; 4.65 expect filter = -20
+    4.7 mute 1 on; 4.7 mute 2 on; 4.7 mute 3 on; 4.7 mute 4 on; 5.95 expect rms < -45'
+STUDIO_SCRIPT='0.95 expect world = NEON_RAIN; 0.95 expect var = ORIGINAL; 1 play
+    1.5 var DREAMY; 1.6 expect varnext = DREAMY; 4.30 expect var = ORIGINAL; 4.40 expect var = DREAMY
+    4.5 scene C; 7.60 expect scene = B; 7.70 expect scene = C
+    7.8 world MIDNIGHT_DRIVE; 7.9 expect browse = MIDNIGHT_DRIVE; 8.0 confirm; 8.1 expect pending = MIDNIGHT_DRIVE
+    10.95 expect world = NEON_RAIN; 11.05 expect world = MIDNIGHT_DRIVE; 11.05 expect bpm = 100; 11.05 expect playing = 1
+    11.05 expect scene = B; 11.3 expect rms > -40
+    11.3 mute 2; 11.4 expect mute2 = 1; 11.5 mute 2; 11.6 expect mute2 = 0
+    11.7 level 1 90; 11.8 expect level1 = 90; 11.9 macro COLOR +10; 12.0 expect macro1 = 60
+    12.1 stop; 12.15 expect gated = 0; 14.4 expect voices = 0; 14.4 expect rms < -60
+    14.5 world GROOVE; 14.5 confirm; 14.6 expect world = GROOVE; 14.6 expect bpm = 120'
 sim_test() {
     sim=build/host-bin/flowstate-sim
-    $sim --demo --headless 5 --script "$SIM_SCRIPT" --wav "$OUT/sim-rt.wav" > "$OUT/sim-rt.txt" ||
+    $sim --demo --headless 6 --script "$SIM_SCRIPT" --wav "$OUT/sim-rt.wav" > "$OUT/sim-rt.txt" ||
         { cat "$OUT/sim-rt.txt"; return 1; }
     grep '^expect' "$OUT/sim-rt.txt"
-    [ "$(grep -c '^expect: .*: ok' "$OUT/sim-rt.txt")" -eq 13 ] || { echo "not every expectation ran"; return 1; }
-    grep -q 'the sink played 220500 (5.000 s)' "$OUT/sim-rt.txt" || { cat "$OUT/sim-rt.txt"; return 1; }
+    [ "$(grep -c '^expect: .*: ok' "$OUT/sim-rt.txt")" -eq 12 ] || { echo "not every expectation ran"; return 1; }
+    grep -q 'the sink played 264600 (6.000 s)' "$OUT/sim-rt.txt" || { cat "$OUT/sim-rt.txt"; return 1; }
     n=$(sed -n 's/.*rendered \([0-9]*\) frames.*/\1/p' "$OUT/sim-rt.txt")
-    [ "$n" -ge 220500 ] && [ "$n" -le $((220500 + 736)) ] || { echo "rendered $n frames for 220500 played"; return 1; }
-    [ "$(wc -c < "$OUT/sim-rt.wav" | tr -d ' ')" -eq $((44 + 220500 * 4)) ] || { echo "sim-rt.wav: wrong size"; return 1; }
-    $sim --demo --headless 5 --fast --script "$SIM_SCRIPT" --wav "$OUT/sim-fast.wav" > "$OUT/sim-fast.txt" || return 1
-    $sim --demo --headless 5 --fast --script "$SIM_SCRIPT" --wav "$OUT/sim-fast2.wav" --advanced \
+    [ "$n" -ge 264600 ] && [ "$n" -le $((264600 + 736)) ] || { echo "rendered $n frames for 264600 played"; return 1; }
+    [ "$(wc -c < "$OUT/sim-rt.wav" | tr -d ' ')" -eq $((44 + 264600 * 4)) ] || { echo "sim-rt.wav: wrong size"; return 1; }
+    $sim --demo --headless 6 --fast --script "$SIM_SCRIPT" --wav "$OUT/sim-fast.wav" > "$OUT/sim-fast.txt" || return 1
+    $sim --demo --headless 6 --fast --script "$SIM_SCRIPT" --wav "$OUT/sim-fast2.wav" --advanced \
         --shot "$OUT/sim-advanced.bmp" > /dev/null || return 1
     cmp "$OUT/sim-fast.wav" "$OUT/sim-fast2.wav" || return 1
     if grep -q 'underruns 0, 0 frames missing' "$OUT/sim-rt.txt"; then
         cmp "$OUT/sim-rt.wav" "$OUT/sim-fast.wav" || return 1
-        echo "simulator: 5 s played in real time, no underrun, the same bytes as --fast (twice)"
+        echo "simulator: 6 s played in real time, no underrun, the same bytes as --fast (twice)"
     else
         grep 'underruns' "$OUT/sim-rt.txt"
         echo "simulator: underruns in real time (a busy machine?): not compared with --fast; --fast twice the same bytes"
     fi
-    $sim --demo --headless 7.5 --fast --script "$STUDIO_SCRIPT" --shot "$OUT/sim-studio.bmp" > "$OUT/sim-studio.txt" ||
+    $sim --demo --headless 15 --fast --script "$STUDIO_SCRIPT" --shot "$OUT/sim-studio.bmp" > "$OUT/sim-studio.txt" ||
         { cat "$OUT/sim-studio.txt"; return 1; }
     grep '^expect' "$OUT/sim-studio.txt"
-    [ "$(grep -c '^expect: .*: ok' "$OUT/sim-studio.txt")" -eq 16 ] || { echo "not every Studio expectation ran"; return 1; }
+    [ "$(grep -c '^expect: .*: ok' "$OUT/sim-studio.txt")" -eq 24 ] || { echo "not every Studio expectation ran"; return 1; }
     for f in sim-studio sim-advanced; do                  # 1000 x 872, 24 bits: drawn, not compared
         [ "$(wc -c < "$OUT/$f.bmp" | tr -d ' ')" -eq $((54 + 3000 * 872)) ] || { echo "$f.bmp: not drawn"; return 1; }
     done
-    echo "simulator: FLOWSTATE STUDIO: a World chosen while one plays, loaded on the bar; scene, mute, level, macro;" \
-         "$OUT/sim-studio.bmp, $OUT/sim-advanced.bmp"
+    echo "simulator: FLOWSTATE STUDIO: variation and scene on the bar, a World switched on the bar, no note left" \
+         "after STOP, a SLOOP project; $OUT/sim-studio.bmp, $OUT/sim-advanced.bmp"
+    mkdir -p build/renders/worlds
+    for w in FROZEN_LAKE NEON_RAIN DUSTY_CAFE MIDNIGHT_DRIVE; do
+        id=$(echo $w | tr 'A-Z' 'a-z')
+        build/host-bin/sloop-render --world "$(echo $w | tr _ ' ')" --bars 4 --check \
+            "build/renders/worlds/$id-studio.wav" > "$OUT/render-$id.txt" || { cat "$OUT/render-$id.txt"; return 1; }
+        echo "render: $(grep '^rendered' "$OUT/render-$id.txt" | sed 's/^rendered //'); $(grep 'peak' "$OUT/render-$id.txt" | tr -s ' ')"
+    done
+    build/host-bin/sloop-render --world "NEON RAIN" --world-sequence --bars 2 --check "$OUT/render-sequence.wav" \
+        > "$OUT/render-sequence.txt" || { cat "$OUT/render-sequence.txt"; return 1; }
+    [ "$(grep -c '^scene [BCD] .* from [246]\.000 bars' "$OUT/render-sequence.txt")" -eq 3 ] ||
+        { cat "$OUT/render-sequence.txt"; echo "the scenes did not change on the bars"; return 1; }
+    echo "render: NEON RAIN A B C D, 2 bars each: each scene from its bar ($(grep -c '^scene' "$OUT/render-sequence.txt") changes)"
 }
 if command -v sdl2-config >/dev/null 2>&1; then
-    run "simulator: real time headless (flowstate-sim): PLAY, scene on the bar, mutes, audio, frames; the Studio" sim_test
+    run "simulator and Worlds: real time headless, scenes and variations on the bar, a World switch, renders" sim_test
 else
     echo "== skip simulator (no SDL2: brew install sdl2; only build/host-bin/flowstate-sim needs it)"
 fi
+run "unity order: host/core.c builds felucca.c's firmware files in its order" python3 tests/unity_order_test.py
 
 # Musical Worlds (Phase 5: docs/design/fwd1-format.md, docs/worlds.md): the compiler (tools/worldc.py) and the
 # firmware's FWD1 parser (firmware/src/world.c, built with FELUCCA_WORLD=1); then the regression suite again with
@@ -238,5 +257,38 @@ factory_worlds_test() {
 }
 run "worlds: the factory Worlds, every scene x variation rendered clean (world_render), ENERGY, macros, loudness" \
     factory_worlds_test
+
+# Smart Keys and harmony (Phase 6: firmware/src/harmony.c, smartkeys.c, the pitch reference count in voice.c; design
+# 3, 4): tests/smartkeys_test.c under ASan/UBSan (without the shift-base check: SLOOP's DSP has always shifted
+# negative values left, fx.c dc_block and eng_analog.c, harmless on the target) on the factory Worlds and the test
+# Worlds: every key x chord x progression x OCT against a model of design 4.1, the chord clock, held notes, same-pitch
+# notes (R1), octaves, polyphony, MIDI in, SLOOP's paths, a fuzz (SK_FUZZ / SK_SEED: a longer one). Then a player
+# mashing the keys live over every scene x variation of every factory World (world_render --mash): every note in key
+# and in range, nothing left after STOP; the demo of the default scene of NEON RAIN and DUSTY CAFE as WAVs
+smartkeys_test() {
+    for w in minimal full; do
+        python3 tools/worldc.py compile worlds/test/$w.world.json -o "$OUT/sk-$w.wblob" >/dev/null 2>&1 ||
+            { echo "worldc cannot compile worlds/test/$w.world.json"; return 1; }
+    done
+    $CC -g -w -fsanitize=address,undefined -fno-sanitize=shift-base -fno-sanitize-recover=undefined -Ibuild/gen \
+        -Ifirmware/src -o "$OUT/smartkeys_test" tests/smartkeys_test.c -lm || return 1
+    "$OUT/smartkeys_test" "$OUT/sk-minimal.wblob" "$OUT/sk-full.wblob" || return 1
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/world_render" tests/world_render.c -lm || return 1
+    for f in worlds/factory/*.world.json; do
+        [ -f "$f" ] || continue
+        id=$(basename "$f" .world.json)
+        python3 tools/worldc.py compile "$f" -o "$OUT/sk-$id.wblob" >/dev/null 2>&1 || return 1
+        "$OUT/world_render" --mash --scene all --var all --bars 4 --check "$OUT/sk-$id.wblob" > "$OUT/mash-$id.txt" ||
+            { cat "$OUT/mash-$id.txt"; return 1; }
+        echo "mash: $id: $(tail -1 "$OUT/mash-$id.txt" | sed 's/;.*//')"
+    done
+    for id in neon_rain dusty_cafe; do
+        "$OUT/world_render" --mash --bars 8 --check --wav "$OUT/mash-$id.wav" "$OUT/sk-$id.wblob" > "$OUT/mash-$id-demo.txt" ||
+            { cat "$OUT/mash-$id-demo.txt"; return 1; }
+        echo "mash demo: $OUT/mash-$id.wav:$(grep '^  keys .*mashed' "$OUT/mash-$id-demo.txt" | sed 's/^  keys//')"
+    done
+}
+run "smart keys: maps, chord clock, held notes, same pitch, octaves, polyphony, MIDI, fuzz (ASan/UBSan); key mashing" \
+    smartkeys_test
 
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }

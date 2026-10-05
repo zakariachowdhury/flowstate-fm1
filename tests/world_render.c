@@ -10,6 +10,9 @@
  *     --energy X           the ENERGY position 0..1 (default: the World's), plus the variation's bias
  *     --raw                no ENERGY emulation: every pattern of the scene plays, as the Phase 5 firmware does
  *     --keys               a phrase on the Smart Keys track (written as a recorded loop: the player's lead)
+ *     --mash               a beginner mashing the 27 keys live (Smart Keys, Phase 6): on most eighth notes one or two
+ *                          random keys, each held one to four eighths (--seed N: another player); every key note must
+ *                          be in the World's key and range, and nothing may hang after the release
  *     --tail S             seconds after STOP (default 6)
  *     --wav OUT.wav        the audio of a single render
  *     --sequence OUT.wav   scenes A, B, C, D, N bars each. Phase 5 changes scenes while stopped only, so the
@@ -59,7 +62,8 @@ static const uint16_t QMASK[WF_NQUAL] = WF_QUAL_MASK;
 /* ------------------------------------------------------------- the World --- */
 static const uint8_t *blob;
 static uint32_t blob_n;
-static int energy_emul = 1, keys_phrase = 0;
+static int energy_emul = 1, keys_phrase = 0, mash = 0;
+static uint32_t mash_seed = 1;
 static uint32_t mute_mask;                       /* --mute: tracks kept silent (gain staging: one part at a time) */
 static double energy_set = -1, tail_s = 6;
 static uint32_t bars = 8;
@@ -275,6 +279,7 @@ typedef struct {
     uint32_t full, near, steals, held, vmax, vpart[NPART], left_voices;
     uint32_t notes[NTRK], out_scale[NTRK], on_chord[NTRK], lo[NTRK], hi[NTRK], hits_bar10, lanes;
     uint32_t layers, band, nbands, energy_pos;
+    uint32_t mash_keys, mash_refused, mash_black, mash_chord, mash_offkey, mash_range, mash_counts, mash_lo, mash_hi;
     int fails;
     char why[256];
 } result_t;
@@ -471,6 +476,59 @@ static void wav_end(FILE *f, uint32_t frames)
     fclose(f);
 }
 
+/* --mash: a beginner on the Smart Keys. On each eighth note (the transport's), the keys held long enough go up,
+ * then most eighths one or two random keys go down, held one to four eighths. After the block, each key that went
+ * down is judged as it sounded (kb_nt): in the World scale, on the chord (harm.ct), inside the range */
+static uint32_t mash_rs, mash_e8 = 0xFFFFFFFFu, mash_left[27], mash_prev;
+static uint32_t mash_rnd(void)
+{
+    mash_rs = mash_rs * 1664525u + 1013904223u;
+    return mash_rs >> 8;
+}
+static void mash_before(void)
+{
+    uint32_t e8 = clk_beat * 2u + (clk_pos >= BEAT_U / 2u), k, m = fm1_in.notes, r, n;
+    if (!song.playing || e8 == mash_e8)
+        return;
+    mash_e8 = e8;
+    for (k = 0; k < 27; k++)
+        if (m >> k & 1u && !--mash_left[k])
+            m &= ~(1u << k);
+    r = mash_rnd() % 10u;
+    for (n = r < 3 ? 0u : r < 8 ? 1u : 2u; n; n--) {
+        k = mash_rnd() % 27u;
+        if (m >> k & 1u)
+            continue;
+        m |= 1u << k;
+        mash_left[k] = 1u + mash_rnd() % 4u;
+    }
+    fm1_in.notes = m;
+}
+static void mash_after(result_t *r)
+{
+    uint32_t down = fm1_in.notes & ~mash_prev, k, sm = SCALE_MASK[w_scale()];
+    mash_prev = fm1_in.notes;
+    for (k = 0; k < 27; k++) {
+        uint32_t n, black = (0x54Au >> ((53u + k) % 12u)) & 1u;
+        if (!(down >> k & 1u))
+            continue;
+        if (!kb_n[k]) {
+            r->mash_refused++;
+            continue;
+        }
+        n = kb_nt[k][0];
+        r->mash_keys++;
+        r->mash_black += black;
+        r->mash_chord += harm.ct >> (n % 12u) & 1u;
+        r->mash_offkey += !(sm >> ((n + 12u - w_root()) % 12u) & 1u);
+        r->mash_range += n < skm[skcur].lo || n > skm[skcur].hi;
+        if (n < r->mash_lo)
+            r->mash_lo = n;
+        if (n > r->mash_hi)
+            r->mash_hi = n;
+    }
+}
+
 /* blocks of audio; play 1: measured (the bars played), 2: the peak only (the end of the tail) */
 static void run(meter_t *m, uint32_t frames, int play)
 {
@@ -480,7 +538,11 @@ static void run(meter_t *m, uint32_t frames, int play)
         uint32_t beat = clk_beat;                /* (the steps this block starts are on this beat) */
         fill_tick();
         held_before();
+        if (mash && play == 1)
+            mash_before();
         mix_block(o, CTL);
+        if (mash && play == 1)
+            mash_after(m->r);
         if (play == 1) {
             uint32_t v = 0;
             m->r->held += held_after();
@@ -586,6 +648,7 @@ static void finish(meter_t *m, result_t *r, const band_t *b)
 static void stop_tail(result_t *r, meter_t *m)
 {
     uint32_t p, i, n = (uint32_t)(tail_s * FS) / CTL * CTL, q = FS / 4u / CTL * CTL, left = 0;
+    fm1_in.notes = 0;                            /* (--mash: every key up with the STOP) */
     transport_req = 2;
     run(m, n > q ? n - q : 0u, 0);
     m->peak = 0;
@@ -596,6 +659,9 @@ static void stop_tail(result_t *r, meter_t *m)
     for (i = 0; i < NDRUM; i++)
         left += drums.v[i].active;
     r->left_voices = left;
+    for (p = 0; p < NPART; p++)                  /* (the pitch counts, H2: nothing holds a note any more) */
+        for (i = 0; i < 128u; i++)
+            r->mash_counts += vref[p][i] + vlive[p][i];
     r->tail_db = dbfs(m->peak);
 }
 
@@ -619,8 +685,12 @@ static void judge(result_t *r)
         BAD(" tail(%u voices, %.1f dB)", r->left_voices, r->tail_db);
     if (r->vmax > NVOICE)
         BAD(" voices %u", r->vmax);
-    if (r->held && !keys_phrase)
+    if (r->held && !keys_phrase && !mash)
         BAD(" %u held notes stolen", r->held);
+    if (mash && (!r->mash_keys || r->mash_offkey || r->mash_range))
+        BAD(" keys: %u notes, %u off the key, %u out of range", r->mash_keys, r->mash_offkey, r->mash_range);
+    if (r->mash_counts)
+        BAD(" %u pitch counts left after STOP", r->mash_counts);
     for (t = 0; t < NPART; t++) {
         uint32_t role = wctx.b[wctx.trk[t]], lo = 0, hi = 127;
         if (!r->notes[t])
@@ -661,6 +731,8 @@ static result_t render_one(uint32_t s, uint32_t v, double energy, const char *wa
         memset(&m, 0, sizeof m);
         for (t = 0; t < NTRK; t++)
             r.lo[t] = 127;
+        r.mash_lo = 127;
+        mash_rs = mash_seed * 2654435761u + s * 40503u + v;
         m.r = &r;
         m.scene = s;
         loud_init(&m.loud);
@@ -826,6 +898,10 @@ static void detail(uint32_t s, uint32_t v, const result_t *r)
         printf("  %-8s %u notes, %u..%u, %u off the scale, %u%% chord tones\n", ROLE[role], r->notes[t], r->lo[t],
                r->hi[t], r->out_scale[t], 100u * r->on_chord[t] / r->notes[t]);
     }
+    if (mash)
+        printf("  keys     %u notes mashed (%u black, %u refused by max_poly), %u..%u, %u%% chord tones, %u off the key, "
+               "%u out of range\n", r->mash_keys, r->mash_black, r->mash_refused, r->mash_lo, r->mash_hi,
+               r->mash_keys ? 100u * r->mash_chord / r->mash_keys : 0u, r->mash_offkey, r->mash_range);
     printf("  tail     %u voices sounding after %.1f s, the last 0.25 s peak %.1f dBFS\n", r->left_voices, tail_s,
            r->tail_db);
     printf("check: %s%s\n", r->fails ? "FAIL:" : "ok", r->why);
@@ -899,7 +975,7 @@ static int read_all(const char *path)
 static void usage(void)
 {
     fprintf(stderr, "usage: world_render [--scene A..D|all] [--var NAME|all] [--bars N] [--energy X] [--raw] "
-                    "[--keys] [--tail S] [--mute T,..]\n"
+                    "[--keys | --mash [--seed N]] [--tail S] [--mute T,..]\n"
                     "                    [--wav OUT.wav | --sequence OUT.wav | --bands | --macros] [--check] "
                     "WORLD.wblob\n");
     exit(2);
@@ -931,6 +1007,10 @@ int main(int argc, char **argv)
             energy_emul = 0;
         else if (!strcmp(a, "--keys"))
             keys_phrase = 1;
+        else if (!strcmp(a, "--mash"))
+            mash = 1;
+        else if (!strcmp(a, "--seed") && i + 1 < argc)
+            mash_seed = (uint32_t)atoi(argv[++i]);
         else if (!strcmp(a, "--bands"))
             bands = 1;
         else if (!strcmp(a, "--macros"))

@@ -44,6 +44,10 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #include "../firmware/src/arranger.c"
 #endif
 #include "../firmware/src/seq.c"
+#if FELUCCA_WORLD                       /* (the World builds: tests/world_test.c, regress_world.c, ...) */
+#include "../firmware/src/harmony.c"
+#include "../firmware/src/smartkeys.c"
+#endif
 #define inst (trk[0])                   /* the single-part renders below: part 1 */
 
 static void wav_hdr(FILE *f, uint32_t frames)
