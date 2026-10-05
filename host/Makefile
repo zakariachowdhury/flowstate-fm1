@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Host programs on the real firmware (host/core.c + host/hal_host.h), built with the host tests' flags:
-#   make -C host            build/host-bin/sloop-render, build/host-bin/sloop-examples
+#   make -C host            build/host-bin/sloop-render, build/host-bin/sloop-examples, and with SDL2
+#                           (sdl2-config: brew install sdl2) build/host-bin/flowstate-sim (docs/simulator.md)
 #   make -C host clean
 # build/gen (tables, samples, fonts, icons, kits, logo) is made with tools/build.py --gen-only when it is
 # missing; after a change to a generator or its assets, run that again. No toolchain or Docker needed.
@@ -14,7 +15,7 @@ CPPFLAGS := -I. -I$(OBJ) -I$(GEN) -I$(ROOT)/firmware/src -I$(ROOT)/firmware/hal
 FIRMWARE := $(wildcard $(ROOT)/firmware/src/*.c $(ROOT)/firmware/src/*.h $(ROOT)/firmware/hal/*.h)
 CORE := core.c hal_host.h host.h $(OBJ)/fw_main.h $(FIRMWARE) $(GEN)/felucca_tables.h $(wildcard $(GEN)/*.h)
 
-all: $(BIN)/sloop-render $(BIN)/sloop-examples
+all: $(BIN)/sloop-render $(BIN)/sloop-examples sim
 
 $(GEN)/felucca_tables.h:
 	cd $(ROOT) && python3 tools/build.py --gen-only
@@ -42,7 +43,24 @@ $(BIN)/sloop-examples: examples.c $(CORE)
 	@mkdir -p $(BIN)
 	$(CC) $(CFLAGS) -w $(CPPFLAGS) -o $@ examples.c -lm
 
+# the real-time simulator: only with SDL2 (the other programs build without it). On macOS it also reads the
+# output device's latency from CoreAudio (a system framework SDL2 itself uses)
+SDL2_CONFIG ?= sdl2-config
+SDL2 := $(shell command -v $(SDL2_CONFIG) 2>/dev/null)
+SIM := $(addprefix sim/,main.c engine.c audio.c cmd.c canvas.c panel.c)
+SIM_LIBS := $(if $(filter Darwin,$(shell uname -s)),-framework CoreAudio)
+ifneq ($(SDL2),)
+sim: $(BIN)/flowstate-sim
+$(BIN)/flowstate-sim: $(SIM) sim/sim.h sim/ring.h host.h $(OBJ)/core.o
+	@mkdir -p $(BIN)
+	$(CC) $(CFLAGS) -Wall -Wextra -I. $(shell $(SDL2_CONFIG) --cflags) -o $@ $(SIM) $(OBJ)/core.o \
+	  $(shell $(SDL2_CONFIG) --libs) $(SIM_LIBS) -lm
+else
+sim:
+	@echo "host/Makefile: skipping build/host-bin/flowstate-sim: no sdl2-config (brew install sdl2; only the simulator needs it)"
+endif
+
 clean:
 	rm -rf $(BIN) $(OBJ)
 
-.PHONY: all clean
+.PHONY: all clean sim
