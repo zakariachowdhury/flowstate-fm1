@@ -393,4 +393,111 @@ void host_state(host_state_t *s)
         d->dly = t->p[P_DLY];
         d->rev = is_drum(t) ? song.g[G_DRREV] : t->p[P_REV];
     }
+    s->scene = live_sec;
+    s->scene_next = live_req;
+    s->beat = (int)clk_beat;
+    s->filter = song.g[G_FILT];
+    s->master = (int)song.master_q12;
 }
+
+/* ------------------------------------------------ live control (the gestures of ui_layers.c, direct) --- */
+int host_scene(uint32_t slot)                    /* ui_layers.c LY_SONG, white keys 1..4 */
+{
+    char b[2] = {(char)('A' + (slot & 3u)), 0};
+    if (slot >= 4u)
+        return -1;
+    if (arrangement_clock.running) {
+        ui_message("SONG PLAYS");
+        return -2;
+    }
+    if (!((arrangement_ready() >> slot) & 1u)) {
+        ui_say("EMPTY ", b);
+        return -1;
+    }
+    if (song.playing) {
+        live_req = (int8_t)slot;                 /* seq.c live_block: on the next bar */
+        ui_say("NEXT: ", b);
+        return 1;
+    }
+    section_load(slot);
+    ui_say("LOADED ", b);
+    return 0;
+}
+int host_section_store(uint32_t slot)            /* white keys 5..8 (without the device's "AGAIN" over a used one) */
+{
+    char b[2] = {(char)('A' + (slot & 3u)), 0};
+    if (slot >= 4u)
+        return -1;
+    section_store(slot);
+    ui_say("SAVED ", b);
+    return 0;
+}
+int host_track_set(uint32_t k, uint32_t what, int32_t v)
+{
+    static const uint8_t ID[HOST_NT] = {P_LEVEL, P_PAN, P_MUTE, P_CHOR, P_DLY, P_REV};
+    int16_t *p;
+    const param_desc_t *d;
+    if (k >= NTRK || what >= HOST_NT)
+        return 0;
+    if (is_drum(&trk[k]) && (what == HOST_T_LEVEL || what == HOST_T_REV)) {   /* GLO > DRUMS */
+        uint32_t g = what == HOST_T_LEVEL ? G_DRLVL : G_DRREV;
+        p = &song.g[g];
+        d = &GP[g];
+    } else {
+        p = &trk[k].p[ID[what]];
+        d = &TP[ID[what]];
+    }
+    *p = (int16_t)clamp(v, d->min, d->max);
+    return *p;
+}
+static const uint8_t HOST_GID[HOST_NG] = {G_BPM, G_SWING, G_FILT, G_DUST, G_DUCK};
+int host_global(uint32_t what) { return what < HOST_NG ? song.g[HOST_GID[what]] : 0; }
+int host_global_set(uint32_t what, int32_t v)
+{
+    uint32_t g;
+    if (what >= HOST_NG)
+        return 0;
+    g = HOST_GID[what];
+    song.g[g] = (int16_t)clamp(v, GP[g].min, GP[g].max);
+    return song.g[g];
+}
+uint32_t host_flash_changes(void) { return host_nor_erases + host_nor_progs; }
+int host_button_led(uint32_t label) { return label < NB ? host_led(panel.btn[label]) : 0; }
+
+/* ------------------------------------------------ names, colours, the font (constant data) --- */
+const char *host_version(void) { return FELUCCA_VERSION; }
+const char *host_button_name(uint32_t label) { return label < NB ? B_NAME[label] : "?"; }
+const char *host_encoder_name(uint32_t role) { return role < NE ? E_NAME[role] : "?"; }
+uint32_t host_knob_rgb(uint32_t k)
+{
+    uint32_t c = TE_COL[k & 3u];
+    return ((c >> 11) * 255u / 31u) << 16 | ((c >> 5 & 63u) * 255u / 63u) << 8 | (c & 31u) * 255u / 31u;
+}
+static uint32_t host_mix(uint32_t a, uint32_t b, uint32_t t)   /* 0xRRGGBB, t 0..255: a -> b */
+{
+    uint32_t r = ((a >> 16 & 255u) * (255u - t) + (b >> 16 & 255u) * t) / 255u;
+    uint32_t g = ((a >> 8 & 255u) * (255u - t) + (b >> 8 & 255u) * t) / 255u;
+    return 0xFF000000u | r << 16 | g << 8 | ((a & 255u) * (255u - t) + (b & 255u) * t) / 255u;
+}
+int host_text(uint32_t *px, int stride, int w, int h, int x, int y, int large, const char *s, uint32_t rgb)
+{
+    const felucca_font_t *f = large ? &FONT_L : &FONT_S;   /* as gfx.c cv_text: 4-bit alpha */
+    for (; *s; s++) {
+        uint32_t gi = glyph(f, (uint8_t)*s), bw = f->bw[gi], bpr = (bw + 1u) / 2u, gx, gy;
+        const uint8_t *gd = f->data + f->off[gi];
+        for (gy = 0; gy < f->h; gy++)
+            for (gx = 0; gx < bw; gx++) {
+                uint32_t a = gd[gy * bpr + gx / 2u];
+                int cx = x - f->pad + (int)gx, cy = y + (int)gy;
+                a = (gx & 1u) ? (a & 15u) : (a >> 4);
+                if (a && cx >= 0 && cx < w && cy >= 0 && cy < h) {
+                    uint32_t *d = &px[cy * stride + cx];
+                    *d = host_mix(*d, rgb, a * 17u);
+                }
+            }
+        x += f->adv[gi];
+    }
+    return x;
+}
+int host_text_width(int large, const char *s) { return (int)text_w(large ? &FONT_L : &FONT_S, s); }
+int host_text_height(int large) { return large ? FONT_L.h : FONT_S.h; }
