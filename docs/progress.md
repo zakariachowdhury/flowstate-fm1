@@ -241,3 +241,67 @@ four demo Worlds are being composed.
 
 **Next.** Phase 6: Smart Keys. It starts by wiring the World runtime into the host core, renderer and Studio so the
 Worlds can be heard in the simulator, then the pitch reference count, then SMART MELODY.
+
+## Phase 6: Smart Keys (2026-10-05)
+
+**Done.**
+
+**Harmony.** `firmware/src/harmony.c` follows the committed progression per audio block. It names the chord in the
+World's key ("Bbmaj7", "Dmadd9") and gives the chord-tone masks.
+
+**SMART MELODY.** `firmware/src/smartkeys.c` implements design D7 and UI spec §4.
+- **White keys** play the World's melody scale (pentatonic by default). The C4 key is the tonic, and they never move.
+- **Black keys** play the current chord's tones, ascending in the same register.
+- **Range and octaves:** notes are folded into the role range; OCT moves by octaves.
+- **Note guard:** a polyphony cap.
+- **MIDI in:** mapped, and remembered per incoming note.
+- **PULSE with one key held:** arpeggiates chord tones.
+- **Held notes** keep exactly what they sounded, whatever happens to the chord, the octave or the scene.
+
+**Pitch reference count** (design D8; fixes audit R1). Notes of the same pitch no longer cut each other: two keys, or
+a key and the sequencer.
+- **Exactness:** the live-input counts, slides, ratchets and panic are handled so the counts stay exact.
+- **Voice budget:** an existing SLOOP hole let a same-pitch voice reuse exceed the 8-voice budget. It is fixed in
+  World mode.
+- **Scope:** all of this applies only while a World is active.
+
+**Worlds in the host tools.**
+- `host/core.c` builds with `FELUCCA_WORLD 1`.
+- `sloop-render --world NAME|FILE --scene --var` and `--world-sequence`.
+- The Studio:
+  - opens on NEON RAIN;
+  - lists the factory Worlds, then the SLOOP projects;
+  - uses real scene and variation names, applied on the next bar;
+  - shows role-named tracks and "KEYS: SMART MELODY" with the current chord;
+  - hot-reloads a World JSON while playing.
+- `world_request` applies a scene/variation immediately when stopped and on the next bar while playing.
+- A World switch while playing happens on the bar as stop → load → start. Seamless switching is Phase 11.
+
+**Verified.**
+- `./tests/run_tests.sh` passes all 33 groups. New:
+  - `smartkeys_test`: about 20 M checks, ASan/UBSan, against an independent model of design §4.1, covering every key
+    over every chord of every World. Nine deliberately injected bugs were all caught.
+  - `unity_order_test`.
+  - Random key-mashing over all 80 scene × variation renders: 0 notes out of key, about 60 % of them chord tones.
+  - Scene, variation and World switching on the bar in the simulator.
+- Both regression builds match the 83 goldens.
+- `--host-only` passes.
+
+**Sizes.**
+- Image 517,992 B.
+- RAM `.data` + `.bss` 64,656 B of 98,304 B. The World pattern pool (10 KB) is now reachable.
+
+**Deviations from the design**, all inert in SLOOP mode:
+- The note guard runs where the note is chosen (`key_down` / MIDI), not inside `input_on`.
+- A second table, `vlive`, counts the notes the live input started.
+- A range under an octave is widened to one octave.
+- Smart Keys ignore the keys track's transpose and chord mode.
+
+**Left for later.**
+- SMART CHORDS / BASS / DRUMS need product decisions (target track, loop, SCL selector). Their hooks are in place.
+- Key LEDs and the mode selector: Phase 9.
+- Moving the note guard into `guard.c` and loop-follow: Phase 8.
+
+**Commits:** `89a69be` to `2806141`.
+
+**Next.** Phase 7: the performance macro engine (COLOR, MOTION, SPACE, ENERGY).
