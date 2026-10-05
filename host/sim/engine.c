@@ -517,6 +517,7 @@ static int SDLCALL fw_thread(void *u)
     (void)u;
     sim_realtime_thread(1000.0 * SIM_HALF / HOST_FS, 1.5);   /* wakes within ~20 us of its sleep (audio.c) */
     host_set_yield(on_yield, NULL);
+    host_boot_device(!E.o.sloop);                /* as the device boots: the session decides (PLAY MODE first) */
     if (host_boot(E.o.flash)) {
         AT_STORE(&E.failures, E.failures + 1);
         AT_STORE(&E.done, 1);

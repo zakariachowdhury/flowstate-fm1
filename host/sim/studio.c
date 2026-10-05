@@ -2,8 +2,8 @@
 /* The Studio's model of what plays (sim.h studio_t), on the firmware thread: what the FLOWSTATE STUDIO view
  * draws and what its controls do. Its entries:
  *
- *   Worlds         the factory Musical Worlds (world.c, sorted by category as the firmware keeps them); the
- *                  default is NEON RAIN, found by its id (UI spec: the first boot)
+ *   Worlds         the factory Musical Worlds (world.c, sorted by category as the firmware keeps them). At the start
+ *                  the World the firmware booted (PLAY MODE: the session in the flash image; a first boot NEON RAIN)
  *   a World file   --world PATH (.world.json or .wblob): the main thread compiles it, and again whenever the file
  *                  changes (every 500 ms it looks): the World reloads at once, playing or not (design 2.8)
  *   SLOOP projects the projects in examples/projects (or --worlds DIR), as in Phase 4: loading one stores four
@@ -27,7 +27,6 @@
 static const char *const SCENE_NAME[4] = {"INTRO", "MAIN", "LIFT", "BREAKDOWN"};   /* (a project's sections) */
 #define LIFT_DRUMS 16                            /* C LIFT: drum level + */
 #define LIFT_ECHO 24                             /* C LIFT: each synth track's delay send + */
-#define NEON_RAIN "0x4eee4454"                   /* the first-boot World (its id: the index is by category) */
 
 static struct {
     int n;
@@ -245,9 +244,7 @@ void studio_init(const sim_opts_t *o)
             fprintf(stderr, "flowstate-sim: --world %s: no such World or project\n", o->world);
     } else if (o->project) {
         stem(o->project, S.title, sizeof S.title);
-    } else if (!o->sloop) {
-        host_world_load(host_world_factory_find(NEON_RAIN));
-    }
+    }                                            /* (else what the firmware booted: its session, a first boot NEON RAIN) */
     {
         host_world_t w;
         host_world(&w);
@@ -296,12 +293,30 @@ void studio_blob(uint8_t *b, uint32_t n, int reload)
     }
 }
 
+/* the device's own World changes (PLAY MODE's CHOOSE WORLD, the menu's PLAY MODE and LEAVE WORLD): the entry follows */
+static void follow_device(void)
+{
+    static int n;
+    host_world_t w;
+    host_world_entry_t e;
+    if (++n % HOST_FRAME_BLOCKS)
+        return;
+    host_world(&w);
+    if (w.active && (S.world < 0 || S.w[S.world].kind == SK_PROJECT ||
+                     (S.w[S.world].kind == SK_WORLD && (host_world_factory(S.fidx[S.world], &e) || e.id != w.id))))
+        S.world = entry_of_world(w.id);
+    else if (!w.active && S.world >= 0 && S.w[S.world].kind != SK_PROJECT)
+        S.world = -1;
+}
+
 /* before each block: a World switch finished (world.c did it on the bar), a project waiting for its bar */
 void studio_block(void)
 {
     host_state_t st;
-    if (S.pending < 0)
+    if (S.pending < 0) {
+        follow_device();
         return;
+    }
     if (S.phase == 2) {                          /* a World: world.c stops, loads and starts on the bar */
         host_world_t w;
         host_world(&w);
