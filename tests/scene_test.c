@@ -718,7 +718,8 @@ static void sc_advanced(void)
     check(wst.q >= 1u, "PLAY: world_immediate is ignored (the scene waits for its line)");
     until_commit(9u * 4u * BEAT_U / (uint32_t)song.g[G_BPM] / CTL);
     play_adv_enter();
-    check(wrt.mode == WM_ADV, "ADVANCED");
+    check(wrt.mode == WM_ADV && !wnow, "ADVANCED (entering it: on their lines again, Phase 14)");
+    world_immediate(1);                          /* (SAVE + key 5 on the device) */
     bars(1.3);
     while ((clk_beat & 3u) != 1u)
         blk();

@@ -526,7 +526,11 @@ static void sc_screens(void)
         check(world_pending(&ps, &pv) && ps == 0, "ADVANCED: SAVE + key 1 asks for World scene A (H17)");
     }
     key_tap((uint32_t)key_of_white(4));
-    check(!strcmp(ui.msg, "SCENES ARE THE WORLD'S"), "ADVANCED: SAVE + key 5 (store) refused");
+    check(wnow && !strcmp(ui.msg, "SCENES: AT ONCE"), "ADVANCED: SAVE + key 5: scene changes at once (Phase 14)");
+    key_tap((uint32_t)key_of_white(4));
+    check(!wnow && !strcmp(ui.msg, "SCENES: ON THEIR BAR"), "ADVANCED: SAVE + key 5 again: on their bar");
+    key_tap((uint32_t)key_of_white(5));
+    check(!strcmp(ui.msg, "SCENES ARE THE WORLD'S"), "ADVANCED: SAVE + key 6 (store) refused");
     key_tap((uint32_t)key_of_white(12));
     check(!strcmp(ui.msg, "NO SONG IN A WORLD") && !arrangement_enabled, "ADVANCED: song mode refused (H26)");
     release(B_SAVE);

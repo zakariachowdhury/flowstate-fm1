@@ -496,4 +496,24 @@ livefx_test() {
 run "LIVE FX, SOUND SHAPE, MOVEMENT: bounds, FREEZE, release ramps, tails, loudness, extremes (ASan/UBSan); cost" \
     livefx_test
 
+# ADVANCED edits and user Worlds (Phase 14: world.c world_capture / world_encode, world_store.c, ui_play.c's SAVE list
+# and MY WORLDS; design 10.2, 10.3): tests/userworld_test.c on the whole firmware (host/core.c, FELUCCA_WORLD 1) under
+# ASan/UBSan, each scenario in its own process: edits in ADVANCED (levels, a send, a global, another engine, a step, a
+# length) captured as overrides, the World playing them; a variation and back, a scene and back: the same instrument
+# exactly; an edit in another scene keeps the first; SAVE + key 5 (scene changes at once); more than 64 edits; SAVE AS
+# USER WORLD (NEON RAIN 2, 3) writing only its slot's sectors, offset 0xF00 erased, under 3,584 B; a reboot of the flash
+# image: MY WORLDS lists them, the session's World by slot + id, the same state and a bit-identical render; a damaged
+# slot and an invalid blob left out, the session falling back to NEON RAIN; 10 slots then MY WORLDS FULL; SAVE over a
+# user World; DELETE (asks first); WORLD TOO BIG; RESET WORLD (asks first) = a fresh boot's World (state and render),
+# a user World as last saved; LEAVE WORLD with unsaved edits asking first, the SLOOP project bit-identical
+userworld_test() {
+    $CC -g -w -fsanitize=address,undefined -fno-sanitize=shift-base -fno-sanitize-recover=undefined -Ihost -Ibuild/host-obj \
+        -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/userworld_test" tests/userworld_test.c -lm || return 1
+    "$OUT/userworld_test" "$OUT" > "$OUT/userworld.txt" 2>&1 || { cat "$OUT/userworld.txt"; return 1; }
+    grep -a 'overrides:\|render\|slot . copy' "$OUT/userworld.txt" | sed 's/^uworld: //'
+    echo "USER WORLDS: $(grep -ac ' ok$' "$OUT/userworld.txt") checks passed"
+}
+run "ADVANCED edits and user Worlds: capture, scenes, SAVE AS / SAVE / RESET / DELETE, slots, reboot, LEAVE (ASan/UBSan)" \
+    userworld_test
+
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }
