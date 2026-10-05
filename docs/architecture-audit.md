@@ -1170,7 +1170,7 @@ Ranked by impact on the plan.
 | R11 | **64-bit bug** at `src/eng_sample.c:89` | Host-only crashes with user sample slots | Fix with 64-bit-safe offsets (no target change) |
 | R12 | **Licensing and branding:** reserved assets in the image; Felucca/SLOOP names; test USB PID | Cannot distribute the firmware as is | Replace assets; rename; obtain a PID (later phase, user decision) |
 | R13 | **UI constraints:** ≈ 77 ms per full frame; no encoder push; SELECT is tempo today; EDIT hold is already the erase layer; no key velocity | Screen design and the gesture vocabulary | Band-limited redraws; WORLD confirm by rest timeout or PLAY; tempo moves to Advanced Mode |
-| R14 | **Toolchain unpinned** (served 20250324.1 although the redirect named 20250805.1); `build.sh`, `run_tests.sh` and `get_toolchain.sh` lack the executable bit; `run_tests.sh` cannot run host tests alone | Non-repeatable builds; friction | Phase 1 |
+| R14 | **Toolchain download unpinned and unchecked** (`get_toolchain.sh` pipes whatever the JieLi link serves into `tar`); `build.sh`, `run_tests.sh` and `get_toolchain.sh` lack the executable bit; `run_tests.sh` cannot run host tests alone | Non-repeatable builds; friction | Phase 1 (done: pinned to the `20250805.1` tarball by SHA-256. That tarball unpacks to a directory named `jieli-linux-toolchains-20250324.1`, which explains the directory name noted in Phase 0.) |
 | R15 | **One-level, one-track undo;** free take limited to empty projects and 1/2/4 bars | PLAY MODE REC needs its own loop and undo model | Phase 10 design |
 
 ---
@@ -1178,8 +1178,9 @@ Ranked by impact on the plan.
 ## 17. Verification log
 
 **Environment:** macOS on Apple Silicon, Apple clang 21, Python 3.11 with Pillow, Node 22. The firmware build uses
-Docker 28 with `debian:bookworm-slim` (linux/amd64, Rosetta) and the JieLi Linux toolchain `20250324.1`
-(clang 4.0.1 for pi32v2) in `~/.jieli/toolchain`.
+Docker 28 with `debian:bookworm-slim` (linux/amd64, Rosetta) and the JieLi Linux toolchain (clang 4.0.1 for pi32v2)
+in `~/.jieli/toolchain`. The toolchain comes from the `20250805.1` tarball, which unpacks to a directory named
+`jieli-linux-toolchains-20250324.1`.
 
 **SDK files.** The three AC79 SDK files are from tag `AC79NN_SDK_V1.2.1_2023-12-13`, installed in
 `~/fw-AC79_AIoT_SDK/cpu/wl82/tools/`. Their SHA-256 hashes match `tools/build.py:44-48`.
@@ -1197,8 +1198,9 @@ package  build/felucca.fwsc  609802 B, identity FM-1_900
 
 **Reproducibility.** The app image decrypted from the committed `docs/firmware/sloop-2.1.fwsc` differs from a fresh
 build of `e421e43` in exactly **one byte**: the `__DATE__` stamp on the ABOUT screen (`Oct  4 2026` against
-`Oct  5 2026`; the build container runs in UTC). The `.fwsc` files differ throughout because of the encryption and
-CRCs.
+`Oct  5 2026`; the build container runs in UTC). The two `.fwsc` packages differ in 15 bytes, because that one byte
+also changes the package's CRCs. *(Corrected in Phase 1: an earlier version of this section said the packages
+"differ throughout". Since Phase 1, `SOURCE_DATE_EPOCH` pins the date and the package rebuilds byte for byte.)*
 
 **Tests (`sh tests/run_tests.sh`, 82 s): `ALL HOST TESTS PASSED`.** All 24 groups pass:
 - flash storage
