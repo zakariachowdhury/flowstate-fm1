@@ -62,9 +62,10 @@
 #define TSW 118
 #define KY 604                                   /* the KEYS line */
 #define BRX 140                                  /* the World browser */
-#define BRY 72
+#define BRY 66
 #define BRW 456
-#define BRH 236
+#define BRH 268
+#define BROWS 8                                  /* rows the World browser shows */
 static const kbd_t KBD = {28, 638, 59, 122, 36, 76};
 static const uint8_t PERF[5] = {HOST_B_PLAY, HOST_B_REC, HOST_B_ARP, HOST_B_SEQ, HOST_B_FX};
 static const char *const PERF_NAME[5] = {"PLAY", "REC", "PULSE", "BEAT", "FX"};
@@ -157,10 +158,14 @@ static void draw_world(canvas_t *c, const studio_t *m)
     if (m->pending >= 0) {
         snprintf(b, sizeof b, "LOADS ON THE NEXT BAR: %s", m->w[m->pending].name);
         c_text_c(c, cx, WY + 92, b, fmod(now, 0.8) < 0.5 ? ACCENT : c_mix(CARD, ACCENT, 140));
+    } else if (m->msg[0]) {
+        c_text_c(c, cx, WY + 92, m->msg, ACCENT);
+    } else if (m->kind == SK_PROJECT || m->world < 0) {
+        c_text_c(c, cx, WY + 92, m->world >= 0 ? "A SLOOP PROJECT: ITS SCENES ARE SECTIONS A-D" :
+                 "SLOOP, NO WORLD:  < >  TO CHOOSE ONE", FAINT);
     } else {
-        c_text_c(c, cx, WY + 92, m->world >= 0 ? "STAND-IN WORLD: A SLOOP PROJECT (WORLDS: PHASE 5)" :
-                 m->nworlds ? "A SLOOP PROJECT, NO WORLD:  < >  TO CHOOSE ONE" : "A SLOOP PROJECT (NO WORLDS FOUND)",
-                 FAINT);
+        snprintf(b, sizeof b, "\"%s\"%s", m->blurb, m->kind == SK_FILE ? "  \xB7  AUTHORING: RELOADS ON SAVE" : "");
+        c_text_c(c, cx, WY + 92, b, DIM);
     }
 }
 
@@ -179,20 +184,33 @@ static void draw_scenes(canvas_t *c, const studio_t *m)
         if (playing)
             c_ring(c, (float)(x + SW - 14), (float)(SY + 14), 0.0f, 4.5f, TEXT);
     }
-    c_frame(c, VX, SY, VW, SH, 10.0f, 1.0f, EDGE, RGBX(18, 19, 23));   /* VAR: there are none yet */
-    label(c, VX + 12, SY + 10, "VAR");
-    if (m->nvar > 0) {
-        c_text(c, VX + 12, SY + 34, m->var_name[m->var], TEXT);
+    if (m->nvar > 0) {                           /* VAR: < name >, the one asked for marked */
+        int next = m->var_next >= 0;
+        char b[16];
+        c_frame(c, VX, SY, VW, SH, 10.0f, next ? 2.0f : 1.0f, next && fmod(now, 0.6) < 0.35 ? ACCENT : EDGE, CARD);
+        label(c, VX + 12, SY + 10, "VAR");
+        snprintf(b, sizeof b, "%d/%d", (next ? m->var_next : m->var) + 1, m->nvar);
+        c_text_r(c, VX + VW - 12, SY + 10, next ? "NEXT BAR" : b, next ? ACCENT : FAINT);
+        chevron(c, VX + 12, SY + 42, -1, DIM);
+        chevron(c, VX + VW - 12, SY + 42, 1, DIM);
+        c_text_c(c, VX + VW / 2, SY + 34, m->var_name[next ? m->var_next : m->var], next ? ACCENT : TEXT);
     } else {
-        c_text(c, VX + 48, SY + 10, "-", FAINT);
-        c_text(c, VX + 12, SY + 34, "PHASE 12", FAINT);
+        c_frame(c, VX, SY, VW, SH, 10.0f, 1.0f, EDGE, RGBX(18, 19, 23));
+        label(c, VX + 12, SY + 10, "VAR");
+        c_text(c, VX + 12, SY + 34, "NONE", FAINT);
     }
-    if (m->scene_next >= 0) {
-        char b[48];
-        snprintf(b, sizeof b, "CHANGES NEXT BAR:  %s %s", cmd_scene_name(m->scene_next), m->scene_name[m->scene_next]);
+    if (m->scene_next >= 0 || m->var_next >= 0) {
+        char b[64];
+        if (m->scene_next >= 0)
+            snprintf(b, sizeof b, "CHANGES NEXT BAR:  %s %s%s%s", cmd_scene_name(m->scene_next),
+                     m->scene_name[m->scene_next], m->var_next >= 0 ? "  \xB7  " : "",
+                     m->var_next >= 0 ? m->var_name[m->var_next] : "");
+        else
+            snprintf(b, sizeof b, "CHANGES NEXT BAR:  %s", m->var_name[m->var_next]);
         c_text_c(c, (SX + VX + VW) / 2, SY + SH + 10, b, ACCENT);
     } else {
-        c_text_c(c, (SX + VX + VW) / 2, SY + SH + 10, "a scene changes on the next bar  (click, or Option+1..4)", FAINT);
+        c_text_c(c, (SX + VX + VW) / 2, SY + SH + 10, "scenes and variations change on the next bar (Option+1..4, V)",
+                 FAINT);
     }
 }
 
@@ -252,34 +270,58 @@ static void draw_tracks(canvas_t *c, const studio_t *m)
     }
 }
 
-static void draw_keys_line(canvas_t *c, const studio_t *m)
+static void draw_keys_line(canvas_t *c, const studio_t *m)   /* SMART MELODY once Smart Keys map the keys */
 {
-    char a[64];
-    const char *b = m->keys_smart ? "" : "   (SMART MELODY: PHASE 6)";
+    char a[64], b[48];
     int w;
-    snprintf(a, sizeof a, "KEYS: %s%s  %s", m->keys_smart ? "" : "SLOOP  ", m->role[m->sel], m->keys);
+    if (m->keys_smart)
+        snprintf(a, sizeof a, "KEYS: %s", m->keys);
+    else
+        snprintf(a, sizeof a, "KEYS: SLOOP  %s  %s", m->role[m->sel], m->keys);
+    snprintf(b, sizeof b, "%s%s%s", m->chord[0] ? "   CHORD " : "", m->chord, m->keys_smart ? "" : "   (SMART MELODY: PHASE 6)");
     w = c_text_w(a) + c_text_w(b);
     c_text(c, c_text(c, 500 - w / 2, KY, a, LAV), KY, b, FAINT);
 }
 
+/* the browser's rows: the entries, with a heading before the SLOOP projects (-1); the window around the cursor */
+static int browser_rows(const studio_t *m, int *row, int *first)
+{
+    int i, n = 0, cur = 0;
+    for (i = 0; i < m->nworlds && n < STUDIO_WORLDS; i++) {
+        if (m->w[i].kind == SK_PROJECT && (!i || m->w[i - 1].kind != SK_PROJECT))
+            row[n++] = -1;
+        if (i == m->browse)
+            cur = n;
+        row[n++] = i;
+    }
+    *first = cur - BROWS / 2;
+    *first = *first + BROWS > n ? n - BROWS : *first;
+    *first = *first < 0 ? 0 : *first;
+    return n;
+}
+
 static void draw_browser(canvas_t *c, const studio_t *m)
 {
-    int i, first, rows = 6;
+    int row[STUDIO_WORLDS + 1], r, first, n = browser_rows(m, row, &first);
     c_frame(c, BRX - 2, BRY - 2, BRW + 4, BRH + 4, 12.0f, 2.0f, ACCENT, RGBX(17, 17, 23));
     label(c, BRX + 18, BRY + 14, "CHOOSE WORLD");
     c_text_r(c, BRX + BRW - 18, BRY + 14, "THE CURRENT ONE PLAYS ON", FAINT);
-    first = m->browse - rows / 2;
-    first = first + rows > m->nworlds ? m->nworlds - rows : first;
-    first = first < 0 ? 0 : first;
-    for (i = first; i < m->nworlds && i < first + rows; i++) {
-        int y = BRY + 42 + (i - first) * 24, sel = i == m->browse;
+    for (r = first; r < n && r < first + BROWS; r++) {
+        int i = row[r], y = BRY + 42 + (r - first) * 22, sel = i == m->browse;
         char b[48];
+        if (i < 0) {
+            label(c, BRX + 40, y + 2, "SLOOP PROJECTS");
+            continue;
+        }
         if (sel)
             c_rrect(c, BRX + 10, y - 3, BRW - 20, 22, 6.0f, c_mix(RGBX(17, 17, 23), ACCENT, 70));
         c_text(c, BRX + 20, y, sel ? "\xBB" : " ", ACCENT);
         snprintf(b, sizeof b, "%s", m->w[i].name);
         c_text(c, BRX + 40, y, b, sel ? TEXT : DIM);
-        snprintf(b, sizeof b, "%s \xB7 %d BPM%s", m->w[i].category, m->w[i].bpm, i == m->world ? "  \xB7 PLAYING" : "");
+        if (m->w[i].kind == SK_FILE)
+            snprintf(b, sizeof b, "FILE%s", i == m->world ? "  \xB7 PLAYING" : "");
+        else
+            snprintf(b, sizeof b, "%s \xB7 %d BPM%s", m->w[i].category, m->w[i].bpm, i == m->world ? "  \xB7 PLAYING" : "");
         c_text_r(c, BRX + BRW - 20, y, b, i == m->world ? LAV : FAINT);
     }
     c_frame(c, BRX + BRW - 220, BRY + BRH - 46, 96, 32, 8.0f, 1.0f, ACCENT, c_mix(RGBX(17, 17, 23), ACCENT, 110));
@@ -352,17 +394,15 @@ static void mouse_down(int x, int y, int button, const studio_t *m)
 {
     int i, left = button == SDL_BUTTON_LEFT && !(SDL_GetModState() & KMOD_CTRL);
     if (m->browse >= 0) {                        /* the World browser has the mouse */
-        int first = m->browse - 3;
-        first = first + 6 > m->nworlds ? m->nworlds - 6 : first;
-        first = first < 0 ? 0 : first;
+        int row[STUDIO_WORLDS + 1], first, n = browser_rows(m, row, &first), r;
         if (in(x, y, BRX + BRW - 220, BRY + BRH - 46, 96, 32))
             keys_send(OP_WORLD, WA_CONFIRM, 0, 0);
         else if (!in(x, y, BRX, BRY, BRW, BRH) || in(x, y, BRX + BRW - 114, BRY + BRH - 46, 96, 32))
             keys_send(OP_WORLD, WA_CANCEL, 0, 0);
         else
-            for (i = first; i < m->nworlds && i < first + 6; i++)
-                if (in(x, y, BRX + 10, BRY + 39 + (i - first) * 24, BRW - 20, 24))
-                    keys_send(OP_WORLD, i == m->browse ? WA_CONFIRM : WA_PICK, i, 0);   /* (again: load) */
+            for (r = first; r < n && r < first + BROWS; r++)
+                if (row[r] >= 0 && in(x, y, BRX + 10, BRY + 39 + (r - first) * 22, BRW - 20, 22))
+                    keys_send(OP_WORLD, row[r] == m->browse ? WA_CONFIRM : WA_PICK, row[r], 0);   /* (again: load) */
         return;
     }
     if (in(x, y, WX + 12, WY + 34, ARROW, ARROW) || in(x, y, WX + WW - 12 - ARROW, WY + 34, ARROW, ARROW)) {
@@ -378,6 +418,10 @@ static void mouse_down(int x, int y, int button, const studio_t *m)
             keys_send(OP_SCENE, (uint8_t)i, 0, 0);
             return;
         }
+    if (in(x, y, VX, SY, VW, SH)) {              /* VAR: the left half back, the right half on */
+        keys_send(OP_VAR, WA_STEP, x < VX + VW / 2 ? -1 : 1, 0);
+        return;
+    }
     for (i = 0; i < 4; i++)
         if ((x - macro_cx(i)) * (x - macro_cx(i)) + (y - MY - 70) * (y - MY - 70) <= (MR + 14) * (MR + 14)) {
             drag = DRAG_MACRO, drag_k = i, drag_y = y, drag_acc = 0;
@@ -445,6 +489,8 @@ void studio_view_mouse(const void *ev, const sim_snap_t *s)
         for (i = 0; i < HOST_NTRK; i++)
             if (in(mouse_x, mouse_y, strip_x(i) - 4, PY + 52, 114, 18) && (int)wheel_acc)
                 keys_send(OP_LEVEL, (uint8_t)i, 4 * (int)wheel_acc, 1);
+        if (in(mouse_x, mouse_y, VX, SY, VW, SH) && (int)wheel_acc)
+            keys_send(OP_VAR, WA_STEP, wheel_acc > 0 ? 1 : -1, 0);
         wheel_acc -= (float)(int)wheel_acc;
         break;
     }

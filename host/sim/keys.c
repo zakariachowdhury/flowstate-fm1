@@ -10,8 +10,9 @@
  *             - =  OCT- OCT+  (held while the key is down)
  *   encoders  < >  PRESETS   v ^  ALGORITHM   shift < >  SELECT   shift v ^  MASTER   (key repeat keeps turning)
  *             shift Z X / C V / B N / M ,: in STUDIO the macros COLOR MOTION SPACE ENERGY, in ADVANCED KNOB 1..4
- *   Option    Space PLAY / STOP   1..4 scene A..D (next bar)   5..8 mute track 1..4   < > DJ filter -/+4
- *             0 filter off   v ^ tempo -/+1   W / shift W choose a World   Return load it   I the inspector
+ *   Option    Space PLAY / STOP   1..4 scene A..D (next bar)   V / shift V variation (next bar)
+ *             5..8 mute track 1..4   < > DJ filter -/+4   0 filter off   v ^ tempo -/+1
+ *             W / shift W choose a World   Return load it   I the inspector
  *   Tab       STUDIO / ADVANCED    Esc  closes the inspector, cancels a World being chosen, else quits */
 #include <SDL.h>
 #include <math.h>
@@ -118,7 +119,8 @@ void keys_print_mapping(void)
         printf("            %-10s %s%s / %s%s%s%s\n", ENC[i], ENC_SC[i].shift ? "shift+" : "", sc_name(ENC_SC[i].dn),
                ENC_SC[i].shift ? "shift+" : "", sc_name(ENC_SC[i].up), i >= HOST_EN_K1 && i <= HOST_EN_K4 ? "   STUDIO: " : "",
                i >= HOST_EN_K1 && i <= HOST_EN_K4 ? MACRO_NAME[i - HOST_EN_K1] : "");
-    printf("  Option    Space PLAY / STOP    1..4 scene A..D (on the next bar)    5..8 mute track 1..4\n"
+    printf("  Option    Space PLAY / STOP    1..4 scene A..D (on the next bar)    V / shift+V variation (next bar)\n"
+           "            5..8 mute track 1..4\n"
            "            < / > DJ filter -/+4    0 filter off    v / ^ tempo -/+1 BPM\n"
            "            W / shift+W choose a World (the current one plays on)    Return load it    I inspector\n"
            "  Tab       STUDIO / ADVANCED    Esc  close the inspector / cancel choosing / quit\n"
@@ -144,8 +146,8 @@ void keys_legend(int studio, char l[5][192])
     if (studio) {
         snprintf(l[1], 192, "MACROS  %s COLOR   %s MOTION   %s SPACE   %s ENERGY      TAB advanced   ESC quit",
                  e[HOST_EN_K1], e[HOST_EN_K2], e[HOST_EN_K3], e[HOST_EN_K4]);
-        snprintf(l[2], 192, "OPTION +  SPC play/stop   1..4 scene   5..8 mute   W world   RET load   < > filter   "
-                 "v ^ tempo   I inspect");
+        snprintf(l[2], 192, "OPTION +  SPC play/stop  1..4 scene  V var  5..8 mute  W world  RET load  < > filter  "
+                 "v ^ tempo  I inspect");
         l[3][0] = l[4][0] = 0;
         return;
     }
@@ -249,6 +251,8 @@ static int command(SDL_Scancode sc, int shift, int repeat)
         keys_send(OP_WORLD, WA_CONFIRM, 0, 0);
     else if (sc == SDL_SCANCODE_I)
         return KA_INSPECT;
+    else if (sc == SDL_SCANCODE_V)
+        keys_send(OP_VAR, WA_STEP, shift ? -1 : 1, 0);
     return KA_NONE;
 }
 

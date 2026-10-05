@@ -6,9 +6,12 @@
  * docs/simulator.md.
  *
  *   flowstate-sim [options]
- *   --world NAME          load this (stand-in) World at boot, with its four scenes in sections A..D
- *   --demo                --world GROOVE (examples/projects/groove.fun4)
- *   --worlds DIR          the stand-in Worlds: the projects in DIR (default examples/projects)
+ *   --world NAME|FILE     start this Musical World: a factory World ("NEON RAIN", "0x4eee4454"), or a World file
+ *                         (.world.json, compiled with tools/worldc.py, or .wblob) that reloads at once whenever
+ *                         it changes (authoring), or a SLOOP project of the list by name. Default: NEON RAIN
+ *   --demo                --world NEON_RAIN
+ *   --sloop               no World at the start (SLOOP as it boots)
+ *   --worlds DIR          the SLOOP projects listed after the Worlds: the .fun4 in DIR (default examples/projects)
  *   --project FILE.fun4   load this project at boot (as LOAD does), no World
  *   --flash FILE          the 1 MiB NOR image: read at boot, written after the firmware writes and at exit
  *                         (SAVE, autosave, sections, settings and user presets survive a restart)
@@ -31,6 +34,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <time.h>
 #ifdef __APPLE__
 #include <pthread.h>
 #endif
@@ -45,7 +50,8 @@
 
 static void usage(void)
 {
-    fprintf(stderr, "usage: flowstate-sim [--world NAME | --demo | --project FILE.fun4] [--worlds DIR] [--flash FILE]\n"
+    fprintf(stderr, "usage: flowstate-sim [--world NAME|FILE | --demo | --project FILE.fun4 | --sloop] [--worlds DIR]\n"
+                    "                     [--flash FILE]\n"
                     "                     [--buffer FRAMES] [--fifo FRAMES] [--advanced] [--inspect]\n"
                     "                     [--headless SECONDS [--device] [--fast]] [--mute-output] [--script TEXT|FILE]\n"
                     "                     [--stats] [--wav FILE] [--screen FILE.ppm] [--shot FILE.bmp] [--verbose]\n");
@@ -54,6 +60,7 @@ static void usage(void)
 
 static sim_dev_t dev;
 static sim_opts_t opt;
+static char wmsg[160];                           /* worldc's complaint about the World file, on the status line */
 static struct {                                  /* the window: frames shown and the drawing's cost */
     uint32_t frames;
     double draw_sum, draw_max, up_sum;           /* drawing the view; handing it to SDL (the texture) */
@@ -78,11 +85,20 @@ static void status_lines(const sim_snap_t *s, const sim_sink_stats_t *k, char *l
     for (i = 0; i < 4; i++)
         mute[i] = st->t[i].mute ? '-' : (char)('1' + i);
     mute[4] = 0;
-    snprintf(l1, n, "%s  SCENE %s%s%s  %d BPM  FILTER %+d  TRACKS %s  MASTER %d%%  %.1f s  |  %s %d Hz, %d fr%s",
-             st->playing ? "PLAYING" : "STOPPED", cmd_scene_name(st->scene), st->scene_next >= 0 ? " > " : "",
-             st->scene_next >= 0 ? cmd_scene_name(st->scene_next) : "", st->bpm, st->filter, mute,
-             s->master_adc * 100 / 1023, (double)s->frames / HOST_FS, dev.driver, dev.freq, dev.samples,
-             opt.mute_output ? " MUTED" : "");
+    {
+        const studio_t *m = &s->studio;
+        char var[32] = "";
+        if (m->var >= 0)
+            snprintf(var, sizeof var, "  VAR %s%s%s", m->var_name[m->var], m->var_next >= 0 ? " > " : "",
+                     m->var_next >= 0 ? m->var_name[m->var_next] : "");
+        snprintf(l1, n, "%s  SCENE %s%s%s%s  %d BPM  FILTER %+d  TRACKS %s  MASTER %d%%  %.1f s  |  %s %d Hz, %d fr%s",
+                 st->playing ? "PLAYING" : "STOPPED", cmd_scene_name(st->scene), st->scene_next >= 0 ? " > " : "",
+                 st->scene_next >= 0 ? cmd_scene_name(st->scene_next) : "", var, st->bpm, st->filter, mute,
+                 s->master_adc * 100 / 1023, (double)s->frames / HOST_FS, dev.driver, dev.freq, dev.samples,
+                 opt.mute_output ? " MUTED" : "");
+        if (wmsg[0])                             /* (the World file does not compile: the old World plays on) */
+            snprintf(l1, n, "WORLD FILE: %.200s", wmsg);
+    }
     if (!k->windows) {
         snprintf(l2, n, "measuring ...");
         return;
@@ -188,6 +204,37 @@ static void draw(canvas_t *c, const sim_snap_t *s, int advanced, int inspect, co
     tabs_draw(c, advanced);
 }
 
+/* ---- the World file (--world FILE): recompiled when it changes, or when the Studio asks for it */
+static const char *wfile;
+static time_t wmtime;
+static struct stat wstat;
+static double wpoll;
+static int wasked;
+static void world_file_poll(const studio_t *m)
+{
+    uint8_t *b;
+    uint32_t n;
+    int load = m->want_file > wasked;
+    if (!wfile || (!load && sim_now() < wpoll))
+        return;
+    wpoll = sim_now() + 0.5;                     /* (every 500 ms) */
+    if (stat(wfile, &wstat) || (!load && wstat.st_mtime == wmtime))
+        return;
+    wmtime = wstat.st_mtime;
+    wasked = m->want_file;
+    if (host_world_compile(wfile, &b, &n, wmsg, sizeof wmsg)) {
+        char *e = strstr(wmsg, "error:");        /* (worldc names the file, then the place: keep the place) */
+        fprintf(stderr, "flowstate-sim: %s\n", wmsg);
+        if (e)
+            memmove(wmsg, e, strlen(e) + 1);
+        return;
+    }
+    wmsg[0] = 0;
+    engine_send_blob(b, n, !load);
+    if (opt.verbose || !opt.headless)
+        printf("flowstate-sim: %s %s\n", wfile, load ? "compiled and sent" : "changed: reloaded");
+}
+
 static const char *base_dir(void)
 {
     static char b[1024];
@@ -221,6 +268,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--worlds") && v) opt.worlds = v, i++;
         else if (!strcmp(a, "--advanced")) opt.advanced = 1;
         else if (!strcmp(a, "--inspect")) opt.inspect = 1;
+        else if (!strcmp(a, "--sloop")) opt.sloop = 1;
         else if (!strcmp(a, "--flash") && v) opt.flash = v, i++;
         else if (!strcmp(a, "--buffer") && v) opt.buffer = atoi(v), i++;
         else if (!strcmp(a, "--fifo") && v) opt.fifo = atoi(v), i++;
@@ -240,7 +288,16 @@ int main(int argc, char **argv)
         opt.headless < 0 || (opt.fast && (!opt.headless || opt.device)) || (opt.device && !opt.headless))
         usage();
     if (opt.demo && !opt.world)
-        opt.world = "GROOVE";
+        opt.world = "NEON RAIN";
+    if (opt.world && host_world_factory_find(opt.world) < 0 && !stat(opt.world, &wstat)) {   /* a World file */
+        char msg[512];
+        if (host_world_compile(opt.world, &opt.world_blob, &opt.world_blob_n, msg, sizeof msg)) {
+            fprintf(stderr, "flowstate-sim: --world %s: %s\n", opt.world, msg);
+            return 1;
+        }
+        wfile = opt.world;
+        wmtime = wstat.st_mtime;
+    }
     advanced = opt.advanced;
     inspect = opt.inspect;
     if (opt.script) {
@@ -307,6 +364,8 @@ int main(int argc, char **argv)
         double guard = sim_now() + (opt.fast ? 120.0 : opt.headless * 2.0 + 10.0);
         while (!engine_done() && !sink_finished()) {
             sim_sleep_us(opt.fast ? 2000 : 20000);
+            engine_snapshot(&snap);
+            world_file_poll(&snap.studio);
             sink_stats(&ks);
             if (opt.stats && ks.windows != last_window) {
                 last_window = ks.windows;
@@ -371,6 +430,7 @@ int main(int argc, char **argv)
                 }
             }
             n = engine_snapshot(&snap);
+            world_file_poll(&snap.studio);
             sink_stats(&ks);
             if (opt.stats && ks.windows != last_window) {
                 last_window = ks.windows;

@@ -1,23 +1,21 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* The Studio's model of what plays (sim.h studio_t), on the firmware thread: what the FLOWSTATE STUDIO view
- * draws and what its controls do. Until the Musical Worlds are in (Phase 5) it is filled from SLOOP, and says
- * so (studio_t.standin, keys_smart, macro_live, nvar):
+ * draws and what its controls do. Its entries:
  *
- *   Worlds     stand-ins: the projects in examples/projects (or --worlds DIR), named after their file; the
- *              category is the drum kit's name, the tempo and key the project's
- *   scenes     SLOOP's sections A..D, stored from the World when it loads: A INTRO its harmony tracks (pad,
- *              chords, keys, texture; else the first synth track), B MAIN all four, C LIFT all four with the
- *              drums 16 louder and the synth tracks' echo sends 24 higher, D BREAKDOWN all but the drums. A
- *              World starts on B. A scene changes on the next bar while playing (SAVE + key) and brings its
- *              own mutes, as on the device
- *   roles      from the sound's name: PAD, BASS, LEAD, KEYS (else by the track's place); the drum track DRUMS
- *   variations none yet (Phase 12)
- *   macros     positions 0..100 that turn SLOOP's KNOB 1..4 by the same steps (Phase 7: the World's macros)
- *   keys       SLOOP's keys on the selected track: its key, scale and snap (Phase 6: SMART MELODY)
+ *   Worlds         the factory Musical Worlds (world.c, sorted by category as the firmware keeps them); the
+ *                  default is NEON RAIN, found by its id (UI spec: the first boot)
+ *   a World file   --world PATH (.world.json or .wblob): the main thread compiles it, and again whenever the file
+ *                  changes (every 500 ms it looks): the World reloads at once, playing or not (design 2.8)
+ *   SLOOP projects the projects in examples/projects (or --worlds DIR), as in Phase 4: loading one stores four
+ *                  scenes of it in sections A..D (A its pad and keys, B all, C all with louder drums and more
+ *                  echo, D all but the drums) and plays B
  *
- * Choosing a World highlights it while the current one plays on; confirming loads it, at once while stopped,
- * on the next bar while playing, and it plays on from there (design D10). From Phase 5 the same functions read
- * the World runtime instead (its list, scene and variation names, roles); the views do not change. */
+ * A World's scenes, variations, roles and keys come from the World (host_world); its scenes and variations
+ * change on the next bar while playing (world.c world_request). Choosing another entry highlights it while the
+ * current one plays on; confirming loads it, at once while stopped, on the next bar while playing (design D10):
+ * a World through world_switch (on the bar the transport stops and the new World starts again), a project here.
+ * The macros are positions that turn SLOOP's KNOB 1..4 until Phase 7; the keys are SLOOP's until Smart Keys
+ * (Phase 6: wrt.keys_on). */
 #include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
@@ -26,23 +24,34 @@
 #include <strings.h>
 #include "sim.h"
 
-static const char *const SCENE_NAME[4] = {"INTRO", "MAIN", "LIFT", "BREAKDOWN"};
+static const char *const SCENE_NAME[4] = {"INTRO", "MAIN", "LIFT", "BREAKDOWN"};   /* (a project's sections) */
 #define LIFT_DRUMS 16                            /* C LIFT: drum level + */
 #define LIFT_ECHO 24                             /* C LIFT: each synth track's delay send + */
+#define NEON_RAIN "0x4eee4454"                   /* the first-boot World (its id: the index is by category) */
 
 static struct {
     int n;
-    char path[STUDIO_WORLDS][512];
     studio_world_t w[STUDIO_WORLDS];
-    char role[STUDIO_WORLDS][HOST_NTRK][8];
-    int world, browse, pending, phase, was_playing, last_beat;
+    int fidx[STUDIO_WORLDS];                     /* SK_WORLD: the factory index */
+    char path[STUDIO_WORLDS][512];               /* SK_FILE, SK_PROJECT */
+    char role[STUDIO_WORLDS][HOST_NTRK][8];      /* SK_PROJECT: from the sounds' names */
+    int world, browse, pending, phase, was_playing, last_beat, want_file;
+    uint32_t target;                             /* the World id a switch waits for */
     int macro[4];
-    char title[16];                              /* a project that is no World */
+    char title[16], msg[64], shown[64];
+    uint64_t msg_at;                             /* (a message shows for 4 s of audio) */
 } S = {.world = -1, .browse = -1, .pending = -1};
 
-/* ---- roles, names */
+/* ---- names */
+int studio_names_eq(const char *a, const char *b)
+{
+    for (; *a && *b; a++, b++)
+        if (toupper((unsigned char)(*a == '_' ? ' ' : *a)) != toupper((unsigned char)(*b == '_' ? ' ' : *b)))
+            return 0;
+    return *a == *b;
+}
 static int has(const char *s, const char *w) { return strstr(s, w) != NULL; }
-static void role_of(const host_state_t *st, char role[HOST_NTRK][8])
+static void role_of(const host_state_t *st, char role[HOST_NTRK][8])   /* a project's tracks */
 {
     static const char *const BY_PLACE[3] = {"PAD", "BASS", "LEAD"};
     int k;
@@ -68,12 +77,26 @@ static void stem(const char *path, char *out, int n)   /* "x/groove.fun4" -> "GR
     out[i] = 0;
 }
 static int by_name(const void *a, const void *b) { return strcmp((const char *)a, (const char *)b); }
+static void say(const char *m) { snprintf(S.msg, sizeof S.msg, "%s", m); }
 
-/* ---- the stand-in Worlds */
-void studio_init(const sim_opts_t *o)
+/* ---- the entries */
+static int add(int kind, const char *name, const char *cat, const char *key, int bpm)
 {
-    char dir[1024], files[STUDIO_WORLDS][512];
-    DIR *d = NULL;
+    studio_world_t *w;
+    if (S.n == STUDIO_WORLDS)
+        return -1;
+    w = &S.w[S.n];
+    snprintf(w->name, sizeof w->name, "%s", name);
+    snprintf(w->category, sizeof w->category, "%s", cat);
+    snprintf(w->key, sizeof w->key, "%s", key);
+    w->bpm = bpm;
+    w->kind = kind;
+    return S.n++;
+}
+static void add_projects(const sim_opts_t *o)
+{
+    char dir[1024], files[STUDIO_WORLDS][256];
+    DIR *d;
     struct dirent *e;
     int i, n = 0;
     if (o->worlds) {
@@ -84,8 +107,6 @@ void studio_init(const sim_opts_t *o)
         if (!(d = opendir(dir)))
             d = opendir(strcpy(dir, "examples/projects"));
     }
-    for (i = 0; i < 4; i++)
-        S.macro[i] = 50;
     if (!d) {
         if (o->worlds)
             fprintf(stderr, "flowstate-sim: --worlds %s: cannot read the directory\n", o->worlds);
@@ -100,28 +121,33 @@ void studio_init(const sim_opts_t *o)
     qsort(files, (size_t)n, sizeof files[0], by_name);
     for (i = 0; i < n; i++) {
         host_state_t st;
-        studio_world_t *w = &S.w[S.n];
-        snprintf(S.path[S.n], sizeof S.path[0], "%s/%s", dir, files[i]);
-        if (host_project_info(S.path[S.n], &st) < 0)
+        char path[1300], name[16], key[12];
+        int k;
+        snprintf(path, sizeof path, "%s/%s", dir, files[i]);
+        if (host_project_info(path, &st) < 0)
             continue;
-        stem(files[i], w->name, sizeof w->name);
-        snprintf(w->category, sizeof w->category, "%s", st.t[HOST_NTRK - 1].sound);
-        snprintf(w->key, sizeof w->key, "%s %s", st.t[0].root, st.t[0].scale);
-        w->bpm = st.bpm;
-        role_of(&st, S.role[S.n]);
-        S.n++;
+        stem(files[i], name, sizeof name);
+        snprintf(key, sizeof key, "%s %s", st.t[0].root, st.t[0].scale);
+        if ((k = add(SK_PROJECT, name, st.t[HOST_NTRK - 1].sound, key, st.bpm)) < 0)
+            break;
+        snprintf(S.path[k], sizeof S.path[k], "%s", path);
+        role_of(&st, S.role[k]);
     }
 }
-static int find(const char *name)
+static int entry_of_world(uint32_t id)           /* the entry of the World loaded (by id) */
 {
     int i;
+    host_world_entry_t e;
     for (i = 0; i < S.n; i++)
-        if (!strcasecmp(S.w[i].name, name))
+        if (S.w[i].kind == SK_WORLD && !host_world_factory(S.fidx[i], &e) && e.id == id)
+            return i;
+    for (i = 0; i < S.n; i++)
+        if (S.w[i].kind == SK_FILE)
             return i;
     return -1;
 }
 
-/* the World just loaded (the working project) -> its four scenes in sections A..D */
+/* ---- a SLOOP project as four scenes in sections A..D (Phase 4) */
 static void store_scenes(int w)
 {
     host_state_t st;
@@ -144,41 +170,150 @@ static void store_scenes(int w)
         host_section_store((uint32_t)s);
     }
 }
-static int load_now(int w)                       /* stopped: the project, its scenes, B; 0 = ok */
+static void project_now(int w)                   /* stopped: the project, its scenes, B */
 {
-    if (host_project_load(S.path[w]) < 0)
-        return -1;
+    host_world_unload();                         /* (SLOOP's paths again) */
+    if (host_project_load(S.path[w]) < 0) {
+        say("CANNOT LOAD THE PROJECT");
+        return;
+    }
     store_scenes(w);
-    host_scene(1);                               /* (stopped: B is the working project) */
+    host_scene(1);
     S.world = w;
     S.title[0] = 0;
-    return 0;
-}
-int studio_load(const char *name)
-{
-    int w = find(name);
-    if (w < 0) {
-        fprintf(stderr, "flowstate-sim: no World '%s' (", name);
-        for (w = 0; w < S.n; w++)
-            fprintf(stderr, "%s%s", w ? ", " : "", S.w[w].name);
-        fprintf(stderr, ")\n");
-        return -1;
-    }
-    return load_now(w);
-}
-void studio_project_loaded(const char *path)     /* a SLOOP project, no World */
-{
-    S.world = -1;
-    stem(path, S.title, sizeof S.title);
 }
 
-/* before each block: a World confirmed while playing loads on the next bar, then plays on */
+/* ---- loading an entry: now while stopped, else on the next bar */
+static void load(int w)
+{
+    host_state_t st;
+    int rc;
+    S.pending = -1;
+    switch (S.w[w].kind) {
+    case SK_WORLD:
+        rc = host_world_load(S.fidx[w]);
+        if (rc < 0) {
+            snprintf(S.msg, sizeof S.msg, "WORLD ERROR %s", host_world_error(rc));
+        } else if (rc == 0) {
+            S.world = w;
+        } else {
+            S.pending = w;                       /* world.c switches on the bar */
+            S.phase = 2;
+        }
+        break;
+    case SK_FILE:
+        S.want_file++;                           /* (the main thread compiles it: studio_blob) */
+        S.pending = w;
+        S.phase = 3;
+        break;
+    default:
+        S.pending = w;
+        S.phase = 0;
+        host_state(&st);
+        S.last_beat = st.beat;
+        studio_block();                          /* (stopped: at once) */
+        break;
+    }
+}
+
+void studio_init(const sim_opts_t *o)
+{
+    int i, k;
+    for (i = 0; i < 4; i++)
+        S.macro[i] = 50;
+    for (i = 0; i < host_world_factory_count(); i++) {
+        host_world_entry_t e;
+        if (host_world_factory(i, &e) || (k = add(SK_WORLD, e.name, e.category, "", e.bpm)) < 0)
+            continue;
+        S.fidx[k] = i;
+    }
+    if (o->world_blob)
+        k = add(SK_FILE, "WORLD FILE", "AUTHORING", "", 0), snprintf(S.path[k], sizeof S.path[k], "%s", o->world);
+    add_projects(o);
+    /* the first World: --world (a name or the file), --project (no World), --sloop (none), else NEON RAIN */
+    if (o->world_blob) {
+        studio_blob(o->world_blob, o->world_blob_n, 0);
+    } else if (o->world) {
+        int f = host_world_factory_find(o->world);
+        for (i = 0; i < S.n && !(S.w[i].kind == SK_PROJECT && studio_names_eq(S.w[i].name, o->world)); i++)
+            ;
+        if (f >= 0)
+            host_world_load(f);                  /* (stopped: at once) */
+        else if (i < S.n)
+            project_now(i);
+        else
+            fprintf(stderr, "flowstate-sim: --world %s: no such World or project\n", o->world);
+    } else if (o->project) {
+        stem(o->project, S.title, sizeof S.title);
+    } else if (!o->sloop) {
+        host_world_load(host_world_factory_find(NEON_RAIN));
+    }
+    {
+        host_world_t w;
+        host_world(&w);
+        if (w.loaded && S.world < 0)
+            S.world = entry_of_world(w.id);
+    }
+}
+
+/* the World file, compiled by the main thread: loaded, or reloaded at once when it is the World playing */
+void studio_blob(uint8_t *b, uint32_t n, int reload)
+{
+    int f, rc;
+    for (f = 0; f < S.n && S.w[f].kind != SK_FILE; f++)
+        ;
+    if (f == S.n) {
+        free(b);
+        return;
+    }
+    if (reload && S.world != f) {
+        free(b);
+        say("THE FILE CHANGED: LOAD IT TO HEAR IT");
+        return;
+    }
+    rc = reload ? host_world_reload_blob(b, n) : host_world_load_blob(b, n);
+    if (rc < 0) {
+        snprintf(S.msg, sizeof S.msg, "WORLD ERROR %s: THE OLD WORLD PLAYS ON", host_world_error(rc));
+        if (S.pending == f)
+            S.pending = -1;
+        return;
+    }
+    {
+        host_world_t w;
+        host_world(&w);
+        snprintf(S.w[f].name, sizeof S.w[f].name, "%s", w.name);   /* (now that it is known) */
+        snprintf(S.w[f].category, sizeof S.w[f].category, "%s", w.category);
+        S.w[f].bpm = w.bpm;
+    }
+    if (reload) {
+        say("RELOADED");
+    } else if (rc == 0) {
+        S.world = f;
+        S.pending = -1;
+    } else {
+        S.pending = f;
+        S.phase = 2;
+    }
+}
+
+/* before each block: a World switch finished (world.c did it on the bar), a project waiting for its bar */
 void studio_block(void)
 {
     host_state_t st;
     if (S.pending < 0)
         return;
-    if (S.phase == 0) {
+    if (S.phase == 2) {                          /* a World: world.c stops, loads and starts on the bar */
+        host_world_t w;
+        host_world(&w);
+        if (w.pending != 2) {
+            S.world = entry_of_world(w.id);
+            S.pending = -1;
+        }
+        return;
+    }
+    if (S.phase == 3)                            /* (a World file: waits for the main thread) */
+        return;
+    if (S.phase == 0) {                          /* a project: on the next bar, as Phase 4 */
         if (host_playing()) {
             host_state(&st);
             if (st.beat % 4 || st.beat == S.last_beat) {
@@ -187,8 +322,9 @@ void studio_block(void)
             }
         }
         S.was_playing = host_playing();
+        host_world_unload();
         if (host_project_load(S.path[S.pending]) < 0) {   /* (it asks the transport to stop) */
-            fprintf(stderr, "flowstate-sim: %s: cannot load\n", S.path[S.pending]);
+            say("CANNOT LOAD THE PROJECT");
             S.pending = -1;
             return;
         }
@@ -208,19 +344,32 @@ void studio_block(void)
 
 void studio_exec(const sim_cmd_t *c)
 {
-    host_state_t st;
+    host_world_t w;
+    int i;
     switch (c->op) {
     case OP_MACRO:
         if (c->a < 4) {
             int v = c->rel ? S.macro[c->a] + c->v : c->v;
             v = v < 0 ? 0 : v > 100 ? 100 : v;
             if (v != S.macro[c->a])
-                host_turn(HOST_EN_K1 + c->a, v - S.macro[c->a]);   /* (stand-in: KNOB 1..4) */
+                host_turn(HOST_EN_K1 + c->a, v - S.macro[c->a]);   /* (until Phase 7: KNOB 1..4) */
             S.macro[c->a] = v;
         }
         break;
     case OP_SELECT:
         host_track_select(c->a);
+        break;
+    case OP_VAR:                                 /* a World's variation, on the next bar while playing */
+        host_world(&w);
+        if (!w.active || !w.nvar)
+            break;
+        i = c->a == WA_STEP ? ((w.pending == 1 ? w.pending_var : w.var) + c->v % w.nvar + w.nvar) % w.nvar :
+            c->a == WA_PICK ? c->v : -1;
+        if (c->a == WA_NAME)
+            for (i = w.nvar - 1; i >= 0 && !studio_names_eq(w.var_name[i], c->s); i--)
+                ;
+        if (i >= 0 && i < w.nvar && (i = host_world_request(-1, i)) < 0)
+            snprintf(S.msg, sizeof S.msg, "WORLD ERROR %s", host_world_error(i));
         break;
     case OP_WORLD:
         if (!S.n)
@@ -234,21 +383,19 @@ void studio_exec(const sim_cmd_t *c)
                 S.browse = c->v;
             break;
         case WA_NAME:
-            if (find(c->s) >= 0)
-                S.browse = find(c->s);
+            for (i = 0; i < S.n && !studio_names_eq(S.w[i].name, c->s); i++)
+                ;
+            if (i < S.n)
+                S.browse = i;
             break;
         case WA_CONFIRM:
-            if (S.browse >= 0 && S.browse != S.world && S.pending < 0) {
-                S.pending = S.browse;
-                S.phase = 0;
-                host_state(&st);
-                S.last_beat = st.beat;
-            }
+            if (S.browse >= 0 && (S.browse != S.world || S.w[S.browse].kind == SK_FILE) && S.pending < 0)
+                load(S.browse);
             S.browse = -1;
             break;
-        default:                                 /* WA_CANCEL: the choice, or a World waiting for its bar */
+        default:                                 /* WA_CANCEL: the choice, or a project waiting for its bar */
             S.browse = -1;
-            if (S.phase == 0)
+            if (S.pending >= 0 && S.phase == 0)
                 S.pending = -1;
             break;
         }
@@ -260,39 +407,71 @@ void studio_exec(const sim_cmd_t *c)
 
 const char *studio_name_field(int f)
 {
-    int w = f == F_WORLD ? S.world : f == F_BROWSE ? S.browse : S.pending;
-    return w >= 0 && w < S.n ? S.w[w].name : "-";
+    static host_world_t w;
+    int e = f == F_WORLD ? S.world : f == F_BROWSE ? S.browse : S.pending;
+    if (f == F_VAR || f == F_VARNEXT) {
+        host_world(&w);
+        e = f == F_VAR ? (w.active ? w.var : -1) : w.pending == 1 && w.pending_var != w.var ? w.pending_var : -1;
+        return e >= 0 && e < w.nvar ? w.var_name[e] : "-";
+    }
+    return e >= 0 && e < S.n ? S.w[e].name : "-";
 }
 int studio_macro(int k) { return S.macro[k & 3]; }
 
 void studio_fill(studio_t *m)
 {
     host_state_t st;
-    int k;
+    host_world_t w;
+    int k, sel;
     host_state(&st);
+    host_world(&w);
     memset(m, 0, sizeof *m);
     m->nworlds = S.n;
     memcpy(m->w, S.w, sizeof m->w);
     m->world = S.world;
     m->browse = S.browse;
     m->pending = S.pending;
-    m->standin = 1;
-    if (S.world >= 0) {
-        snprintf(m->title, sizeof m->title, "%s", S.w[S.world].name);
-        snprintf(m->category, sizeof m->category, "%s", S.w[S.world].category);
-        for (k = 0; k < 4; k++)
-            snprintf(m->scene_name[k], sizeof m->scene_name[k], "%s", SCENE_NAME[k]);
-        memcpy(m->role, S.role[S.world], sizeof m->role);
-    } else {
-        snprintf(m->title, sizeof m->title, "%s", S.title[0] ? S.title : "SLOOP");
-        snprintf(m->category, sizeof m->category, "PROJECT");
-        role_of(&st, m->role);
+    m->want_file = S.want_file;
+    m->kind = S.world >= 0 ? S.w[S.world].kind : SK_PROJECT;
+    if (strcmp(S.msg, S.shown)) {                /* a new message */
+        snprintf(S.shown, sizeof S.shown, "%s", S.msg);
+        S.msg_at = host_frames();
     }
-    snprintf(m->key, sizeof m->key, "%s %s", st.t[0].root, st.t[0].scale);
-    m->scenes = st.sections;
+    if (S.msg[0] && host_frames() - S.msg_at > 4u * HOST_FS)
+        S.msg[0] = S.shown[0] = 0;
+    snprintf(m->msg, sizeof m->msg, "%s", S.msg);
     m->scene = st.scene;
     m->scene_next = st.scene_next;
-    m->nvar = 0;                                 /* (Phase 12) */
+    m->var = m->var_next = -1;
+    m->keys_track = -1;
+    if (w.active) {                              /* a World */
+        snprintf(m->title, sizeof m->title, "%s", w.name);
+        snprintf(m->category, sizeof m->category, "%s", w.category);
+        snprintf(m->blurb, sizeof m->blurb, "%s", w.blurb);
+        for (k = 0; k < 4; k++)
+            snprintf(m->scene_name[k], sizeof m->scene_name[k], "%s", w.scene_name[k]);
+        m->scenes = 0xF;
+        m->nvar = w.nvar;
+        m->var = w.var;
+        m->var_next = w.pending == 1 && w.pending_var != w.var ? w.pending_var : -1;
+        memcpy(m->var_name, w.var_name, sizeof m->var_name);
+        memcpy(m->role, w.role, sizeof m->role);
+        m->keys_track = w.keys_track;
+        m->keys_smart = w.keys_on;
+        snprintf(m->chord, sizeof m->chord, "%s", w.chord);
+    } else {                                     /* a SLOOP project (or plain SLOOP) */
+        snprintf(m->title, sizeof m->title, "%s", S.world >= 0 ? S.w[S.world].name : S.title[0] ? S.title : "SLOOP");
+        snprintf(m->category, sizeof m->category, "SLOOP PROJECT");
+        if (S.world >= 0 && S.w[S.world].kind == SK_PROJECT) {
+            for (k = 0; k < 4; k++)
+                snprintf(m->scene_name[k], sizeof m->scene_name[k], "%s", SCENE_NAME[k]);
+            memcpy(m->role, S.role[S.world], sizeof m->role);
+        } else {
+            role_of(&st, m->role);
+        }
+        m->scenes = st.sections;
+    }
+    snprintf(m->key, sizeof m->key, "%s %s", st.t[0].root, st.t[0].scale);
     memcpy(m->macro, S.macro, sizeof m->macro);
     m->macro_live = 0;                           /* (Phase 7) */
     for (k = 0; k < HOST_NTRK; k++) {
@@ -300,12 +479,13 @@ void studio_fill(studio_t *m)
         m->mute[k] = st.t[k].mute;
         m->level[k] = st.t[k].level;
     }
-    m->sel = st.sel;
-    m->keys_smart = 0;                           /* (Phase 6) */
-    if (st.sel == HOST_NTRK - 1)
-        snprintf(m->keys, sizeof m->keys, "DRUM PADS \xB7 %s", st.t[st.sel].sound);
+    m->sel = sel = st.sel;
+    if (m->keys_smart)
+        snprintf(m->keys, sizeof m->keys, "SMART MELODY");
+    else if (sel == HOST_NTRK - 1)
+        snprintf(m->keys, sizeof m->keys, "DRUM PADS \xB7 %s", st.t[sel].sound);
     else
-        snprintf(m->keys, sizeof m->keys, "%s %s \xB7 %s", st.t[st.sel].root, st.t[st.sel].scale, st.t[st.sel].quant);
+        snprintf(m->keys, sizeof m->keys, "%s %s \xB7 %s", st.t[sel].root, st.t[sel].scale, st.t[sel].quant);
     m->bpm = st.bpm;
     m->playing = st.playing;
 }

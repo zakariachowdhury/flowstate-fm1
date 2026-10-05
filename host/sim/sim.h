@@ -30,7 +30,9 @@
 /* ---- options */
 typedef struct {
     const char *project, *flash, *script, *wav, *screen, *shot, *world, *worlds;
-    int demo, stats, mute_output, device, fast, verbose, advanced, inspect;
+    int demo, stats, mute_output, device, fast, verbose, advanced, inspect, sloop;
+    uint8_t *world_blob;                 /* --world FILE: compiled by the main thread before the boot */
+    uint32_t world_blob_n;
     double headless;                     /* seconds (> 0: no window) */
     int buffer;                          /* the sink's buffer, frames (SDL obtained.samples) */
     int fifo;                            /* the FIFO fill the firmware thread keeps, frames */
@@ -52,16 +54,17 @@ enum {
     OP_MACRO,                            /* a = COLOR MOTION SPACE ENERGY (0..3), v = 0..100; rel: a step */
     OP_WORLD,                            /* a = WA_*: choose (the current one plays on), confirm, cancel */
     OP_SELECT,                           /* a = the track the keys play */
+    OP_VAR,                              /* a = WA_STEP (v = step) or WA_PICK (v = index) or WA_NAME (s) */
     OP_PRINT, OP_EXPECT, OP_QUIT,
 };
 enum { WA_STEP, WA_PICK, WA_NAME, WA_CONFIRM, WA_CANCEL };   /* OP_WORLD: v = step / index; s = name */
 enum { F_PLAYING, F_SCENE, F_NEXT, F_BPM, F_FILTER, F_MUTE, F_LEVEL, F_RMS, F_PEAK, F_TIME, F_MASTER,
-       F_MACRO, F_SEL, F_WORLD, F_BROWSE, F_PENDING, F_NF };   /* F_WORLD.. compare names */
+       F_MACRO, F_SEL, F_VOICES, F_GATED, F_WORLD, F_BROWSE, F_PENDING, F_VAR, F_VARNEXT, F_NF };   /* F_WORLD..: names */
 enum { CMP_EQ, CMP_NE, CMP_LT, CMP_LE, CMP_GT, CMP_GE };
 typedef struct {
     uint8_t op, a, rel, cmp;             /* OP_EXPECT: a = field, cmp; F_MUTE / F_LEVEL / F_MACRO: index in rel */
     int32_t v;
-    char s[16];                          /* a World's name (OP_WORLD WA_NAME, the name fields of OP_EXPECT) */
+    char s[16];                          /* a World's or variation's name ('_' for a space: "NEON_RAIN") */
 } sim_cmd_t;
 typedef struct {
     double t;                            /* seconds of audio since power-on */
@@ -72,43 +75,45 @@ const char *cmd_field_name(int f);
 const char *cmd_scene_name(int s);       /* "A".."D", "-" */
 extern const char *const MACRO_NAME[4];  /* COLOR MOTION SPACE ENERGY */
 
-/* ---- the Studio's model of what plays (studio.c fills it on the firmware thread, the views draw it).
- * Today from SLOOP: stand-in Worlds are projects, scenes SLOOP's sections. From Phase 5 on the World runtime
- * fills the same fields; the views stay. */
-#define STUDIO_WORLDS 16
+/* ---- the Studio's model of what plays (studio.c fills it on the firmware thread, the views draw it): the
+ * Musical Worlds (world.c), a World file being authored, and SLOOP projects. */
+#define STUDIO_WORLDS 24
+enum { SK_WORLD, SK_FILE, SK_PROJECT };  /* a factory World, a World file (--world PATH), a SLOOP project */
 typedef struct {
-    char name[16], category[12], key[12];   /* "GROOVE", "HOUSE", "A MIN" */
-    int bpm;
+    char name[16], category[12], key[12];   /* "NEON RAIN", "CINEMATIC", "D MIN" */
+    int bpm, kind;
 } studio_world_t;
 typedef struct {
     int nworlds;
     studio_world_t w[STUDIO_WORLDS];
-    int world;                           /* the one playing (-1: a SLOOP project that is no World) */
+    int world;                           /* the entry playing (-1: none, plain SLOOP) */
     int browse;                          /* highlighted while choosing (-1: not choosing); world keeps playing */
     int pending;                         /* confirmed while playing: loads on the next bar (-1 none) */
-    int standin;                         /* 1: stand-in Worlds (SLOOP projects), until Phase 5 */
-    char title[16], category[12], key[12];
-    char scene_name[4][12];              /* "INTRO" .. ("" for a section that is no World's scene) */
+    int kind;                            /* the playing entry's SK_* */
+    int want_file;                       /* a count: when it grows the main thread compiles the World file */
+    char title[16], category[12], key[12], blurb[26];
+    char scene_name[4][12];              /* "INTRO" .. */
     int scenes;                          /* bit per scene that holds something */
     int scene, scene_next;               /* playing (-1 none), from the next bar (-1 none) */
-    int nvar, var;                       /* variations (0: none yet, Phase 12) */
+    int nvar, var, var_next;             /* variations (0: none), the one asked for (-1 none) */
     char var_name[8][12];
     int macro[4];                        /* COLOR MOTION SPACE ENERGY, 0..100 */
     int macro_live;                      /* 0: stand-ins that turn SLOOP's KNOB 1..4 (until Phase 7) */
     char role[HOST_NTRK][8], sound[HOST_NTRK][16];   /* "PAD", "WARM PAD" */
     int mute[HOST_NTRK], level[HOST_NTRK], sel;      /* level 0..127; sel: the track the keys play */
-    int keys_smart;                      /* 0: the keys are SLOOP's (Smart Keys: Phase 6) */
-    char keys[40];                       /* what the keys do: "A MIN · SNAP" */
+    int keys_track, keys_smart;          /* the World's keys track; 1: Smart Keys map the keys (Phase 6) */
+    char keys[40], chord[8];             /* what the keys do ("D MIN · SNAP"); the chord playing ("" unknown) */
+    char msg[64];                        /* the last World message ("RELOADED", "WORLD ERROR CRC", ...) */
     int bpm, playing, recording;
 } studio_t;
-void studio_init(const sim_opts_t *o);   /* firmware thread, after the boot: the stand-in Worlds */
-int studio_load(const char *name);       /* load a World now (stopped or not); 0 = ok */
-void studio_exec(const sim_cmd_t *c);    /* OP_MACRO, OP_WORLD, OP_SELECT */
-void studio_block(void);                 /* before each block: a World waiting for the bar */
+void studio_init(const sim_opts_t *o);   /* firmware thread, after the boot: the entries, the first World */
+void studio_exec(const sim_cmd_t *c);    /* OP_MACRO, OP_WORLD, OP_VAR, OP_SELECT */
+void studio_blob(uint8_t *b, uint32_t n, int reload);   /* the World file, compiled (engine_send_blob) */
+void studio_block(void);                 /* before each block: a World or project waiting for the bar */
 void studio_fill(studio_t *m);           /* the model as it is now */
-const char *studio_name_field(int f);    /* F_WORLD, F_BROWSE, F_PENDING: a name or "-" */
+const char *studio_name_field(int f);    /* F_WORLD, F_BROWSE, F_PENDING, F_VAR, F_VARNEXT: a name or "-" */
 int studio_macro(int k);
-void studio_project_loaded(const char *path);   /* --project: a SLOOP project, no World */
+int studio_names_eq(const char *a, const char *b);   /* any case, '_' = ' ' */
 
 /* ---- what the firmware thread publishes after each main-loop pass */
 typedef struct {
@@ -140,6 +145,7 @@ typedef struct {
 int engine_start(const sim_opts_t *o, sim_step_t *script, int nscript);   /* boots on its thread */
 void engine_stop(void);                  /* asks it to stop and joins it */
 void engine_send(const sim_cmd_t *c);    /* main thread only (the ring has one producer) */
+void engine_send_blob(uint8_t *b, uint32_t n, int reload);   /* a compiled World file (b: malloc'd, taken) */
 uint32_t engine_snapshot(sim_snap_t *s); /* the latest; returns its sequence number (0: none yet) */
 uint32_t engine_snapshots(void);         /* the sequence number alone (no copy) */
 int engine_done(void);                   /* a script's quit, the UBOOT halt, ... */

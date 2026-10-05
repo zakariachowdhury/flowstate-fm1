@@ -6,6 +6,7 @@
  *
  *   sloop-render [options] INPUT.fun4 OUT.wav
  *   sloop-render [options] --song A.fun4,B.fun4[,C.fun4[,D.fun4]] [--order A:4,B:8,..] [INPUT.fun4] OUT.wav
+ *   sloop-render [options] --world NAME|FILE [--scene A..D] [--var NAME] [--world-sequence] OUT.wav
  *
  *   --bars N       play N bars of 4/4 (default: until every track's pattern has played twice)
  *   --seconds S    play S seconds instead
@@ -21,18 +22,27 @@
  *   --dump         the project: tempo, swing, and per track engine, preset, pattern, mix
  *   --screen PPM   also run the main loop (UI, autosave) between the audio, a pass every 22 blocks as on
  *                  the device, and write the screen at the end of play (240 x 240 PPM). The audio is the same
- * The same input always gives the same bytes. Any format SLOOP reads works (FUN1..3 are converted). */
+ *   --world W      a Musical World (world.c) instead of a project: a factory World by name or id ("NEON RAIN",
+ *                  0x4eee4454), a .wblob, or a .world.json (compiled with tools/worldc.py); its default scene and
+ *                  variation unless --scene / --var say otherwise (default 8 bars)
+ *   --scene A..D, --var NAME|N   the World's scene and variation (NAME as the World calls it, N from 1)
+ *   --world-sequence  scenes A, B, C, D, --bars each (default 4), changed while playing on the bar, as a
+ *                  player asks for them (world_request: the commit lands on the next bar)
+ * The same input always gives the same bytes. Any format SLOOP reads works (FUN1..3 are converted). Macros
+ * (--ctl) come with Phase 7. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "host.h"
 
 static void usage(void)
 {
     fprintf(stderr, "usage: sloop-render [--bars N | --seconds S] [--tail S] [--analyze | --check] [--dump]\n"
                     "                    [--screen OUT.ppm] INPUT.fun4 OUT.wav\n"
-                    "       sloop-render [options] --song A.fun4,B.fun4,.. [--order A:4,B:8,..] [INPUT.fun4] OUT.wav\n");
+                    "       sloop-render [options] --song A.fun4,B.fun4,.. [--order A:4,B:8,..] [INPUT.fun4] OUT.wav\n"
+                    "       sloop-render [options] --world NAME|FILE [--scene A..D] [--var NAME] [--world-sequence] OUT.wav\n");
     exit(2);
 }
 
@@ -54,6 +64,8 @@ static void render(uint32_t frames)              /* whole blocks; with the main 
         }
         if (ui_on && ui_blocks++ % HOST_FRAME_BLOCKS == 0)
             host_ui_frame();
+        else
+            host_world_service();                /* (a World switch, a stage applied: the main loop's part) */
         host_audio(pcm + 2 * pcm_n, HOST_BLOCK);
         pcm_n += HOST_BLOCK;
     }
@@ -179,9 +191,103 @@ static uint32_t natural_bars(const host_state_t *s)
     return b > 0 ? (uint32_t)ceil(b - 1e-9) : 4u;
 }
 
+/* ---- --world: a Musical World through world.c (the World's own tempo, scenes and variations) */
+static int render_world(const char *world, const char *wscene, const char *wvar, int seq, double bars, double seconds,
+                        double tail, int do_analyze, int do_check, int do_dump, const char *out)
+{
+    host_world_t w;
+    host_state_t st;
+    char msg[512];
+    int rc, i, scene = -1, var = -1, next = 1, asked = 0;
+    uint32_t b, play_blocks;
+    double bar;
+    i = host_world_factory_find(world);
+    rc = i >= 0 ? host_world_load(i) : host_world_load_file(world, msg, sizeof msg);
+    if (rc < 0) {
+        fprintf(stderr, "sloop-render: %s: %s\n", world, i >= 0 ? host_world_error(rc) : msg);
+        return 1;
+    }
+    host_world(&w);
+    if (wscene) {
+        scene = wscene[0] >= 'a' && wscene[0] <= 'd' ? wscene[0] - 'a' : wscene[0] - 'A';
+        if (scene < 0 || scene > 3 || wscene[1])
+            usage();
+    }
+    if (wvar) {
+        for (i = 0; i < w.nvar && strcasecmp(w.var_name[i], wvar); i++)
+            ;
+        var = i < w.nvar ? i : atoi(wvar) - 1;
+        if (var < 0 || var >= w.nvar) {
+            fprintf(stderr, "sloop-render: %s has no variation '%s' (", w.name, wvar);
+            for (i = 0; i < w.nvar; i++)
+                fprintf(stderr, "%s%s", i ? ", " : "", w.var_name[i]);
+            fprintf(stderr, ")\n");
+            return 1;
+        }
+    }
+    if (seq)
+        scene = 0;
+    if ((scene >= 0 || var >= 0) && (rc = host_world_request(scene, var)) < 0) {
+        fprintf(stderr, "sloop-render: %s: %s\n", w.name, host_world_error(rc));
+        return 1;
+    }
+    host_world(&w);
+    host_state(&st);
+    if (do_dump) {
+        printf("world    %s (%s), %d BPM, \"%s\", id 0x%08x\n", w.name, w.category, w.bpm, w.blurb, (unsigned)w.id);
+        printf("scenes   ");
+        for (i = 0; i < 4; i++)
+            printf("%s%c %s", i ? ", " : "", 'A' + i, w.scene_name[i]);
+        printf("\nvars     ");
+        for (i = 0; i < w.nvar; i++)
+            printf("%s%s", i ? ", " : "", w.var_name[i]);
+        printf("\nplaying  scene %c %s, variation %s; keys on track %d\n", 'A' + w.scene, w.scene_name[w.scene],
+               w.var_name[w.var], w.keys_track + 1);
+        for (i = 0; i < HOST_NTRK; i++)
+            printf("track %d  %-8s %-8s %-11s %2d x %-4s level %3d\n", i + 1, w.role[i], st.t[i].engine, st.t[i].sound,
+                   st.t[i].steps, st.t[i].div, st.t[i].level);
+    }
+    bar = 4.0 * 60.0 * HOST_FS / st.bpm;
+    bars = bars ? bars : seq ? 4 : seconds ? 0 : 8;
+    play_blocks = seconds ? blocks_of(seconds * HOST_FS) : blocks_of((seq ? 4 : 1) * bars * bar);
+    {
+        int16_t pre[2 * HOST_BLOCK];
+        host_audio(pre, HOST_BLOCK);
+    }
+    host_play();
+    for (b = 0; b < play_blocks; b++) {
+        render(HOST_BLOCK);
+        if (!seq)
+            continue;
+        host_state(&st);
+        host_world(&w);
+        if (next < 4 && !asked && st.beat >= 4 * ((int)bars - 1) + 1) {   /* in a scene's last bar: the next */
+            host_world_request(next, -1);
+            asked = 1;
+        } else if (asked && w.scene == next) {   /* it came, on the bar */
+            printf("scene %c %s from %.3f bars\n", 'A' + next, w.scene_name[next],
+                   (double)(pcm_n - HOST_BLOCK * (b < 1 ? 0 : 1)) / bar);
+            next++;
+            asked = 0;
+        }
+    }
+    host_stop();
+    render(blocks_of(tail * HOST_FS) * HOST_BLOCK);
+    if (wav_write(out)) {
+        fprintf(stderr, "sloop-render: cannot write %s\n", out);
+        return 1;
+    }
+    host_world(&w);
+    printf("rendered %s: %s, scene %c %s, variation %s, %.2f s at %d BPM + %.2f s tail\n", out, w.name, 'A' + w.scene,
+           w.scene_name[w.scene], w.var_name[w.var], (double)play_blocks * HOST_BLOCK / HOST_FS, st.bpm,
+           blocks_of(tail * HOST_FS) * (double)HOST_BLOCK / HOST_FS);
+    return do_analyze && analyze(out, do_check) ? 1 : 0;
+}
+
 int main(int argc, char **argv)
 {
-    const char *pos[2] = {0, 0}, *song = 0, *order = 0, *screen = 0;
+    const char *pos[2] = {0, 0}, *song = 0, *order = 0, *screen = 0, *world = 0, *wscene = 0, *wvar = 0;
+    int wseq = 0;
     char *files[4] = {0, 0, 0, 0}, *list = 0;
     double bars = 0, seconds = 0, tail = 4;
     int do_analyze = 0, do_check = 0, do_dump = 0, npos = 0, nfiles = 0, i, fmt;
@@ -208,12 +314,28 @@ int main(int argc, char **argv)
             do_dump = 1;
         else if (!strcmp(a, "--screen") && i + 1 < argc)
             screen = argv[++i];
+        else if (!strcmp(a, "--world") && i + 1 < argc)
+            world = argv[++i];
+        else if (!strcmp(a, "--scene") && i + 1 < argc)
+            wscene = argv[++i];
+        else if (!strcmp(a, "--var") && i + 1 < argc)
+            wvar = argv[++i];
+        else if (!strcmp(a, "--world-sequence"))
+            wseq = 1;
         else if (a[0] == '-' && a[1])
             usage();
         else if (npos < 2)
             pos[npos++] = a;
         else
             usage();
+    }
+    if (world) {
+        if (song || npos != 1 || (wseq && (wscene || seconds)) || bars < 0 || tail < 0 || seconds < 0 || (bars && seconds))
+            usage();
+        if (host_boot(NULL))
+            return 1;
+        host_master_volume(4096);
+        return render_world(world, wscene, wvar, wseq, bars, seconds, tail, do_analyze, do_check, do_dump, pos[0]);
     }
     if (bars < 0 || seconds < 0 || tail < 0 || (bars && seconds) || (song ? npos < 1 : npos != 2) || (order && !song))
         usage();

@@ -40,6 +40,25 @@ void engine_send(const sim_cmd_t *c)
     AT_STORE(&cq.w, w + 1u);
 }
 
+/* a compiled World file (main thread -> here): one slot, taken before the next block */
+static struct {
+    uint8_t *b;
+    uint32_t n;
+    int reload;
+    int full;                                    /* (the hand-over: set by the main thread, cleared here) */
+} mbox;
+void engine_send_blob(uint8_t *b, uint32_t n, int reload)
+{
+    if (AT_LOAD(&mbox.full)) {                   /* (the last one not taken yet: this one is newer) */
+        free(b);
+        return;
+    }
+    mbox.b = b;
+    mbox.n = n;
+    mbox.reload = reload;
+    AT_STORE(&mbox.full, 1);
+}
+
 /* ------------------------------------------------ the snapshot: two slots, a seqlock each --- */
 static struct {
     seqlock_t lock;
@@ -167,6 +186,8 @@ static double field(int f, int trk, const host_state_t *st)
     case F_MASTER: return E.master_adc;
     case F_MACRO: return studio_macro(trk);
     case F_SEL: return st->sel + 1;
+    case F_VOICES: return st->voices;
+    case F_GATED: return st->gated;
     default: return 0;
     }
 }
@@ -179,9 +200,14 @@ static void print_state(void)
            cmd_scene_name(st.scene_next), st.beat, st.bpm, st.filter, st.t[0].mute, st.t[1].mute, st.t[2].mute,
            st.t[3].mute, st.t[0].level, st.t[1].level, st.t[2].level, st.t[3].level, E.master_adc, meter_rms(),
            meter_peak());
-    printf("       world=%s browse=%s pending=%s macros=%d,%d,%d,%d sel=%d\n", studio_name_field(F_WORLD),
-           studio_name_field(F_BROWSE), studio_name_field(F_PENDING), studio_macro(0), studio_macro(1), studio_macro(2),
-           studio_macro(3), st.sel + 1);
+    {
+        host_world_t w;
+        host_world(&w);
+        printf("       world=%s browse=%s pending=%s var=%s varnext=%s macros=%d,%d,%d,%d sel=%d voices=%d gated=%d "
+               "keys=%s chord=%s\n", studio_name_field(F_WORLD), studio_name_field(F_BROWSE), studio_name_field(F_PENDING),
+               studio_name_field(F_VAR), studio_name_field(F_VARNEXT), studio_macro(0), studio_macro(1), studio_macro(2),
+               studio_macro(3), st.sel + 1, st.voices, st.gated, w.keys_on ? "smart" : "sloop", w.chord[0] ? w.chord : "-");
+    }
     fflush(stdout);
 }
 static void expect(const sim_cmd_t *c)
@@ -193,7 +219,7 @@ static void expect(const sim_cmd_t *c)
     host_state(&st);
     if (c->a >= F_WORLD) {                       /* a World's name */
         const char *got = studio_name_field(c->a);
-        ok = !strcasecmp(got, c->s) == (c->cmp == CMP_EQ);
+        ok = studio_names_eq(got, c->s) == (c->cmp == CMP_EQ);
         printf("expect: t=%.3f %s %s %s: %s (%s)\n", (double)host_frames() / HOST_FS, cmd_field_name(c->a),
                OPS[c->cmp], c->s, ok ? "ok" : "FAIL", got);
         fflush(stdout);
@@ -284,6 +310,7 @@ static void exec(const sim_cmd_t *c)
         break;
     case OP_MACRO:
     case OP_WORLD:
+    case OP_VAR:
     case OP_SELECT: studio_exec(c); break;
     case OP_PRINT: print_state(); break;
     case OP_EXPECT: expect(c); break;
@@ -440,7 +467,12 @@ static void render_block(void)
     double t0, t1;
     uint32_t i;
     take_cmds(0);
+    if (AT_LOAD(&mbox.full)) {
+        studio_blob(mbox.b, mbox.n, mbox.reload);
+        AT_STORE(&mbox.full, 0);
+    }
     run_script();
+    host_world_service();                        /* (the main loop's part of a World switch: before each block) */
     studio_block();
     apply_inputs();
     if (E.blocks % HOST_FRAME_BLOCKS == 0)
@@ -487,16 +519,13 @@ static int SDLCALL fw_thread(void *u)
         return 1;
     }
     E.master_adc = 1023;                         /* (host_boot: the pot fully up, unity) */
-    studio_init(&E.o);                           /* the stand-in Worlds; --demo: GROOVE */
-    if ((E.o.world && studio_load(E.o.world)) || (E.o.project && host_project_load(E.o.project) < 0)) {
-        if (E.o.project)
-            fprintf(stderr, "flowstate-sim: %s: cannot load the project\n", E.o.project);
+    if (E.o.project && host_project_load(E.o.project) < 0) {
+        fprintf(stderr, "flowstate-sim: %s: cannot load the project\n", E.o.project);
         AT_STORE(&E.failures, E.failures + 1);
         AT_STORE(&E.done, 1);
         return 1;
     }
-    if (E.o.project)
-        studio_project_loaded(E.o.project);
+    studio_init(&E.o);                           /* the Worlds, the World file, the projects; the first World */
     E.flash_seen = host_flash_changes();
     E.flash_dirty = E.o.flash != NULL;           /* (a new image, or the boot wrote: save it once) */
     E.flash_t = sim_now();

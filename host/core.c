@@ -7,7 +7,10 @@
  * host_ui_frame mirror fm1_main; its felucca_init is copied verbatim by host/Makefile into fw_main.h),
  * and with FELUCCA_UART / OTA / CDC = 0: midi_uart.c, ota.c, editor.c, console.c, recovery.c. usb.c is
  * built (the MIDI rings, the USB state the UI shows) but never started. audio.c is built as it is: its
- * interrupt handler never runs, host_audio renders through its audio_block. */
+ * interrupt handler never runs, host_audio renders through its audio_block. The Musical Worlds are built in as
+ * on the device (FELUCCA_WORLD 1): with no World active every hook takes SLOOP's path. tests/unity_order_test.py
+ * fails when this order and felucca.c's differ. */
+#define FELUCCA_WORLD 1              /* Musical Worlds (world.c), as felucca.c */
 #define FELUCCA_FLASH 1              /* storage.c, project.c and upreset.c on hal_host.h's NOR image */
 #define FELUCCA_OTA 0                /* (no USB on the host: no update, no editor, no console) */
 #define FELUCCA_CDC 0
@@ -34,6 +37,10 @@
 #define FELUCCA_ARRANGER 1
 #include "arranger.c"
 #include "seq.c"
+#if FELUCCA_WORLD                    /* the harmony and Smart Keys runtime, as felucca.c */
+#include "harmony.c"
+#include "smartkeys.c"
+#endif
 #include "audio.c"
 #include "panel.c"
 #include "ui.c"
@@ -44,6 +51,9 @@
 #include "ui_layers.c"
 #include "ui_menu.c"
 #include "ui_input.c"
+#if FELUCCA_WORLD
+#include "world.c"
+#endif
 /* felucca.c's flash glue (st_read, st_erase, st_prog): hal_host.h */
 #include "storage.c"
 #include "upreset.c"
@@ -218,6 +228,9 @@ void host_ui_frame(void)
     ui_draw();
     felucca_dbg.stage = 8;
     autosave_tick();                             /* the working project into flash, when quiet */
+#if FELUCCA_WORLD
+    host_world_service();                        /* (the Phase 9 main loop calls world_service: the host here) */
+#endif
     sections_flush();
     felucca_dbg.stage = 9;
     host_in_loop = 0;
@@ -400,6 +413,17 @@ void host_state(host_state_t *s)
     s->filter = song.g[G_FILT];
     s->master = (int)song.master_q12;
     s->sel = song.sel;
+    for (i = 0; i < NPART; i++)
+        for (k = 0; k < NVOICE; k++) {
+            s->voices += trk[i].v[k].active != 0;
+            s->gated += trk[i].v[k].active && trk[i].v[k].gate;
+        }
+#if FELUCCA_WORLD
+    if (wrt.active) {                            /* a World's scenes, not the sections */
+        s->scene = wrt.scene;
+        s->scene_next = wst.st == WST_READY && wst.scene != wrt.scene ? wst.scene : -1;
+    }
+#endif
 }
 
 static project_t host_info_proj;                 /* (host_project_info: never the working project) */
@@ -459,6 +483,14 @@ int host_scene(uint32_t slot)                    /* ui_layers.c LY_SONG, white k
     char b[2] = {(char)('A' + (slot & 3u)), 0};
     if (slot >= 4u)
         return -1;
+#if FELUCCA_WORLD
+    if (wrt.active) {                            /* a World: its scene (design H17), on the next bar */
+        int rc = host_world_request((int)slot, -1);
+        if (rc >= 0)
+            ui_say(rc ? "NEXT: " : "SCENE ", b);
+        return rc < 0 ? -1 : rc;
+    }
+#endif
     if (arrangement_clock.running) {
         ui_message("SONG PLAYS");
         return -2;
@@ -541,6 +573,255 @@ int host_track_params(uint32_t k, host_param_t *out, int max)
         p->id = (uint8_t)id;
     }
     return n;
+}
+
+/* ------------------------------------------------ Musical Worlds (world.c) --- */
+#define HOST_BLOBS 8                             /* World blobs from files: kept while world.c points into them */
+static uint8_t *host_blob[HOST_BLOBS];
+static void host_blob_gc(void)
+{
+    uint32_t i;
+    for (i = 0; i < HOST_BLOBS; i++)
+        if (host_blob[i] && host_blob[i] != wctx.b && host_blob[i] != wreq.sw_b) {
+            free(host_blob[i]);
+            host_blob[i] = NULL;
+        }
+}
+static int host_blob_keep(uint8_t *b)            /* 0, or -1: no room (b freed) */
+{
+    uint32_t i;
+    host_blob_gc();
+    for (i = 0; i < HOST_BLOBS && host_blob[i]; i++)
+        ;
+    if (i == HOST_BLOBS) {
+        free(b);
+        return -1;
+    }
+    host_blob[i] = b;
+    return 0;
+}
+static int host_wrc(int rc) { return rc ? -rc : wreq.sw || wst.st == WST_READY ? 1 : 0; }
+
+int host_world_factory_count(void) { return (int)world_factory_count(); }
+int host_world_factory(int i, host_world_entry_t *e)
+{
+    uint32_t bpm = 0;
+    memset(e, 0, sizeof *e);
+    if (i < 0 || (uint32_t)i >= WORLD_NFACTORY || world_factory_info((uint32_t)i, e->name, e->category, &bpm))
+        return -1;
+    e->id = WORLD_INDEX[i].id;
+    e->bpm = (int)bpm;
+    return 0;
+}
+int host_world_factory_find(const char *name)
+{
+    host_world_entry_t e;
+    char *end;
+    unsigned long id = strtoul(name, &end, 0);
+    int i, k;
+    if (*name && !*end && end != name)
+        return world_factory_find((uint32_t)id);
+    for (i = 0; i < (int)WORLD_NFACTORY; i++) {
+        if (host_world_factory(i, &e))
+            continue;
+        for (k = 0; e.name[k] && name[k] && toupper((unsigned char)e.name[k]) == toupper((unsigned char)name[k]); k++)
+            ;
+        if (!e.name[k] && !name[k])
+            return i;
+    }
+    return -1;
+}
+int host_world_load(int i)
+{
+    const uint8_t *b;
+    uint32_t n;
+    if (i < 0 || world_factory((uint32_t)i, &b, &n))
+        return -WE_STATE;
+    return host_wrc(world_switch(b, n));
+}
+int host_world_load_blob(uint8_t *b, uint32_t n)
+{
+    int rc;
+    if (host_blob_keep(b))
+        return -WE_BUSY;
+    rc = world_switch(b, n);
+    host_blob_gc();                              /* (b too, when it was refused) */
+    return host_wrc(rc);
+}
+int host_world_reload_blob(uint8_t *b, uint32_t n)
+{
+    int rc;
+    if (!wrt.loaded)
+        return host_world_load_blob(b, n);
+    if (host_blob_keep(b))
+        return -WE_BUSY;
+    rc = world_hot_reload(b, n);
+    host_blob_gc();
+    return rc ? -rc : 0;
+}
+static void host_sh_quote(char *d, size_t n, const char *s)   /* 'it'\''s' for the shell */
+{
+    size_t k = 0;
+    d[k++] = '\'';
+    for (; *s && k + 5 < n; s++) {
+        if (*s == '\'') {
+            memcpy(d + k, "'\\''", 4);
+            k += 4;
+        } else {
+            d[k++] = *s;
+        }
+    }
+    d[k++] = '\'';
+    d[k] = 0;
+}
+static int host_read_file(const char *path, uint8_t **b, uint32_t *n)
+{
+    FILE *f = fopen(path, "rb");
+    size_t got;
+    if (!f)
+        return -1;
+    *b = malloc(WF_MAX_LEN + 1u);
+    got = *b ? fread(*b, 1, WF_MAX_LEN + 1u, f) : 0;
+    fclose(f);
+    if (!*b || got > WF_MAX_LEN) {
+        free(*b);
+        *b = NULL;
+        return -2;
+    }
+    *n = (uint32_t)got;
+    return 0;
+}
+int host_world_compile(const char *path, uint8_t **b, uint32_t *n, char *msg, int mlen)
+{
+    char tool[1100], dir[PATH_MAX], tmp[1100], cmd[4096], q1[1200], q2[1200], q3[1200], *slash;
+    const char *root = getenv("FLOWSTATE_ROOT"), *td = getenv("TMPDIR");
+    size_t l = strlen(path);
+    FILE *p;
+    int fd, rc, k, up;
+    *b = NULL;
+    msg[0] = 0;
+    if (l < 11 || strcmp(path + l - 11, ".world.json")) {   /* a blob */
+        rc = host_read_file(path, b, n);
+        if (rc)
+            snprintf(msg, (size_t)mlen, "%s: %s", path, rc == -1 ? "cannot read" : "larger than a World blob");
+        return rc;
+    }
+    tool[0] = 0;                                 /* tools/worldc.py: $FLOWSTATE_ROOT, from the file upwards, here */
+    if (root)
+        snprintf(tool, sizeof tool, "%s/tools/worldc.py", root);
+    if (!root || access(tool, R_OK)) {
+        tool[0] = 0;
+        if (realpath(path, dir))
+            for (up = 0; up < 8 && (slash = strrchr(dir, '/')) && slash != dir; up++) {
+                *slash = 0;
+                snprintf(tool, sizeof tool, "%s/tools/worldc.py", dir);
+                if (!access(tool, R_OK))
+                    break;
+                tool[0] = 0;
+            }
+        if (!tool[0])
+            snprintf(tool, sizeof tool, "tools/worldc.py");
+    }
+    snprintf(tmp, sizeof tmp, "%s/flowstate-world-XXXXXX", td && *td ? td : "/tmp");
+    if ((fd = mkstemp(tmp)) < 0) {
+        snprintf(msg, (size_t)mlen, "cannot make a temporary file in %s", td ? td : "/tmp");
+        return -1;
+    }
+    close(fd);
+    host_sh_quote(q1, sizeof q1, tool);
+    host_sh_quote(q2, sizeof q2, path);
+    host_sh_quote(q3, sizeof q3, tmp);
+    snprintf(cmd, sizeof cmd, "python3 %s compile %s -o %s 2>&1", q1, q2, q3);
+    if (!(p = popen(cmd, "r"))) {
+        snprintf(msg, (size_t)mlen, "cannot run python3");
+        remove(tmp);
+        return -1;
+    }
+    for (k = 0; k < mlen - 1; ) {                /* what worldc says (its errors name the place) */
+        int ch = fgetc(p);
+        if (ch == EOF)
+            break;
+        msg[k++] = (char)(ch == '\n' ? ' ' : ch);
+    }
+    msg[k > 0 ? k : 0] = 0;
+    rc = pclose(p);
+    if (rc) {
+        remove(tmp);
+        return -1;
+    }
+    rc = host_read_file(tmp, b, n);
+    remove(tmp);
+    if (rc)
+        snprintf(msg, (size_t)mlen, "%s: worldc wrote no blob", path);
+    return rc;
+}
+int host_world_load_file(const char *path, char *msg, int mlen)
+{
+    uint8_t *b;
+    uint32_t n;
+    if (host_world_compile(path, &b, &n, msg, mlen))
+        return -WE_SIZE;
+    return host_world_load_blob(b, n);
+}
+int host_world_request(int scene, int var)
+{
+    uint32_t ps = WF_NONE, pv = WF_NONE;
+    int pend = world_pending(&ps, &pv) && ps != WF_NONE;   /* (a request on its way: the other half stays) */
+    if (!wrt.loaded)
+        return -WE_STATE;
+    return host_wrc(world_request(scene >= 0 ? (uint32_t)scene : pend ? ps : wrt.scene,
+                                  var >= 0 ? (uint32_t)var : pend ? pv : wrt.var));
+}
+void host_world_unload(void) { world_unload(); }
+void host_world_service(void)
+{
+    world_service();
+    host_blob_gc();
+}
+void host_world(host_world_t *w)
+{
+    uint32_t i, ps = 0, pv = 0;
+    memset(w, 0, sizeof *w);
+    w->loaded = wrt.loaded;
+    w->active = wrt.active;
+    w->pending_scene = w->pending_var = -1;
+    if (world_pending(&ps, &pv)) {
+        w->pending = ps == WF_NONE ? 2 : 1;
+        w->pending_scene = ps == WF_NONE ? -1 : (int)ps;
+        w->pending_var = pv == WF_NONE ? -1 : (int)pv;
+    }
+    if (!wrt.loaded)
+        return;
+    w->id = wrt.id;
+    snprintf(w->name, sizeof w->name, "%s", world_name());
+    snprintf(w->category, sizeof w->category, "%s", world_category());
+    snprintf(w->blurb, sizeof w->blurb, "%s", world_blurb());
+    w->bpm = (int)world_bpm();
+    w->scene = wrt.scene;
+    w->var = wrt.var;
+    w->nvar = (int)world_nvar();
+    for (i = 0; i < world_nscenes() && i < 4u; i++)
+        snprintf(w->scene_name[i], sizeof w->scene_name[i], "%s", world_scene_name(i));
+    for (i = 0; i < (uint32_t)w->nvar && i < 8u; i++)
+        snprintf(w->var_name[i], sizeof w->var_name[i], "%s", world_var_name(i));
+    for (i = 0; i < NTRK; i++)
+        snprintf(w->role[i], sizeof w->role[i], "%s", world_role_label(world_track_role(i)));
+    w->keys_track = (int)world_keys_track();
+    w->keys_on = wrt.keys_on;
+    harm_chord_name(w->chord);                   /* harmony.c: the chord at the clock ("" with none) */
+}
+const char *host_world_error(int code)
+{
+    static char b[16];
+    const char *s = WE_NAMES;
+    int k = 0;
+    code = code < 0 ? -code : code;
+    for (; *s && k < code; s++)
+        k += *s == ' ';
+    for (k = 0; *s && *s != ' ' && k < (int)sizeof b - 1; s++)
+        b[k++] = *s;
+    b[k] = 0;
+    return k ? b : "?";
 }
 
 /* ------------------------------------------------ names, colours, the font (constant data) --- */

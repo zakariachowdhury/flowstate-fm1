@@ -11,10 +11,13 @@
  *
  * Included once, by host/core.c, before the firmware: the system headers first, then the attribute
  * removal (Mach-O rejects the .pool / .noinit / .ram_text section names, as in the tests). */
+#include <ctype.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>                    /* (core.c: a World compiled by tools/worldc.py) */
 #include "felucca_tables.h"            /* FS, CTL */
 #define __attribute__(x)
 

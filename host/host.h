@@ -88,6 +88,44 @@ typedef struct {
 } host_param_t;
 int host_track_params(uint32_t track, host_param_t *p, int max);
 
+/* ---- Musical Worlds (world.c, built in as on the device). One World is loaded at a time; while none is active
+ * every SLOOP path is as before. While playing, a scene or a variation changes on the next 4/4 bar (every track
+ * from its step 0 there); stopped, at once. Another World while one plays: on the next bar the transport stops,
+ * host_world_service loads the new World and starts it again (a restart on the bar; Phase 11 makes it seamless).
+ * host_scene (SAVE + key) asks for a World's scene while a World is active (design H17).
+ * Returns: 0 done now, 1 on the next bar, < 0 an error: -WE_* (host_world_error names it) */
+typedef struct {
+    uint32_t id;
+    char name[16], category[12];
+    int bpm;
+} host_world_entry_t;
+typedef struct {
+    int loaded, active;                      /* a World loaded; it drives the tracks */
+    uint32_t id;
+    char name[16], category[12], blurb[26];
+    int bpm, scene, var, nvar;               /* the authored tempo; the committed scene and variation */
+    char scene_name[4][12], var_name[8][12];
+    int pending, pending_scene, pending_var; /* 1 a scene / variation on the next bar, 2 a World there */
+    char role[HOST_NTRK][8];                 /* PAD CHORDS BASS LEAD KEYS TEXTURE DRUMS */
+    int keys_track, keys_on;                 /* the Smart Keys track; Smart Keys map the keys (wrt.keys_on) */
+    char chord[8];                           /* the chord at the clock (harmony.c: "Dm", "Bbmaj7"; "" with none) */
+} host_world_t;
+int host_world_factory_count(void);
+int host_world_factory(int i, host_world_entry_t *e);   /* factory World i (sorted by category); 0 = ok */
+int host_world_factory_find(const char *name);          /* by name (any case) or id ("0x4eee4454"); -1 */
+int host_world_load(int i);                  /* factory World i, its default scene and variation */
+/* a .wblob as it is, or a .world.json compiled by `python3 tools/worldc.py compile` (found from the file's
+ * directory upwards, or $FLOWSTATE_ROOT): *b is malloc'd. Any thread (no firmware state). 0 = ok, else msg */
+int host_world_compile(const char *path, uint8_t **b, uint32_t *n, char *msg, int mlen);
+int host_world_load_blob(uint8_t *b, uint32_t n);       /* takes b (malloc'd): kept while it is loaded */
+int host_world_reload_blob(uint8_t *b, uint32_t n);     /* the same World changed (authoring): at once, playing or not */
+int host_world_load_file(const char *path, char *msg, int mlen);   /* host_world_compile + host_world_load_blob */
+int host_world_request(int scene, int var);  /* -1 keeps the current one */
+void host_world_unload(void);                /* back to SLOOP (the working project as the World left it) */
+void host_world_service(void);               /* the main loop's part: call it every pass (host_ui_frame does) */
+void host_world(host_world_t *w);
+const char *host_world_error(int code);      /* "BUSY", "CRC", ... (code: WE_*, or its negative) */
+
 /* ---- names, colours and the firmware's font, for a host's own drawing. Constant data only: any thread */
 const char *host_version(void);              /* "SLOOP 2.1" */
 const char *host_button_name(uint32_t label);    /* "FX" .. "OCT+" (panel.c) */
@@ -118,6 +156,7 @@ typedef struct {
     int beat;                                /* beats since PLAY or the section's start (4 a bar) */
     int filter, master;                      /* the DJ filter (-64..63); the master gain (4096 = unity) */
     int sel;                                 /* the selected track (the keys play it) */
+    int voices, gated;                       /* synth voices sounding; those still held (gate on): after STOP 0 */
 } host_state_t;
 void host_state(host_state_t *s);
 /* what a project file holds, without loading it: tempo, swing and per track the engine, sound, key, mix

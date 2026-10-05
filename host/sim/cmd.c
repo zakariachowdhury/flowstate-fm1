@@ -14,13 +14,16 @@
  *   key K [down|up]            K: 1..27 or F3..G5; without down / up a tap (held for one main-loop pass)
  *   button NAME [down|up]      FX SCL ENV LFO EDIT GLO HOME SAVE ARP SEQ PLAY REC OCT- OCT+
  *   turn ENC STEPS             SELECT ALGO PRESET K1..K4 MASTER (+ = clockwise)
- *   world NAME|N|next|prev     choose a World (the current one plays on); confirm loads it (at once while
- *   confirm | cancel           stopped, on the next bar while playing); cancel forgets the choice
+ *   world NAME|N|next|prev     choose a World or a project (the current one plays on); confirm loads it (at once
+ *   confirm | cancel           while stopped, on the next bar while playing); cancel forgets the choice. A name
+ *                              with spaces takes '_': NEON_RAIN
+ *   var NAME|N|next|prev       the World's variation, on the next bar while playing
  *   macro NAME|N V|+S|-S       COLOR MOTION SPACE ENERGY (1..4), 0..100
  *   select N                   the track the keys play (1..4)
  *   print                      the state on stdout
- *   expect FIELD OP VALUE      playing scene next bpm filter mute1..4 level1..4 macro1..4 sel rms peak time master
- *                              (numbers; A..D or - for a scene), world browse pending (a World's name or -);
+ *   expect FIELD OP VALUE      playing scene next bpm filter mute1..4 level1..4 macro1..4 sel voices gated rms peak
+ *                              time master (numbers; A..D or - for a scene); world browse pending var varnext (a
+ *                              name or -; voices: synth voices sounding, gated: still held, 0 after STOP);
  *                              = != < <= > >= (names: = !=). A failure: exit status 1
  *   quit */
 #include <ctype.h>
@@ -31,7 +34,8 @@
 #include "sim.h"
 
 static const char *const FIELD[F_NF] = {"playing", "scene", "next", "bpm", "filter", "mute", "level", "rms",
-                                        "peak", "time", "master", "macro", "sel", "world", "browse", "pending"};
+                                        "peak", "time", "master", "macro", "sel", "voices", "gated", "world",
+                                        "browse", "pending", "var", "varnext"};
 const char *cmd_field_name(int f) { return f >= 0 && f < F_NF ? FIELD[f] : "?"; }
 const char *cmd_scene_name(int s)
 {
@@ -116,6 +120,18 @@ static int parse(char **w, int n, sim_cmd_t *c)
             return -1;
     } else if (ieq(w[0], "world") && n == 2) {
         c->op = OP_WORLD;
+        if (ieq(a, "next") || ieq(a, "prev")) {
+            c->a = WA_STEP;
+            c->v = ieq(a, "next") ? 1 : -1;
+        } else if (num(a, &c->v)) {
+            c->a = WA_PICK;
+            c->v--;
+        } else {
+            c->a = WA_NAME;
+            snprintf(c->s, sizeof c->s, "%s", a);
+        }
+    } else if (ieq(w[0], "var") && n == 2) {
+        c->op = OP_VAR;
         if (ieq(a, "next") || ieq(a, "prev")) {
             c->a = WA_STEP;
             c->v = ieq(a, "next") ? 1 : -1;
