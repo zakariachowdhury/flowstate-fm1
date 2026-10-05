@@ -99,6 +99,14 @@ else
          "install Node 18 or newer (nodejs.org or Homebrew)"
 fi
 
+# ---- SDL2 (only the real-time simulator, build/host-bin/flowstate-sim, uses it; never installed from here)
+if command -v sdl2-config >/dev/null 2>&1; then
+    ok "SDL2 $(sdl2-config --version) (the simulator: docs/simulator.md)"
+else
+    warn "no SDL2: make -C host and tests/run_tests.sh skip the simulator (optional)" \
+         "brew install sdl2   (needed only for the simulator)"
+fi
+
 # ---- Docker, toolchain, SDK
 if [ $DOCKER = 1 ]; then
     IMG="$("$PY" -B -c 'import sys; sys.path.insert(0, "tools"); import build; print(build.DOCKER_IMAGE)' \
