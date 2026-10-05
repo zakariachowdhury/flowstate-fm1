@@ -66,7 +66,7 @@
     "SPARSE": {"params": {"drums.level": 64, "texture.level": 74}, "energy_bias": -0.2}
   },
   "macros": {
-    "COLOR": [{"to": "pad.~bright", "min": -32, "max": 26, "curve": "s"},
+    "COLOR": [{"to": "pad.~bright", "min": -22, "max": 26, "curve": "s"},
               {"to": "texture.@BRIGHT", "min": -34, "max": 26},
               {"to": "bell.@BRIGHT", "min": -20, "max": 24},
               {"to": "g.dcolor", "min": -20, "max": 22}],
@@ -84,7 +84,7 @@
     "ENERGY": [{"to": "drums.level", "min": -12, "max": 6},
                {"to": "texture.level", "min": -8, "max": 4},
                {"to": "pad.level", "min": 4, "max": -4},
-               {"to": "pad.~bright", "min": -8, "max": 12}]
+               {"to": "pad.~bright", "min": 0, "max": 12}]
   },
   "rules": [
     {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "g.drrev", "add": -30}, {"to": "g.dfdbk", "add": -20},

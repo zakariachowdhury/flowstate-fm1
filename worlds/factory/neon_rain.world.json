@@ -75,7 +75,7 @@
               "energy_bias": 0.12}
   },
   "macros": {
-    "COLOR": [{"to": "pad.~bright", "min": -36, "max": 28, "curve": "s"},
+    "COLOR": [{"to": "pad.~bright", "min": -24, "max": 28, "curve": "s"},
               {"to": "lead.~bright", "min": -30, "max": 22, "curve": "s"},
               {"to": "g.dcolor", "min": -20, "max": 24}],
     "MOTION": [{"to": "pad.ld_shp", "min": -20, "max": 30, "smooth": "slow"},
@@ -92,7 +92,7 @@
     "ENERGY": [{"to": "pad.level", "min": 6, "max": -6},
                {"to": "drums.level", "min": -12, "max": 8},
                {"to": "bass.@DRIVE", "min": -6, "max": 20},
-               {"to": "pad.~bright", "min": -10, "max": 14}]
+               {"to": "pad.~bright", "min": 0, "max": 14}]
   },
   "rules": [
     {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -6}, {"to": "g.drrev", "add": -24},
