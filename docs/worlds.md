@@ -476,7 +476,19 @@ bias) picks the band. Phase 11 makes them sound.
 | `tonic` | the note of the C4 key. It must be the root. Default: the root nearest C4. |
 | `range` | the note range of the keys; the same as `guard.notes.<track>.range` |
 
-The Smart Keys mapping itself arrives in Phase 6 (design §4).
+What the keys play (SMART MELODY, Phase 6, design §4; `firmware/src/smartkeys.c`):
+- **White keys** walk `melody_scale` up from the C4 key, which plays `tonic`, and down from it: 16 white keys, about
+  three octaves of melody. They never move.
+- **Black keys** play the tones of the chord sounding now, ascending: each takes the lowest chord tone above its left
+  white key and the black key before it. With `chord+9`, the chord's 9th joins when it is a safe tone of the scale.
+  The black keys move with the progression. A key pressed up to a 32nd note before a chord change already gets the
+  new chord.
+- **Every note** is shifted by OCT−/OCT+ and then folded by octaves into `range`. A range under an octave is widened
+  upward to one.
+- **A held note never moves.** It sounds until its key is released, whatever the chord, scene or octave is by then.
+- `guard.notes.<keys track>.max_poly` caps the keys held at once. A key over the cap stays silent.
+
+MIDI in on the keys track plays the same map, with MIDI note 60 as the C4 key.
 
 ---
 

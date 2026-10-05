@@ -5,15 +5,17 @@
 core of Flowstate: its engines, sequencer, FX, UI and flash. The computer keyboard and the mouse play it, and the audio
 goes to the default output. The window has two views (Tab switches):
 
-- **FLOWSTATE STUDIO**, the layout of the UI spec §12: the World, the scenes, the four macros, the performance buttons,
-  the tracks and the keys, with the device's screen beside them.
+- **FLOWSTATE STUDIO**, the layout of the UI spec §12: the Musical World, its scenes and variations, the four macros,
+  the performance buttons, the tracks and the keys, with the device's screen beside them.
 - **ADVANCED**, the FM-1 itself: the LCD at twice its size and the whole panel.
 
-![FLOWSTATE STUDIO: GROOVE playing on scene B, scene C asked for, a chord held](images/studio.png)
+![FLOWSTATE STUDIO: NEON RAIN playing on scene B, scene C and the variation DREAMY asked for, a chord held](images/studio.png)
 
-The simulator is the host layer of Phase 2: `host/core.c` and `host/hal_host.h`, used through `host/host.h`. Nothing in
-`host/sim/` synthesises, sequences or draws the LCD itself. Phase 3 of the plan built the real-time core and Phase 4
-the Studio ([progress.md](progress.md), design §1.7, §12.1 and §16).
+The simulator is the host layer of Phase 2: `host/core.c` and `host/hal_host.h`, used through `host/host.h`. The host
+core is built as the device's firmware is, Musical Worlds included (`FELUCCA_WORLD 1`, `world.c`). Nothing in
+`host/sim/` synthesises, sequences or draws the LCD itself. Phase 3 of the plan built the real-time core, Phase 4 the
+Studio, and Phase 6 (part A) made the Worlds playable in it ([progress.md](progress.md), design §1.7, §2.8, §12.1
+and §16).
 
 ## Build and run
 
@@ -22,16 +24,18 @@ You need SDL2 (`brew install sdl2`). `tools/setup-macos.sh` checks for it but ne
 
 ```
 make -C host                                     # build/host-bin/flowstate-sim (with SDL2)
-build/host-bin/flowstate-sim --demo              # the stand-in World GROOVE: Option+Space plays
-build/host-bin/flowstate-sim --world CINEMATIC --flash ~/fm1.nor
+build/host-bin/flowstate-sim                     # NEON RAIN: Option+Space plays
+build/host-bin/flowstate-sim --world "MIDNIGHT DRIVE" --flash ~/fm1.nor
+build/host-bin/flowstate-sim --world worlds/factory/dusty_cafe.world.json   # authoring: reloads on save
 build/host-bin/flowstate-sim --project my.fun4 --advanced
 ```
 
 | Option | |
 | --- | --- |
-| `--world NAME` | Load this World at boot. Until Phase 5 the Worlds are stand-ins, the example projects: AMBIENT, CINEMATIC and GROOVE. Loading one stores its four scenes in sections A–D ([the Studio](#flowstate-studio)); with `--flash`, that overwrites the image's sections. |
-| `--demo` | `--world GROOVE`. |
-| `--worlds DIR` | The stand-in Worlds: every `.fun4` in DIR (default `examples/projects`), at most 16. |
+| `--world NAME\|FILE` | Start with this World: a factory World by name or id (`"NEON RAIN"`, `0x4eee4454`); a World file, `.world.json` (compiled with `tools/worldc.py`) or `.wblob`, which [reloads whenever it changes](#authoring-hot-reload); or a SLOOP project of the list by name. Without it the Studio starts with NEON RAIN, as the device's first boot will. |
+| `--demo` | `--world NEON_RAIN`. |
+| `--sloop` | No World at the start: SLOOP as it boots. |
+| `--worlds DIR` | The SLOOP projects listed after the Worlds: every `.fun4` in DIR (default `examples/projects`). |
 | `--project FILE.fun4` | Load this project at boot, as LOAD does. FUN1–3 are converted. It is no World, and the sections stay as they are. |
 | `--flash FILE` | The 1 MiB NOR image. It is read at boot; the file need not exist yet. It is written 1 s after the firmware last wrote (while stopped) and at exit. SAVE, sections, the song, settings, user presets and the autosave (after its idle time, as on the device) all survive a restart. Without this option the flash lives in RAM. |
 | `--buffer FRAMES` | The audio device's buffer, also the null sink's period. Default 672 (15.2 ms); see the measurements below. |
@@ -58,7 +62,7 @@ The program prints the mapping at start, and the window shows a legend.
 | The 27 keys, F3–G5 | white `Z X C V B N M , . / Q W E R T Y`, black `S D F H J L ; ' 3 4 6` | the FM-1's keys |
 | Buttons (held while the key is down) | `U I O P` FX SCL ENV LFO · `7 8 9 0` EDIT GLO HOME SAVE · `[ ]` ARP SEQ · `Space` PLAY · `Return` REC · `- =` OCT− OCT+ | the panel's buttons, layers included (GLO + key 1–4 mutes, SAVE + key 1–4 plays a section, …) |
 | Encoders (key repeat keeps turning) | `← →` PRESETS · `↓ ↑` ALGORITHM · `shift ← →` SELECT · `shift Z X`, `C V`, `B N`, `M ,` · `shift ↓ ↑` MASTER | `shift Z X` … `M ,` are COLOR, MOTION, SPACE and ENERGY in STUDIO (2 a press), and KNOB 1–4 in ADVANCED |
-| Commands (Option held) | `Space` PLAY / STOP · `1`–`4` scene A–D · `5`–`8` mute track 1–4 · `← →` DJ filter −/+4 · `0` filter off · `↓ ↑` tempo −/+1 BPM · `W` / `shift W` choose a World · `Return` load it · `I` the inspector | direct calls, below |
+| Commands (Option held) | `Space` PLAY / STOP · `1`–`4` scene A–D · `V` / `shift V` the next / previous variation · `5`–`8` mute track 1–4 · `← →` DJ filter −/+4 · `0` filter off · `↓ ↑` tempo −/+1 BPM · `W` / `shift W` choose a World · `Return` load it · `I` the inspector | direct calls, below |
 | | `Tab` | STUDIO / ADVANCED |
 | | `Esc` | closes the inspector, else cancels a World being chosen or waiting for its bar, else quits |
 
@@ -74,8 +78,9 @@ released on the next. The device's matrix scan never misses a press, and neither
 **Commands.** These are what the panel's gestures do, as direct calls (`host/host.h`, "live control"). The screen shows
 the firmware's own messages.
 
-- **Scene A–D** (`host_scene`) does what SAVE + key 1–4 does. While a loop plays, the section starts on the next bar
-  ("NEXT: B"); while stopped, it loads at once.
+- **Scene A–D** (`host_scene`) does what SAVE + key 1–4 does. With a World, it asks for the World's scene (design H17);
+  without one, for SLOOP's section. While playing, it changes on the next bar ("NEXT: B"); while stopped, at once.
+- **Variation** asks for the World's next variation, also on the next bar.
 - **Mute** sets the track's MUTE, as GLO + key does. A scene brings its own mutes, as on the device.
 - **The filter** is FX + KNOB 1's DJ filter (`G_FILT`). **The tempo** is SELECT's BPM.
 
@@ -83,23 +88,74 @@ the firmware's own messages.
 
 The layout follows the UI spec §12 (and its page 13 mock-up): dark, monospaced, with the spec's violet. Everything comes
 from the Studio's model of what plays (`studio_t` in `host/sim/sim.h`), which the firmware thread fills
-(`host/sim/studio.c`) and publishes with each snapshot. The view (`host/sim/studio_view.c`) only draws it and sends
-commands. Until the Musical Worlds, the model is filled from SLOOP, and the view says so wherever that matters.
+(`host/sim/studio.c`, from `host_world` and `host_state`) and publishes with each snapshot. The view
+(`host/sim/studio_view.c`) only draws it and sends commands.
 
-| Region | Shows | Until the World runtime |
-| --- | --- | --- |
-| Top | `FLOWSTATE STUDIO`, playing or stopped, the tempo; the World, `· SCENE B`, its category, key and tempo; the device's screen at its own size | **Stand-in Worlds**: the example projects, named after their files. The category is the project's drum kit (AMBIENT, SYNTHWV, HOUSE). |
-| Choosing a World | `<` `>`, the title, or Option+W highlight a World in `CHOOSE WORLD`; the current one plays on. LOAD (or a second click, or Option+Return) confirms: at once while stopped, **on the next bar** while playing, and it plays on from there (design D10). CANCEL, a click outside or Esc forgets it | the same |
-| Middle | A B C D with their names; the one playing filled, the one asked for marked `NEXT BAR`, then `CHANGES NEXT BAR: C LIFT`; `VAR` | **Scenes are SLOOP's sections**, stored from the World when it loads: A INTRO (its pad and keys only; else its first synth track), B MAIN (all four), C LIFT (all four, drums +16, the synth tracks' echo sends +24), D BREAKDOWN (all but the drums). A World starts on B. A scene brings its own mutes, as on the device. **VAR** is greyed (`PHASE 12`): there are no variations yet, and it does nothing. |
-| Controls | COLOR MOTION SPACE ENERGY, 0–100, with DARK/BRIGHT, STILL/ALIVE, CLOSE/HUGE, SPARSE/INTENSE | **Stand-ins**: positions that turn SLOOP's KNOB 1–4 by the same steps; what that changes is on the device's screen. The line under them says so. Phase 7 replaces them with the World's macros. |
-| Performance | PLAY · REC · PULSE · BEAT · FX, with their LEDs | The FM-1's PLAY, REC, ARP, SEQ and FX buttons, held while the mouse is down (FX is a hold), right-click latches |
-| Tracks | Four strips by role, with a mute box, a level and the sound; the track the keys play is underlined | **Roles from the sound's name** (PAD, BASS, LEAD, KEYS; the drum track DRUMS). Level is the track's LVL (the drum track's GLO > DRUMS level) |
-| Input | `KEYS: …`, the 27 keys with their LEDs and computer keys | `KEYS: SLOOP` with the track, key, scale and snap the keys use, and `(SMART MELODY: PHASE 6)` |
+| Region | Shows |
+| --- | --- |
+| Top | `FLOWSTATE STUDIO`, playing or stopped, the tempo; the World, `· SCENE B`, its category, key and tempo, its blurb (or a message: `RELOADED`, `WORLD ERROR …`); the device's screen at its own size |
+| Choosing a World | `<` `>`, the title, or Option+W highlight an entry of `CHOOSE WORLD`: the four factory Worlds (in the firmware's order, by category), the World file when there is one, then `SLOOP PROJECTS`. The current one plays on. LOAD (or a second click, or Option+Return) confirms: at once while stopped, **on the next bar** while playing (design D10). CANCEL, a click outside or Esc forgets it |
+| Middle | A B C D with the World's scene names; the one playing filled, the one asked for marked `NEXT BAR`, then `CHANGES NEXT BAR: C LIFT · DREAMY`. `VAR < DREAMY >`: the variation, `n/N`; a click on its left or right half (or the wheel, or Option+V) asks for the previous or next one, on the next bar |
+| Controls | COLOR MOTION SPACE ENERGY, 0–100, with DARK/BRIGHT, STILL/ALIVE, CLOSE/HUGE, SPARSE/INTENSE. **Stand-ins until Phase 7**: positions that turn SLOOP's KNOB 1–4 by the same steps; what that changes is on the device's screen, and the line under them says so |
+| Performance | PLAY · REC · PULSE · BEAT · FX, with their LEDs: the FM-1's PLAY, REC, ARP, SEQ and FX buttons, held while the mouse is down (FX is a hold), right-click latches |
+| Tracks | Four strips named by the World's roles (PAD CHORDS BASS LEAD KEYS TEXTURE DRUMS), with a mute box, a level (LVL; the drum track's GLO > DRUMS level) and the sound; the track the keys play is underlined. A mute stays through scene changes (it is the player's) |
+| Input | `KEYS: SMART MELODY` once Smart Keys map the keys (`wrt.keys_on`, Phase 6 part B); until then `KEYS: SLOOP` with the track, key, scale and snap the keys use. `CHORD Dm` when the harmony runtime names the chord playing. The 27 keys with their LEDs and computer keys |
+
+**SLOOP projects** load as in Phase 4: the project, its four scenes stored in sections A–D (A INTRO its pad and keys,
+B MAIN all, C LIFT all with the drums +16 and the synth tracks' echo sends +24, D BREAKDOWN all but the drums), and
+B plays; a scene brings its own mutes, as on the device. Loading one leaves the World (back to SLOOP's paths).
 
 **ADVANCED** is the raw panel, as in Phase 3. Advanced Mode on the device comes in Phase 14; here it means every SLOOP
 control with nothing in between. **The inspector** (Option+I, for developers) shows the selected track's raw
 parameters with their EDIT labels and values. In Phase 7 it will show the macros' hidden mappings.
 
+## Musical Worlds on the host
+
+`host/core.c` builds the World runtime as `felucca.c` does; `tests/unity_order_test.py` fails when the firmware files
+it includes, or their order, differ from `felucca.c`'s (hardware-only files apart). The World calls are in
+`host/host.h`:
+
+| Call | Does |
+| --- | --- |
+| `host_world_factory_count`, `host_world_factory(i, …)`, `host_world_factory_find(name or id)` | the factory Worlds: name, category, tempo, id (sorted by category: find NEON RAIN by its id) |
+| `host_world_load(i)`, `host_world_load_blob`, `host_world_load_file` | another World (`world.c` `world_switch`) |
+| `host_world_compile(path, …)` | a `.wblob` as it is, or a `.world.json` through `python3 tools/worldc.py compile` (found from the file upwards, or `$FLOWSTATE_ROOT`); any thread |
+| `host_world_request(scene, var)` | a scene and variation (`world_request`); −1 keeps one |
+| `host_world_reload_blob` | the World being authored, changed (`world_hot_reload`) |
+| `host_world(&w)` | what is loaded: name, category, blurb, tempo, scene and variation names, the committed and the asked-for ones, roles, the keys track, Smart Keys on, the chord |
+| `host_world_service()` | the main loop's part of a switch (`world_service`); `host_ui_frame` calls it, and the simulator before every block |
+
+What happens while playing (`firmware/src/world.c`, "requests and accessors"):
+
+- **A scene or a variation** is staged by the main loop (`world_stage`) and committed by the audio interrupt on the
+  next 4/4 bar, the same bar check SAVE + key uses (`seq.c` `live_block`). Every track restarts from its step 0 on that
+  bar. The sequencer's own notes are released there, so nothing hangs; the keys track keeps its loop and the held keys
+  sound on (SLOOP's behaviour). A newer request replaces one not yet committed. Stopped, it applies at once.
+- **Another World**: on the next bar the transport stops; the main loop then loads the new World and starts it
+  again, within two blocks (1.5 ms) in the simulator. It is a restart on the bar, not a seamless change: the old
+  World's tails are cut. A seamless switch is a Phase 11 item. From SLOOP (no World active) the switch is immediate.
+- A request made in the first audio block of a bar lands on that bar: the interrupt sees a bar at the block after the
+  clock crosses it, and the bar keeps its exact phase (`seq_reset_tracks(clk_pos)`).
+
+**Rendering a World.** `sloop-render --world NAME|FILE [--scene A..D] [--var NAME|N] [--bars N] OUT.wav` renders a World
+(default: its scene and variation, 8 bars) through the real `world.c`; `--world-sequence` plays scenes A, B, C, D,
+`--bars` each, asking for each next scene in the last bar of the one before, as a player would. The macros
+(`--ctl`) come with Phase 7.
+
+```
+build/host-bin/sloop-render --world "NEON RAIN" --dump --check build/renders/worlds/neon_rain-studio.wav
+build/host-bin/sloop-render --world 0x4ec4271e --scene C --var DREAMY --bars 4 build/renders/md-c.wav
+build/host-bin/sloop-render --world "NEON RAIN" --world-sequence --bars 2 build/renders/neon-abcd.wav
+```
+
+### Authoring: hot reload
+
+`--world PATH.world.json` (or `.wblob`) is compiled by the main thread before the boot and listed as the World file.
+Every 500 ms the main thread looks at the file; when it changed, it compiles it again (`tools/worldc.py`, about
+0.2 s; the audio does not wait) and hands the blob to the firmware thread, which reloads the World at once, playing
+or not (`world_hot_reload`, design §2.8): the patterns from the file (RAM edits dropped, the keys loop kept), the
+current scene and variation staged again and committed, the authored tempo. A file that does not compile leaves the
+old World playing, and worldc's message, which names the place, shows on the status line.
 ## Scripts
 
 `--script` takes steps separated by `;` or new lines. The full grammar is at the top of `host/sim/cmd.c`.
@@ -113,10 +169,12 @@ parameters with their EDIT labels and values. In Phase 7 it will show the macros
   always gives the same audio.
 - **Commands:** `play`, `stop`, `scene A..D`, `store A..D`, `mute N [on|off]`, `level N V|±S`, `bpm|swing|filter|dust|duck V|±S`,
   `master V`, `key K [down|up]` (a tap without down / up), `button NAME [down|up]`, `turn ENC STEPS`, `print`, `quit`.
-  The Studio: `world NAME|N|next|prev` (choose), `confirm`, `cancel`, `macro COLOR..ENERGY|1..4 V|±S`, `select N`.
+  The Studio: `world NAME|N|next|prev` (choose), `confirm`, `cancel`, `var NAME|N|next|prev`,
+  `macro COLOR..ENERGY|1..4 V|±S`, `select N`. A name with spaces takes `_`: `world MIDNIGHT_DRIVE`.
 - **Expectations:** `expect FIELD OP VALUE`. The numeric fields are `playing scene next bpm filter mute1..4 level1..4
-  macro1..4 sel rms peak time master`; `rms` and `peak` are the output's last 0.5 s, in dBFS. `world`, `browse` and
-  `pending` compare a World's name (or `-`) with `=` or `!=`.
+  macro1..4 sel voices gated rms peak time master`; `rms` and `peak` are the output's last 0.5 s, in dBFS; `voices`
+  counts the synth voices sounding and `gated` those still held (0 right after STOP: no stuck note). `world`,
+  `browse`, `pending`, `var` and `varnext` compare a name (or `-`) with `=` or `!=`.
 
 ## How it works
 
@@ -230,24 +288,28 @@ build/host-bin/flowstate-sim --demo --headless 10 --device --mute-output --scrip
 
 ## Tests
 
-`tests/run_tests.sh` (full and `--host-only`) has a simulator group. It is skipped with a message when `sdl2-config` is
-missing. The group:
+`tests/run_tests.sh` (full and `--host-only`) has a simulator group, skipped with a message when `sdl2-config` is
+missing, and the unity-order check. The simulator group:
 
-1. Runs `--demo --headless 5` through the null sink in real time, with no window and no sound. A script presses PLAY,
-   switches from scene B to A on the next bar, changes mutes, tempo and filter, and checks 13 expectations: playing, the
-   scene before and after the bar, A's mutes, a toggle, BPM and filter, the audio heard (rms above −30 dBFS), and then
-   silenced (below −45 dBFS after everything is muted).
-2. Checks that exactly 220,500 frames were played, that the rendered count is that plus at most one FIFO, that the WAV
+1. Runs `--demo --headless 6` (NEON RAIN) through the null sink in real time, with no window and no sound. A script
+   presses PLAY, asks for scene C in the middle of a bar, and checks 12 expectations: playing, the World, the scene
+   still B just before the next bar and C just after it, a mute and back, BPM and filter, the audio heard (rms above
+   −35 dBFS), and then silenced (below −45 dBFS 1.25 s after everything is muted).
+2. Checks that exactly 264,600 frames were played, that the rendered count is that plus at most one FIFO, that the WAV
    has the right size, and that the program exits cleanly.
 3. Runs the same script twice with `--fast` and checks that the WAVs are the same bytes. When the real-time run had no
    underrun, it also checks that its WAV is the same bytes as `--fast`'s, so the threads dropped or doubled nothing. The
    second run draws ADVANCED (`--advanced --shot`).
-4. Runs the Studio with `--fast` and checks 16 expectations: GROOVE plays; AMBIENT is chosen and GROOVE plays on;
-   after the confirmation AMBIENT waits, then loads exactly on GROOVE's next bar and plays on at its own 70 BPM, on
-   scene B; scene D on AMBIENT's next bar, with D's mutes; a mute and back; a level; a macro. It draws the Studio
-   (`--shot`). Both pictures must be written (they are not compared).
+4. Runs the Studio with `--fast` and checks 24 expectations: the variation DREAMY asked for and committed on the next
+   bar (not before); scene C on the bar after; MIDNIGHT DRIVE chosen while NEON RAIN plays on, confirmed, waiting, then
+   switched exactly on NEON RAIN's next bar and playing at its 100 BPM; a mute and back, a level, a macro; STOP with
+   no voice held (`gated = 0`) and, 2.3 s later, none sounding and the output below −60 dBFS; a SLOOP project loaded.
+   It draws the Studio (`--shot`). Both pictures must be written (they are not compared).
+5. Renders every factory World with `sloop-render --world --check` into `build/renders/worlds/<id>-studio.wav` (clean:
+   heard, peak below −0.1 dBFS, no full-scale sample, no DC), and NEON RAIN's scenes A–D, 2 bars each, checking that
+   B, C and D begin exactly at bars 2, 4 and 6.
 
-The group takes about 6 s.
+The group takes about 7 s.
 
 ## Known differences from the device
 
@@ -262,21 +324,17 @@ The group takes about 6 s.
 - **Not present.** USB (MIDI, the web editor, updates, console), TRS MIDI.
 - **Output level.** The DAC's −6 dB is applied, and the MASTER pot starts fully up (on the device it is wherever the
   knob is). CoreAudio resamples when the output does not run at 44.1 kHz.
-- **Worlds, scenes, macros, keys.** Until Phases 5, 6, 7 and 12 they are SLOOP stand-ins, as [the Studio](#flowstate-studio)
-  lists. A stand-in World that loads while playing restarts its patterns on the bar (a World runtime switches scenes
-  without stopping, Phase 11).
+- **Worlds.** A scene or variation change is quantised to one bar (a scene's 2- and 4-bar transitions, fills and
+  held-note continuity are Phase 11). Another World while playing restarts on the bar. The macros are stand-ins until
+  Phase 7, and the keys are SLOOP's until Smart Keys (Phase 6 part B). The device has no World UI yet (Phase 9).
 
-## For Phase 5 and later
+## What later phases add
 
-The Studio's model (`studio_t`) is the only thing that changes when the Musical Worlds arrive. `host/sim/studio.c`
-fills it today from SLOOP and will read the World runtime instead; the views, commands and scripts stay.
+The Studio's model (`studio_t`) and `host_world` are where later phases show up; the views, commands and scripts stay.
 
-| Field | Today | Then |
+| Field | Now | Later |
 | --- | --- | --- |
-| `w[]`, `world`, `standin` | the example projects (`--worlds`) | the factory and user Worlds (`felucca_worlds.h`, the World store); `standin` 0 |
-| World load, `pending` | `host_project_load`, then the scenes stored into sections | the World runtime's load (switch on the next bar, D10) |
-| `scene_name[]`, `scene`, `scene_next` | INTRO MAIN LIFT BREAKDOWN over SLOOP's sections | the World's scenes (D6: never the user's sections) |
-| `nvar`, `var_name[]`, `var` | none: VAR greyed | the World's variations (Phase 12) |
+| `keys`, `keys_smart`, `chord` | SLOOP's keys; the chord when the harmony runtime gives it | `SMART MELODY` and the chord (Phase 6 part B: `wrt.keys_on`, `harm_chord_name`) |
 | `macro[]`, `macro_live` | positions turning KNOB 1–4 | the control positions (Phase 7); the inspector shows the mappings |
-| `role[]` | from the sound's name | the World's track roles |
-| `keys`, `keys_smart` | SLOOP's key, scale and snap | the Smart Keys mode, `SMART MELODY` (Phase 6) |
+| `pending`, scene changes | a commit on the next bar, a World switch by a restart | transitions of 2 and 4 bars, seamless World switches (Phase 11) |
+| `w[]` | the factory Worlds, a World file, SLOOP projects | user Worlds from the World store (Phase 14) |

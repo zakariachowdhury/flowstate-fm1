@@ -136,7 +136,7 @@ checked with a toolchain and SDK files freshly installed by the scripts above, a
 ## Tests
 
 ```
-./tests/run_tests.sh               # all 26 groups; run ./build.sh first (about 90 s)
+./tests/run_tests.sh               # all 32 groups; run ./build.sh first (about 2 minutes)
 ./tests/run_tests.sh --host-only   # no ./build.sh, toolchain, Docker or SDK needed
 ```
 
@@ -171,7 +171,13 @@ installed, the simulator test only when `sdl2-config` is (both runs).
 | 23 | installer CLI against a simulated FM-1 (no mido needed) | `tests/install_test.py` | runs |
 | 24 | web pages: editor protocol, samples, packages, update protocol | `web/test_web.mjs` | runs (with Node) |
 | 25 | host renderer: the example projects, 16 bars each, clean and the same bytes twice; `examples/projects/` as `host/examples.c` makes them | `host/render.c`, `host/examples.c` | runs |
-| 26 | simulator: 5 s headless in real time (PLAY, a scene on the bar, mutes, audio, frames), the same bytes as `--fast`; the Studio (a World loaded on the bar, scene, mute, level, macro, both views drawn) | `host/sim/` | runs (with SDL2) |
+| 26 | simulator and Worlds: 6 s of NEON RAIN headless in real time (a scene committed exactly on the next bar, mutes, audio, frames), the same bytes as `--fast`; the Studio (a variation and a scene on the bar, a World switch on the bar, no note left after STOP, a SLOOP project, both views drawn); every factory World rendered clean by `sloop-render --world`, and a scene sequence on the bars | `host/sim/`, `host/render.c` | runs (with SDL2) |
+| 27 | unity order: `host/core.c` includes `felucca.c`'s firmware files in its order (hardware-only files apart) | `tests/unity_order_test.py` | runs |
+| 28 | worlds: the World compiler (sloop-params.json fresh, schema, round trip, notation, errors, size limits) | `tests/worldc_test.py` | runs |
+| 29 | worlds: the FWD1 parser, load, stage, commit; truncations, byte flips, 20,000 corruptions (ASan/UBSan) | `tests/world_test.c` | runs |
+| 30 | worlds: the World modules never name `proj_slot` (design D6) | `firmware/src/world*` | runs |
+| 31 | regression with `FELUCCA_WORLD=1`: the same golden renders | `tests/regress_world.c` | runs |
+| 32 | worlds: every factory World × scene × variation rendered clean, ENERGY, macros, loudness | `tests/world_render.c` | runs |
 
 Environment:
 
@@ -225,6 +231,7 @@ the host tests render it; the device's DAC plays it 6 dB lower. The same input a
 ```
 sloop-render [--bars N | --seconds S] [--tail S] [--analyze | --check] [--dump] [--screen OUT.ppm] INPUT.fun4 OUT.wav
 sloop-render [options] --song A.fun4,B.fun4[,C.fun4,D.fun4] [--order A:4,B:8,..] [INPUT.fun4] OUT.wav
+sloop-render [options] --world NAME|FILE [--scene A..D] [--var NAME|N] [--world-sequence] OUT.wav
 ```
 
 | | |
@@ -236,19 +243,23 @@ sloop-render [options] --song A.fun4,B.fun4[,C.fun4,D.fun4] [--order A:4,B:8,..]
 | `--check` | `--analyze`, then exit 1 if the render is silent, peaks at or above −0.1 dBFS, reaches full scale or has a DC offset |
 | `--dump` | tempo, swing, and each track's engine, preset, pattern length and mix |
 | `--screen OUT.ppm` | also runs the main loop between audio blocks and saves the screen at the end of play. The audio does not change |
+| `--world`, `--scene`, `--var` | a Musical World instead of a project: a factory World by name or id, a `.wblob`, or a `.world.json` (compiled with `tools/worldc.py`); its default scene and variation unless given (default 8 bars). [simulator.md](simulator.md#musical-worlds-on-the-host) |
+| `--world-sequence` | the World's scenes A, B, C, D, `--bars` each (default 4), each asked for while playing and committed on the bar |
 
 ```
 mkdir -p build/renders && make -C host
 build/host-bin/sloop-render --dump --analyze examples/projects/cinematic.fun4 build/renders/cinematic.wav
 build/host-bin/sloop-render --song examples/projects/ambient.fun4,examples/projects/cinematic.fun4 \
     --order A:8,B:8,A:4 build/renders/song.wav
+build/host-bin/sloop-render --world "NEON RAIN" --var DREAMY --check build/renders/neon_rain-dreamy.wav
 ```
 
 A render runs at about 200 times realtime: 16 bars of `examples/projects/ambient.fun4` (59 s) take 0.3 s.
 
 **`flowstate-sim`** plays the same firmware in real time through the Mac's audio output (it needs SDL2). Its
-window is FLOWSTATE STUDIO (the UI spec's simulator: Worlds, scenes, macros, tracks, keys) with the FM-1 panel a
-Tab away. `build/host-bin/flowstate-sim --demo` starts it; Option+Space plays. Its options, keys, threads, latency
+window is FLOWSTATE STUDIO (the UI spec's simulator: the Musical Worlds, their scenes and variations, macros,
+tracks, keys) with the FM-1 panel a Tab away. `build/host-bin/flowstate-sim` starts it with NEON RAIN; Option+Space
+plays. `--world PATH.world.json` reloads a World whenever its file changes. Its options, keys, threads, latency
 measurements and known differences from the device are in [simulator.md](simulator.md).
 
 **`sloop-examples [DIR]`** writes the three example projects in `examples/projects/` (or DIR):
