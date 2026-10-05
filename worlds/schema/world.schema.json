@@ -156,7 +156,7 @@
         "role": {"enum": ["intro", "main", "lift", "breakdown"]},
         "progression": {"type": "string"},
         "energy": {"type": ["string", "null"]},
-        "transition": {"enum": [1, 2, 4]},
+        "transition": {"enum": [1, 2, 4, "bar", "phrase"]},
         "fill": {"type": ["string", "null"]},
         "patterns": {
           "type": "object",

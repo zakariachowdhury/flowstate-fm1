@@ -110,7 +110,8 @@ typedef struct {
     char name[16], category[12], blurb[26];
     int bpm, scene, var, nvar;               /* the authored tempo; the committed scene and variation */
     char scene_name[4][12], var_name[8][12];
-    int pending, pending_scene, pending_var; /* 1 a scene / variation on the next bar, 2 a World there */
+    int pending, pending_scene, pending_var; /* 1 a scene / variation on its boundary, 2 a World on the next bar */
+    int bars_left, phrase;                   /* its bar lines to go (1: the next one); its quantum is the phrase */
     char role[HOST_NTRK][8];                 /* PAD CHORDS BASS LEAD KEYS TEXTURE DRUMS */
     int keys_track, keys_on;                 /* the Smart Keys track; Smart Keys map the keys (wrt.keys_on) */
     char chord[8];                           /* the chord at the clock (harmony.c: "Dm", "Bbmaj7"; "" with none) */

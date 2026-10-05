@@ -15,6 +15,7 @@ typedef struct {
     uint8_t keys_trk;            /* the Smart Keys track (KEYS trk): plays the user loop, never a scene pattern */
     uint8_t refcount;            /* Phase 6 (H2): per-pitch voice reference counts on */
     uint8_t keys_on;             /* Phase 6: Smart Keys map the keys */
+    uint8_t swp;                 /* Phase 11: a World switch is staged: its macros wait for its commit (main loop) */
     volatile uint8_t mute;       /* Phase 11 (H1): tracks the ENERGY band silences, bit per track */
     uint8_t scene, var;          /* the committed scene and variation */
     uint8_t prog, energy, fill;  /* their progression, energy table and fill (pool index), WF_NONE = none */
@@ -37,6 +38,7 @@ typedef struct {
     uint8_t min_bars;            /* bars between two band changes */
     uint8_t phrase;              /* fills: the last bar of every phrase of this many bars */
     uint8_t fill;                /* the scene's fill (a drum pattern of the pool), WF_NONE = none */
+    uint8_t bm;                  /* the BEAT (WF_BEAT_*), + 4 when the scene has its own pattern for it (no mask) */
     uint16_t dlanes;             /* the lanes the density masks apply to */
     uint16_t from[WF_MAX_BANDS]; /* 0..1000 */
     uint8_t flags[WF_MAX_BANDS]; /* WF_B_LAYERS | WF_B_FILLS | WF_B_RATCHETS */
@@ -52,6 +54,10 @@ typedef struct {
     uint8_t sw;                  /* the commit switches the World: release everything, clear the keys loop, tempo */
     uint8_t scene, var;
     uint8_t prog, energy, fill;
+    uint8_t q, qp;               /* Phase 11: commit on a bar line every q bars from the section start (0: at once,
+                                  * ADVANCED); qp: q is the phrase (the playing progression's length) */
+    uint8_t kt;                  /* the keys track (another World's at a switch) */
+    uint16_t ereq;               /* the ENERGY position the commit of a World switch starts from (its default) */
     uint8_t pat[NTRK];           /* pool entry per track, WF_NONE = an empty pattern (the keys track: its loop stays) */
     uint8_t eng[NTRK], preset[NTRK];
     int16_t bpm;
@@ -147,7 +153,8 @@ typedef struct {
     uint8_t tgt;                 /* the band of the change under way */
     uint8_t mb, db;              /* the band the layers (wrt.mute) and the masks follow now */
     uint8_t bars;                /* bars since the last change began (255: long ago) */
-    uint8_t fill_now;            /* this bar plays the scene's fill */
+    uint8_t fill_now;            /* this bar plays a fill: pool entry fp (the phrase's, or one into a scene change) */
+    uint8_t fp;
     uint32_t beat;               /* clk_beat when last seen (0xFFFFFFFF: a new clock) */
     uint16_t lanes, dens;        /* band db: the drum lanes allowed, the density steps (on et.dlanes) */
     uint16_t play[NPART];        /* band db: the steps of each synth track that play */

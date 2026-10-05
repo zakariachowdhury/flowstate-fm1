@@ -37,6 +37,7 @@
  *   macro_eval()             main loop: the target table, published (1: the ISR has not taken the last one yet)
  *   ov_reset()               IRQs off (world.c, a World switch or unload): no overlay until the next table
  *   world_fx_pre / _post     audio ISR (H4, H5)
+ *   wgl_add(p, from)         world.c world_commit (audio ISR, a commit while playing): base *p glides from from
  *   ov_effective(...)        (guard.c) what a slot makes of a base value (the ISR's rule; the host's inspector) */
 
 #define MC_BLOCKS 22u                    /* macro_service evaluates at most once in 22 audio blocks (a main-loop pass) */
@@ -320,11 +321,45 @@ static int macro_eval(void)
     return 0;
 }
 
+/* Commit glides (Phase 11). A commit while playing (world.c: a scene, a variation, a World on its boundary) writes new
+ * bases at once; those that click or zip when they jump (levels, pans, sends, DIST, an engine's continuous EDIT values
+ * when the engine stays, the bus globals) glide instead: the base starts at its old value and moves 1/16 of the way
+ * each block (at least one step), about 50 ms for a jump of 100. The overlay rides on top of the moving base (H4). A
+ * base something else writes meanwhile (the editor) ends its glide; the next commit starts over from where they are */
+#define WGL_MAX 48
+static struct {
+    int16_t *p;
+    int16_t to, at;
+} wgl[WGL_MAX];
+static uint8_t wgl_n;
+static void wgl_add(int16_t *p, int32_t from)    /* *p is the new base: it glides there from from */
+{
+    if (*p == from || wgl_n >= WGL_MAX)
+        return;                                          /* (no jump; or no slot left: it jumps) */
+    wgl[wgl_n].p = p;
+    wgl[wgl_n].to = *p;
+    wgl[wgl_n++].at = *p = (int16_t)from;
+}
+static void wgl_block(void)              /* H5, after the bases are back: each glide a step on */
+{
+    uint32_t i;
+    for (i = 0; i < wgl_n;) {
+        int32_t at = wgl[i].at, d = wgl[i].to - at;
+        if (!d || *wgl[i].p != at) {                     /* there, or another writer took it */
+            wgl[i] = wgl[--wgl_n];
+            continue;
+        }
+        at += d / 16 ? d / 16 : d > 0 ? 1 : -1;
+        wgl[i].at = (int16_t)at;
+        *wgl[i++].p = (int16_t)at;
+    }
+}
+
 static void macro_service(void)          /* main loop, every pass */
 {
     uint32_t t;
-    if (!wrt.active)
-        return;
+    if (!wrt.active || wrt.swp)
+        return;                                          /* (a World switch staged: its own table after its commit) */
     for (t = 0; t < NPART; t++)
         if (trk[t].eng_req != mac.eng[t])
             mac.dirty = 1;                               /* (another engine: its roles are other parameters) */
@@ -332,10 +367,10 @@ static void macro_service(void)          /* main loop, every pass */
         macro_eval();
 }
 
-static void ov_reset(void)               /* IRQs off, outside a block: no overlay until the next table */
+static void ov_reset(void)               /* IRQs off or the ISR: no overlay until the next table, no glide */
 {
     uint32_t i;
-    ovb[0].n = ovb[1].n = 0;
+    ovb[0].n = ovb[1].n = wgl_n = 0;
     ov_seen = ov_pub;
     for (i = 0; i < NPART; i++)
         wvm_cut[i] = wvm_shape[i] = 0;
@@ -416,4 +451,6 @@ static void world_fx_post(void)          /* H5: fx.c mix_block, after djf_proces
 {
     if (ov_in)
         ov_restore();
+    if (wgl_n)
+        wgl_block();                                     /* (the bases a commit moves: a step on, Phase 11) */
 }

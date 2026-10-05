@@ -19,9 +19,19 @@
  *   arr_stage(et, ...)   main loop (world.c world_stage): the scene's table, the variation's bias, the timing
  *   arr_commit(et)       world.c world_commit (the ISR on the bar, or IRQs off while stopped): the table, its band now
  *   arr_block()          audio ISR, seq.c events_block (H16), each block: the band and the changes on beats and bars
+ *   arr_beat(bm)         world.c (the ISR on the bar, or IRQs off while stopped): another BEAT's masks
  *   arr_dskip, arr_dstep, arr_plays   audio ISR, the sequencer's hooks (H13, H14)
- * Phase 11 adds the rest of design 5.7 and 9.2: BEAT (MINIMAL GROOVE BUSY BREAK) intersected with these masks, and
- * the fills' place in scene transitions. */
+ * Phase 11 (design 5.7, 7, 9.2):
+ *   BEAT      a BEAT the scene has no pattern for plays its GROOVE through a mask, intersected with the band's:
+ *             MINIMAL kick, kick 2, snare, clap and rim; BUSY every density step and the ratchets; BREAK kick, kick 2,
+ *             snare and snare 2 with the hats on every second eighth. MINIMAL never fills (its own pattern neither)
+ *   fills     a scene change waiting for the next bar line (world.c wst.q) plays a fill on the bar before it, from the
+ *             beat it was asked on: the new scene's fill, else this scene's; only while the drums play (a pattern, not
+ *             silenced by MUTE, solo or the band) and through the band's lanes and density like any step */
+
+#define ARR_MINIMAL 0x008Fu              /* kick kick2 snare clap rim */
+#define ARR_BREAK 0x0107u                /* kick kick2 snare snare2 */
+#define ARR_HATS 0x0050u                 /* hat, pedal: BREAK's, on every second eighth */
 
 #define ARR_HYST 20u                     /* per mille: a band starts this much past its edge, and ends this much below */
 
@@ -33,6 +43,7 @@ static void arr_stage(wetab_t *et, const uint8_t *e, const uint8_t *g, uint32_t 
 {
     uint32_t k, t, fe;
     memset(et, 0, sizeof *et);
+    et->bm = WF_BEAT_GROOVE;                             /* (world.c sets the BEAT) */
     et->bias = (int8_t)bias;
     et->fill = (uint8_t)fill;
     et->mute_bars = (uint8_t)guard_byte(g, WF_G_MUTECHG);   /* GUARD's arrangement timing (guard.c) */
@@ -81,14 +92,19 @@ static void arr_masks(uint32_t k)        /* band k's lanes, density, play masks,
             arr.play[t] = 0xFFFF;
         arr.ratchets = 1;
         arr.fills = 0;
-        return;
+        return;                                          /* (a BEAT's masks still apply: arr_dskip) */
     }
     arr.lanes = arr.et.lanes[k];
     arr.dens = arr.et.dens[k];
     for (t = 0; t < NPART; t++)
         arr.play[t] = arr.et.play[k][t];
-    arr.ratchets = (arr.et.flags[k] & WF_B_RATCHETS) != 0;
+    arr.ratchets = (arr.et.flags[k] & WF_B_RATCHETS) || arr.et.bm == WF_BEAT_BUSY;
     arr.fills = (arr.et.flags[k] & WF_B_FILLS) != 0;
+}
+static void arr_beat(uint32_t bm)        /* another BEAT: its masks (with the band's) from now */
+{
+    arr.et.bm = (uint8_t)bm;
+    arr_masks(arr.db);
 }
 static void arr_layers(uint32_t k)       /* band k's layers: wrt.mute, never the Smart Keys track */
 {
@@ -112,7 +128,7 @@ static void arr_commit(const wetab_t *et)   /* the commit: the new table, its ba
 static void arr_block(void)              /* H16: seq.c events_block, every block, before the steps */
 {
     uint32_t k, bar, newbar;
-    if (!wrt.active || !arr.et.n)
+    if (!wrt.active)
         return;
     k = arr.sel = (uint8_t)arr_band(arr_pos(), arr.sel, 1);
     if (!song.playing) {                                 /* stopped: at once */
@@ -141,21 +157,37 @@ static void arr_block(void)              /* H16: seq.c events_block, every block
         arr_masks(arr.tgt);                              /* lanes, density, play masks: this beat (or bar) */
     if (arr.mb != arr.tgt && newbar && !(bar % arr.et.mute_bars))
         arr_layers(arr.tgt);                             /* layers: this bar */
-    if (newbar)
+    if (newbar) {
         arr.fill_now = (uint8_t)(arr.fills && arr.et.fill < WF_MAX_PAT && bar % arr.et.phrase == arr.et.phrase - 1u);
+        arr.fp = arr.et.fill;
+    }
+    if (!arr.fill_now && wst.st == WST_READY && wst.q && wst.scene != wrt.scene && !wst.sw &&
+        bar % wst.q == wst.q - 1u && wrt.cur_pat[TRK_DRUM] < WF_MAX_PAT && !trk_silent(TDRUM)) {
+        k = wst.fill < WF_MAX_PAT ? wst.fill : arr.et.fill;   /* a scene change on the next bar line: a fill into it */
+        arr.fill_now = k < WF_MAX_PAT;
+        arr.fp = (uint8_t)k;
+    }
+    if ((arr.et.bm & 3u) == WF_BEAT_MINIMAL)
+        arr.fill_now = 0;
 }
 
 /* ---- the sequencer's hooks (audio ISR) */
-static uint32_t arr_dskip(uint32_t idx)  /* H13: the drum lanes band db leaves out at step idx */
+static uint32_t arr_dskip(uint32_t idx)  /* H13: the drum lanes band db (and the BEAT) leave out at step idx */
 {
-    uint32_t keep = arr.lanes;
-    if (!(arr.dens >> (idx & 15u) & 1u))
+    uint32_t keep = arr.lanes, dens = arr.dens, b = arr.et.bm;
+    if (b == WF_BEAT_BUSY)
+        dens = 0xFFFFu;
+    else if (b == WF_BEAT_MINIMAL)
+        keep &= ARR_MINIMAL;
+    else if (b == WF_BEAT_BREAK)
+        keep &= (idx & 3u) == 2u ? ARR_BREAK | ARR_HATS : ARR_BREAK;
+    if (!(dens >> (idx & 15u) & 1u))
         keep &= ~(uint32_t)arr.et.dlanes;
     return ~keep & 0xFFFFu;
 }
 static const dstep_t *arr_dstep(const dstep_t *s, uint32_t idx)   /* H14: the fill's step on a fill bar */
 {
-    return arr.fill_now ? &wpool[arr.et.fill].dstep[idx & 15u] : s;
+    return arr.fill_now ? &wpool[arr.fp % WF_MAX_PAT].dstep[idx & 15u] : s;
 }
 static int arr_plays(uint32_t t, uint32_t idx)   /* H14: synth track t's step idx plays (the Smart Keys track always) */
 {

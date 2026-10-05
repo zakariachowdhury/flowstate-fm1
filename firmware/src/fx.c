@@ -16,6 +16,10 @@ static struct {
     int32_t dly_lp;
     uint16_t comb_i[4], ap_i[2];
     int32_t comb_lp[4];
+#if FELUCCA_WORLD
+    uint32_t dln, dlo, dxf;     /* a World's delay time change: the tap now, the one before, samples of crossfade left */
+    int32_t dmix;               /* .. its delay mix in the block before (it ramps) */
+#endif
 } fx;
 
 /* DIST: low cut -> drive (1x..8x, exponential) -> asymmetric soft clip
@@ -119,6 +123,8 @@ static inline void master_out(int32_t *l, int32_t *r)
 
 
 
+#define DXF_LOG2 11                    /* a World's delay time change: the taps crossfade over 2,048 samples (46 ms) */
+#define DXF (1u << DXF_LOG2)
 static uint32_t delay_samples(void)
 {
     uint32_t s = div_samples((uint32_t)song.g[G_DTIME]);
@@ -136,10 +142,30 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
 {
     uint32_t i, k, dl = delay_samples();
     int32_t fb = clamp(song.g[G_DFDBK], 0, GL_DFDBK_MAX) * 230, col = 2000 + gbus(G_DCOLOR) * 240;
-    int32_t dmix = gbus(G_DMIX) * 258;
+    int32_t dmix = gbus(G_DMIX) * 258, dmq = dmix << CTL_LOG2, dmd = 0;
     int32_t size = 25000 + clamp(song.g[G_RSIZE], 0, GL_RSIZE_MAX) * 50, damp = 32767 - gbus(G_RDAMP) * 200;
     int32_t cdepth = gbus(G_CDEPTH) * 6;
     uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL;
+#if FELUCCA_WORLD
+    /* a new delay time while a World plays (a scene's DTIME, a World's tempo): the read tap jumps, which clicks and
+     * cuts the echoes. The old tap fades into the new one over DXF samples instead (one change at a time: another
+     * waits for the fade). SLOOP's delay is untouched */
+    if (wrt.active && fx.dln && dl != fx.dln) {
+        if (!fx.dxf) {
+            fx.dlo = fx.dln;
+            fx.dln = dl;
+            fx.dxf = DXF;
+        }
+        dl = fx.dln;
+    } else {
+        fx.dln = dl;
+    }
+    if (wrt.active) {                                   /* (the delay's mix ramps over the block: no zipper) */
+        dmq = fx.dmix << CTL_LOG2;
+        dmd = dmix - fx.dmix;
+    }
+    fx.dmix = dmix;
+#endif
     for (i = 0; i < n; i++) {
         int32_t y = 0, x, r, a;
         /* chorus: modulated short delay, 5..15 ms */
@@ -155,11 +181,18 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         fx.cho_w++;
         /* delay with a low-passed feedback */
         x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
+#if FELUCCA_WORLD
+        if (fx.dxf) {
+            int32_t o = dly_buf[(fx.dly_w - fx.dlo) & (DLY_LEN - 1u)];
+            x = o + ((x - o) * (int32_t)(DXF - --fx.dxf) >> DXF_LOG2);
+        }
+#endif
         fx.dly_lp += mulq15(x - fx.dly_lp, col);
         dly_buf[fx.dly_w & (DLY_LEN - 1u)] =
             (int16_t)clamp((dly_in[i] >> 1) + mulq15(fx.dly_lp, fb), -32768, 32767);
         fx.dly_w++;
-        y += mulq15(x << 1, dmix);
+        y += mulq15(x << 1, dmq >> CTL_LOG2);
+        dmq += dmd;
         /* reverb: 4 damped combs + 2 allpasses (Freeverb-like, mono) */
         a = 0;
         {
@@ -233,6 +266,9 @@ static void duck_block(uint32_t adv)
 
 /* one synth part into the dry mix and the sends; a part with no voice sounding costs
  * the LFO tick and a cleared buffer only (after the DIST tail has run out) */
+#if FELUCCA_WORLD
+static int32_t lv_was[NPART][3];      /* a World: each part's level and pan gains in the block before (they ramp) */
+#endif
 static void mix_part(track_t *t, uint32_t n)
 {
     int32_t *b = part_buf;
@@ -251,14 +287,29 @@ static void mix_part(track_t *t, uint32_t n)
     {
         int32_t lvl = LEVEL_Q12[t->p[P_LEVEL] & 127], pan = t->p[P_PAN];
         int32_t gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
+        int32_t lq = lvl << CTL_LOG2, lqd = 0, glq = gl << CTL_LOG2, gld = 0, grq = gr << CTL_LOG2, grd = 0;
         int32_t c = t->p[P_CHOR] * 258, d = t->p[P_DLY] * 258, r = t->p[P_REV] * 258, pk = t->peak;
         int32_t xmax = c > d ? c : d;
         int32_t ga = mulq15(g0, duck.g0), gb = mulq15(g1, duck.g1);   /* mute x duck, ramped over the block */
         xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);   /* sends: loud chords at a high LEVEL */
+#if FELUCCA_WORLD
+        if (wrt.active) {                               /* a World: a level or pan that moved (a commit's glide, a */
+            int32_t *w = lv_was[(t - trk) % NPART];     /* macro) ramps over the block as the mute gain: no zipper */
+            lq = w[0] << CTL_LOG2;
+            lqd = lvl - w[0];
+            glq = w[1] << CTL_LOG2;
+            gld = gl - w[1];
+            grq = w[2] << CTL_LOG2;
+            grd = gr - w[2];
+            w[0] = lvl;
+            w[1] = gl;
+            w[2] = gr;
+        }
+#endif
         track_dist(t, b, n);
         slicer_track(t, b, n);                          /* slicer.c: before the level, pan and sends */
         for (i = 0; i < n; i++) {
-            int32_t x = ((b[i] >> 2) * lvl) >> 10, a;   /* pre-shift: 8 loud voices */
+            int32_t x = ((b[i] >> 2) * (lq >> CTL_LOG2)) >> 10, a;   /* pre-shift: 8 loud voices */
             int32_t xs, g = ga + (((gb - ga) * (int32_t)i) >> CTL_LOG2);
             if (g < 32767)
                 x = (x >> 4) * (g >> 3) >> 8;           /* (Q15 in two halves: no 32-bit overflow) */
@@ -272,8 +323,11 @@ static void mix_part(track_t *t, uint32_t n)
                 send_d[i] += mulq15(xs, d);
             if (r)
                 send_r[i] += mulq15(xs, r);
-            mix_l[i] += ((x >> 4) * gl) >> 8;           /* (x may pass 2^19: >> 4 first) */
-            mix_r[i] += ((x >> 4) * gr) >> 8;
+            mix_l[i] += ((x >> 4) * (glq >> CTL_LOG2)) >> 8;   /* (x may pass 2^19: >> 4 first) */
+            mix_r[i] += ((x >> 4) * (grq >> CTL_LOG2)) >> 8;
+            lq += lqd;
+            glq += gld;
+            grq += grd;
         }
         t->peak = pk;
     }

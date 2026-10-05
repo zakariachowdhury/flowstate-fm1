@@ -8,7 +8,7 @@
  *   world_load   check, then decode PATTERNS into the RAM pool wpool[] (stopped, no stage pending)
  *   world_stage  scene + variation -> the stage: per track preset_fill, the World's pairs, the variation, the
  *                scene, clamped to the descriptors; the whitelisted globals; the patterns (main loop)
- *   world_commit the stage into trk[] / song.g (the ISR on a boundary, Phase 11; IRQs off while stopped)
+ *   world_commit the stage into trk[] / song.g (the ISR on its boundary, Phase 11; IRQs off while stopped)
  *   world_apply  stage + commit while stopped, and the World becomes active
  *
  * Main loop, except world_commit and world_block (audio ISR). It needs core.h .. seq.c and params.c's
@@ -25,7 +25,10 @@ typedef struct {                       /* a checked blob: where its sections and
     uint16_t trk[WF_NTRK], pat[WF_MAX_PAT], scene[WF_NSCENE], var[WF_MAX_VARS];   /* record offsets */
 } wb_ctx_t;
 static wb_ctx_t wctx;                  /* the loaded World */
-static uint8_t wbeat_pat = WF_NONE;    /* BEAT: the pool entry wreq_block swaps in on the next bar (WF_NONE: none) */
+static wb_ctx_t wnext;                 /* a World switch: the next World (checked), staged while the old one plays */
+static uint8_t wbeat_pat, wbeat_m = WF_NONE;   /* BEAT: the drum pattern and masks (arrange.c arr_beat) wreq_block
+                                                * takes on the next bar (wbeat_m WF_NONE: none) */
+static uint8_t wnow;                   /* ADVANCED: a scene or variation commits at once (world_immediate) */
 
 static const uint8_t WB_PFIXED[] = {WF_P_FIXED}, WB_PDRUM[] = {WF_P_DRUM}, WB_PSTRUCT[] = {WF_P_STRUCT};
 static const uint8_t WB_GWHITE[] = {WF_G_WHITELIST}, WB_GSTRUCT[] = {WF_G_STRUCT}, WB_GNOVAR[] = {WF_G_NOVAR};
@@ -376,7 +379,7 @@ static int wb_check(const uint8_t *b, uint32_t n, wb_ctx_t *c)
         WB_NEED(o + WF_SCENE_HDR <= end, WE_LENGTH);
         WB_NEED(o + WF_SCENE_HDR + WF_SPAIR * r[23] <= end, WE_LENGTH);
         WB_NEED(wb_str(r, WF_LABEL_LEN, WF_CH_LO, WF_CH_HI, 1), WE_STRING);
-        WB_NEED(r[11] < WF_NSROLES && WB_HAS(WB_TRANS, r[14]), WE_SCENE);
+        WB_NEED(r[11] < WF_NSROLES && (r[14] == WF_TRANS_PHRASE || WB_HAS(WB_TRANS, r[14])), WE_SCENE);
         WB_NEED(r[12] < c->cnt[WF_S_PROGS] && (r[13] == WF_NONE || r[13] < c->cnt[WF_S_ENERGY]) && wb_pat_is(c, r[15], 1),
                 WE_INDEX);
         for (t = 0; t < NPART; t++) {
@@ -575,7 +578,7 @@ static void wb_macros(int keep)
 }
 
 /* check blob b and make it the loaded World: its patterns into the pool. The next commit switches World.
- * Not while a World plays (Phase 11 switches on the bar) or a stage is pending. */
+ * Not while a World plays (world_switch then stages it through world_service) or a stage is pending. */
 static int world_load(const uint8_t *b, uint32_t n)
 {
     wb_ctx_t c;
@@ -591,7 +594,8 @@ static int world_load(const uint8_t *b, uint32_t n)
         wb_pattern(c.b + c.pat[i], &wpool[i]);
     for (i = 0; i < NTRK; i++)
         wrt.cur_pat[i] = WF_NONE;                         /* (the pool is new: nothing to write back into it) */
-    wbeat_pat = WF_NONE;
+    wbeat_m = WF_NONE;
+    wrt.swp = 0;                                          /* (a World switch staged while playing: replaced) */
     wrt.keys_trk = c.keys;
     wrt.beat = c.b[c.off[WF_S_DEFAULTS] + 7u];
     wrt.id = wb_u32(b + 8);
@@ -631,7 +635,7 @@ static void ws_keys(uint32_t prog)
 static int world_stage(uint32_t scene, uint32_t var)
 {
     const uint8_t *meta, *sc, *vr, *sw, *vp, *def;
-    uint32_t t, i, na, nb, kt = wrt.keys_trk;
+    uint32_t t, i, na, nb, kt = wst.sw ? wctx.keys : wrt.keys_trk;
     if (!wrt.loaded || scene >= WF_NSCENE || var >= wctx.cnt[WF_S_VARS])
         return WE_STATE;
     if (wst.st == WST_READY) {                            /* a newer request replaces one not yet committed */
@@ -752,23 +756,49 @@ static int world_stage(uint32_t scene, uint32_t var)
         arr_stage(&wst.et, e, wctx.have >> WF_S_GUARD & 1u ? wctx.b + wctx.off[WF_S_GUARD] : 0, beats, sc[15],
                   (int8_t)vr[-1]);
     }
+    /* Phase 11: the BEAT's masks (none when the scene has its pattern), the keys track, the ENERGY position, and the
+     * boundary: a variation (or a World switch) the next bar line, a scene its transition (1, 2, 4 bars or the phrase
+     * playing) counted from the section start; ADVANCED with world_immediate: at once */
+    wst.et.bm = (uint8_t)(wrt.beat | (sc[19u + wrt.beat] != WF_NONE) << 2);
+    wst.kt = (uint8_t)kt;
+    wst.ereq = arr.req;
+    wst.qp = 0;
+    i = 1;
+    if (scene != wrt.scene && !wst.sw && (i = sc[14]) == WF_TRANS_PHRASE) {
+        i = hprog[hcur].beats >= 8u ? hprog[hcur].beats / 4u : 1u;
+        wst.qp = 1;
+    }
+    wst.q = (uint8_t)(wnow && wrt.mode == WM_ADV && !wst.sw ? 0u : i);
     wst.st = WST_READY;
     return WE_OK;
 }
 
 /* ----------------------------------------------------------------- commit --- */
-/* the READY stage into the instrument. The audio ISR (on a boundary, Phase 11) or the main loop with IRQs off.
- * Held keys and the keys loop stay (except at a World switch); an engine change fades (voice.c engine_block). */
-static void world_commit(void)
+/* the READY stage into the instrument. The audio ISR (on its boundary, gl = 1: the values that click glide) or the
+ * main loop with IRQs off. Held keys and the keys loop stay (except at a World switch); an engine change fades (voice.c
+ * engine_block). A World switch also leaves the old World's macro overlay, CPU hold and pending BEAT behind */
+static const uint8_t WB_GLIDE[] = {P_LEVEL, P_PAN, P_DIST, P_CHOR, P_DLY, P_REV, P_E0, P_E1, P_E2, P_E3, P_E4, P_E5, P_E6,
+                                   P_E7};          /* glide while playing: all, the EDIT values with the same engine */
+#define WB_GLIDE_COMMON 6
+static void world_commit(uint32_t gl)
 {
     uint32_t t, i, ovin = ov_in;
+    int16_t o[sizeof WB_GLIDE];
     if (wst.st != WST_READY)
         return;
     if (ovin)
         ov_restore();                                     /* (inside a block: the bases back, then the new ones) */
+    wgl_n = 0;                                            /* (glides of a commit before: on from where they are) */
+    wbeat_m = WF_NONE;                                    /* (the stage carries the BEAT) */
+    if (wst.sw) {
+        wrt.keys_trk = wst.kt;
+        ov_reset();
+        guard_reset();
+        arr.req = wst.ereq;
+    }
     for (t = 0; t < NTRK; t++) {
         track_t *k = &trk[t];
-        uint32_t np = wst.pat[t], cp = wrt.cur_pat[t];
+        uint32_t np = wst.pat[t], cp = wrt.cur_pat[t], e = k->engine % NENGINES;
         if (t != wrt.keys_trk || wst.sw) {
             if (!wst.sw && cp != np && cp < WF_MAX_PAT)
                 memcpy(&wpool[cp], k->step, sizeof k->step);   /* the outgoing pattern, with any edits */
@@ -784,14 +814,24 @@ static void world_commit(void)
             wst.p[t][P_SLEN] = k->p[P_SLEN];             /* a take in the ISR: the stage's copy may be older) */
             wst.p[t][P_SDIV] = k->p[P_SDIV];
         }
+        for (i = 0; i < sizeof WB_GLIDE; i++)
+            o[i] = k->p[WB_GLIDE[i]];
         memcpy(k->p, wst.p[t], sizeof k->p);
+        for (i = 0; gl && i < sizeof WB_GLIDE; i++)
+            if (i < WB_GLIDE_COMMON || (t < NPART && wst.eng[t] == e && k->eng_req == e &&
+                                        ENGINES[e]->edit[i - WB_GLIDE_COMMON].fmt != F_ENUM))
+                wgl_add(&k->p[WB_GLIDE[i]], o[i]);
         if (t < NPART)
             k->eng_req = wst.eng[t];
         k->preset = wst.preset[t];
         k->user = 0;
     }
-    for (i = 0; i < sizeof WB_GWHITE; i++)
-        song.g[WB_GWHITE[i]] = wst.g[WB_GWHITE[i]];
+    for (i = 0; i < sizeof WB_GWHITE; i++) {
+        int16_t *g = &song.g[WB_GWHITE[i]], b = *g;
+        *g = wst.g[WB_GWHITE[i]];
+        if (gl && !WB_HAS(WB_GSTRUCT, WB_GWHITE[i]))
+            wgl_add(g, b);                                /* (the buses: SWING and DTIME change on the bar, fx.c) */
+    }
     wrt.scene = wst.scene;
     wrt.var = wst.var;
     wrt.prog = wst.prog;
@@ -812,8 +852,8 @@ static void world_commit(void)
     wst.st = WST_APPLIED;
 }
 
-/* stage and commit while stopped; the World becomes active (SLOOP's hooks step aside). Phase 11 adds the
- * commit on the bar while playing */
+/* stage and commit while stopped; the World becomes active (SLOOP's hooks step aside). Playing: world_request stages,
+ * wreq_block commits on the boundary */
 static int world_apply(uint32_t scene, uint32_t var)
 {
     int rc;
@@ -823,11 +863,7 @@ static int world_apply(uint32_t scene, uint32_t var)
     if (rc)
         return rc;
     fm1_irq_off();
-    if (wst.sw || !wrt.active) {
-        ov_reset();                                       /* another World: the old one's overlay goes (macro.c) */
-        guard_reset();                                    /* .. and no CPU hold of the old one (guard.c) */
-    }
-    world_commit();
+    world_commit(0);                                      /* (another World: the old one's overlay and CPU hold go) */
     if (!wrt.active) {                                    /* SLOOP -> a World: the pitch counts (H2) and Smart Keys */
         memset(vref, 0, sizeof vref);
         memset(vlive, 0, sizeof vlive);
@@ -856,7 +892,8 @@ static void world_unload(void)                         /* back to SLOOP's paths 
     wrt.refcount = 0;
     wrt.keys_on = 0;
     wrt.mute = 0;                                         /* (H1: no track left out by an ENERGY band) */
-    wbeat_pat = WF_NONE;
+    wrt.swp = 0;
+    wbeat_m = WF_NONE;
     ov_reset();                                           /* (no macro overlay, no vmod offset: SLOOP's sound) */
     guard_reset();
     prec_reset();                                         /* (no PLAY REC, no keys grid offset) */
@@ -878,8 +915,7 @@ static void world_block(void)          /* seq.c events_block (H15), audio ISR, w
 {
     if (!wrt.active)
         return;
-    wreq_block();                      /* a READY stage, or a World switch, on the next bar */
-    /* Phase 11: the scene's transition (2 and 4 bars), held-note continuity and tails */
+    wreq_block();                      /* a READY stage (a scene, a variation, a World) on its boundary, a BEAT */
 }
 
 static void world_boot(void)           /* main.c felucca_init after autosave_resume (H22) */
@@ -901,26 +937,35 @@ static void world_boot(void)           /* main.c felucca_init after autosave_res
  * it plays. Main loop, except wreq_block (the audio ISR, through world_block).
  *
  *   world_request(scene, var)  stopped: world_apply now. Playing: world_stage, and the ISR commits the READY stage
- *                              on the next 4/4 bar, every track from its step 0 there (as SAVE + key's sections).
- *                              A newer request replaces one not yet committed
- *   world_switch(blob, n)      another World. Stopped (or from SLOOP): world_start now. Playing a World: on the
- *                              next bar the transport stops, world_service loads the new World and starts it
- *                              again: a restart on the bar, not a seamless change (Phase 11)
- *   world_service()            main loop, every pass: frees an APPLIED stage, finishes a switch
- *   world_pending(&s, &v)      a request waiting for its bar: 1 (s = WF_NONE: a World switch), else 0
+ *                              on its boundary (Phase 11): a scene on the bar line its transition names (every 1, 2
+ *                              or 4 bars, or every phrase, counted from the section start), every track from its
+ *                              step 0 there; a variation on the next bar line, the clock running on (phase-locked).
+ *                              A newer request replaces one not yet committed. ADVANCED with world_immediate(1): at
+ *                              the next block, the clock running on
+ *   world_switch(blob, n)      another World. Stopped: world_start now. Playing a World (Phase 11, seamless):
+ *                              world_service decodes its patterns into the pool and stages its default scene while
+ *                              the old World plays on from trk[] (the pool is read only at commits, BEAT swaps and
+ *                              fills, none of which happen meanwhile); the ISR commits it on the next bar without a
+ *                              stop: the FX tails ring on, the old voices release (or fade on an engine change),
+ *                              the keys loop is cleared, the overlay ramps in from neutral. Playing SLOOP: a stop,
+ *                              then world_start and PLAY
+ *   world_service()            main loop, every pass: frees an APPLIED stage (a World switch: the new World's
+ *                              macros, GUARD and name), stages a World switch
+ *   world_pending(&s, &v)      a request waiting for its boundary: 1 (s = WF_NONE: a World switch), else 0
+ *   world_bars_left(&ph)       the bar lines until it lands (1: the next one), 0: none; ph: on the phrase
  *   world_hot_reload(blob, n)  the simulator's authoring (design 2.8): the same World's new data, at once
  * The stage: the main loop writes it only when FREE (world_stage), the ISR commits READY -> APPLIED, the main loop
  * sets FREE again (world_service, world_request). Through a scene or variation change the keys track keeps its
- * loop and the held keys sound on (SLOOP's behaviour); the sequencer's own notes are released on the bar, so
- * nothing hangs. Phase 11 refines transitions: their 2 and 4 bars, held-note continuity, tails. */
+ * loop in phase and the held keys sound on; the sequencer's own notes are released on the boundary (a variation:
+ * those of the tracks whose pattern changes), so nothing hangs and no step plays twice. While playing, the values
+ * that click when they jump glide (world_commit, macro.c wgl_*), a delay time crossfades (fx.c). */
 static const char *const WF_ROLE_LABEL[WF_NROLES] = {"PAD", "CHORDS", "BASS", "LEAD", "KEYS", "TEXTURE", "DRUMS"};
 
 static struct {
     uint32_t bar, beat;                /* clk_beat / 4 of the last bar the ISR saw; clk_beat then */
-    const uint8_t *sw_b;               /* the World to switch to (it stays valid, as any loaded blob) */
-    uint32_t sw_n;
-    volatile uint8_t sw;               /* 1: switch on the next bar (main -> ISR); 2: stopped for it (ISR -> main) */
-} wreq = {0xFFFFFFFFu, 0, 0, 0, 0};
+    volatile uint8_t sw;               /* 1: a World switch (wnext) staged by world_service, committed on the next
+                                        * bar; 2: from SLOOP, started once the transport has stopped */
+} wreq = {0xFFFFFFFFu, 0, 0};
 
 /* ---- what the loaded World holds (the strings are NUL-terminated in the blob: wb_check made sure) */
 static const char *world_meta_str(uint32_t at)
@@ -979,20 +1024,34 @@ static int world_factory_info(uint32_t i, char *name, char *cat, uint32_t *bpm)
 }
 
 /* ---- requests */
+static void wsv_free(void)             /* an APPLIED stage FREE again; after a World switch, the new World's rest */
+{
+    if (wst.st != WST_APPLIED)
+        return;
+    if (wrt.swp) {                     /* (the ISR committed it: its name, macros and GUARD now, ramping from neutral) */
+        wctx = wnext;
+        wrt.id = wb_u32(wctx.b + 8);
+        wb_macros(0);
+        mac.snap = wrt.swp = wreq.sw = 0;
+    }
+    wst.st = WST_FREE;
+    mac.dirty = 1;                     /* new bases: the guard's combinations and distorted tracks judged again */
+}
+
 static int world_request(uint32_t scene, uint32_t var)
 {
+    wsv_free();
     if (!wrt.loaded || scene >= WF_NSCENE || var >= wctx.cnt[WF_S_VARS])
         return WE_STATE;
     if (wreq.sw)
         return WE_BUSY;                /* (a World switch waits for its bar) */
-    if (wst.st == WST_APPLIED)
-        wst.st = WST_FREE;
     if (!song.playing && !transport_req)
         return world_apply(scene, var);
     if (!wrt.active)
         return WE_STATE;               /* (playing SLOOP: a World starts with world_switch) */
-    return world_stage(scene, var);    /* READY: wreq_block commits it on the next bar */
+    return world_stage(scene, var);    /* READY: wreq_block commits it on its boundary */
 }
+static void world_immediate(int on) { wnow = (uint8_t)(on != 0); }   /* ADVANCED only (world_stage) */
 
 static int world_pending(uint32_t *scene, uint32_t *var)
 {
@@ -1007,10 +1066,18 @@ static int world_pending(uint32_t *scene, uint32_t *var)
     }
     return 0;
 }
+static uint32_t world_bars_left(int *ph)
+{
+    uint32_t q = wst.q;
+    *ph = wst.qp;
+    if (wreq.sw)
+        return 1;
+    return wst.st == WST_READY && q ? q - (clk_beat >> 2) % q : 0u;
+}
 
-/* BEAT (design 9.2; SEQ in PLAY): the scene's drum pattern for beat b (WF_BEAT_*; none authored: its GROOVE) from
- * the next bar, without a clock reset (the drum track is bar-aligned): wreq_block swaps it in. Stopped: at once.
- * Later stages keep it (wrt.beat). Phase 11 adds the BEAT masks: MINIMAL's lanes, BUSY's density, BREAK's hats */
+/* BEAT (design 9.2; SEQ in PLAY): the scene's drum pattern for beat b (WF_BEAT_*; none authored: its GROOVE through
+ * the BEAT's mask, arrange.c) from the next bar, without a clock reset (the drum track is bar-aligned): wreq_block
+ * swaps it in. Stopped: at once. Later stages keep it (wrt.beat) */
 static void wbeat_swap(uint32_t pat)   /* the drum track to pool entry pat (ISR on a bar, or IRQs off) */
 {
     track_t *d = TDRUM;
@@ -1038,21 +1105,21 @@ static int world_beat(uint32_t b)
     sc = wctx.b + wctx.scene[wrt.scene];
     pat = sc[19u + b] != WF_NONE ? sc[19u + b] : sc[19u + WF_BEAT_GROOVE];
     fm1_irq_off();
-    wbeat_pat = WF_NONE;
-    if (!song.playing && !transport_req)
+    wbeat_pat = (uint8_t)pat;
+    wbeat_m = (uint8_t)(b | (sc[19u + b] != WF_NONE) << 2);
+    if (!song.playing && !transport_req) {
         wbeat_swap(pat);
-    else if (pat != wrt.cur_pat[TRK_DRUM])
-        wbeat_pat = (uint8_t)pat;
+        arr_beat(wbeat_m);
+        wbeat_m = WF_NONE;
+    }
     fm1_irq_on();
     return WE_OK;
 }
 
 static int world_switch(const uint8_t *b, uint32_t n)
 {
-    wb_ctx_t c;
     int rc;
-    if (wst.st == WST_APPLIED)
-        wst.st = WST_FREE;
+    wsv_free();
     if (!song.playing && !transport_req) {
         fm1_irq_off();
         if (wst.st == WST_READY)       /* (stopped: nothing waits for a bar) */
@@ -1061,15 +1128,16 @@ static int world_switch(const uint8_t *b, uint32_t n)
         wreq.sw = 0;
         return world_start(b, n);
     }
-    if ((rc = wb_check(b, n, &c)) != WE_OK)
+    if ((rc = wb_check(b, n, &wnext)) != WE_OK)
         return rc;                     /* (refused now rather than on the bar) */
     fm1_irq_off();
-    if (wst.st == WST_READY)           /* a scene request of the old World: dropped */
+    if (wst.st == WST_READY)           /* a request not yet committed (a scene, another World): dropped */
         wst.st = WST_FREE;
-    wreq.sw_b = b;
-    wreq.sw_n = n;
+    wbeat_m = WF_NONE;
+    arr.fill_now = 0;                  /* (the pool is the next World's from now: no fill reads it) */
+    arr.et.fill = WF_NONE;
     if (wrt.active) {
-        wreq.sw = 1;                   /* wreq_block stops the transport on the next bar */
+        wreq.sw = 1;                   /* world_service stages it, wreq_block commits it on the next bar */
     } else {
         wreq.sw = 2;                   /* playing SLOOP: stop now */
         transport_req = 2;
@@ -1081,45 +1149,63 @@ static int world_switch(const uint8_t *b, uint32_t n)
 static int world_service(void)         /* main loop: a switch's result (WE_*), or -1 when there was none */
 {
     int rc = -1;
-    if (wst.st == WST_APPLIED) {
-        wst.st = WST_FREE;
-        mac.dirty = 1;                 /* new bases: the guard's combinations and distorted tracks judged again */
-    }
+    wsv_free();
     if (wreq.sw == 2u && !song.playing && !transport_req) {
         wreq.sw = 0;
-        rc = world_start(wreq.sw_b, wreq.sw_n);
+        rc = world_start(wnext.b, wnext.len);
         transport_req = 1;             /* on again: the new World (or the old one, when the new one failed) */
+    }
+    if (wreq.sw == 1u && wst.st == WST_FREE) {   /* a World switch while one plays: staged now, on the next bar */
+        wb_ctx_t cur = wctx;
+        const uint8_t *def;
+        uint32_t i;
+        wrt.swp = 1;                   /* (macro_service waits: the old World's table stays until the commit) */
+        wctx = wnext;
+        for (i = 0; i < wctx.cnt[WF_S_PATTERNS]; i++)
+            wb_pattern(wctx.b + wctx.pat[i], &wpool[i]);
+        def = wctx.b + wctx.off[WF_S_DEFAULTS];
+        wrt.beat = def[7];
+        wst.sw = 1;
+        world_stage(def[0], def[1]);   /* (its checked defaults: it cannot fail) */
+        wst.ereq = (uint16_t)(def[2u + MC_ENERGY] * 4u);
+        wctx = cur;                    /* (the old World's names until the commit) */
     }
     return rc;
 }
 
-static void wreq_block(void)           /* world_block: audio ISR, a World playing */
+/* world_block: audio ISR, a World playing. The bar lines and BEATs; a READY stage commits on the first block of its
+ * boundary's bar (before any step of it: no old step plays there, the new step 0 once); immediate (q 0) at once */
+static void wreq_block(void)
 {
-    uint32_t t;
+    uint32_t t, bar, reset;
     if (clk_beat < wreq.beat)
         wreq.bar = 0xFFFFFFFFu;        /* (the clock started again: its bar 0 is a new bar) */
     wreq.beat = clk_beat;
-    if ((clk_beat & 3u) || (clk_beat >> 2) == wreq.bar)
-        return;
-    wreq.bar = clk_beat >> 2;          /* a new bar */
-    if (wreq.sw == 1u) {
-        wreq.sw = 2;                   /* stop here; world_service loads and starts the new World */
-        transport_req = 2;
-        return;
+    bar = clk_beat >> 2;
+    if (wst.st != WST_READY || wst.q) {
+        if ((clk_beat & 3u) || bar == wreq.bar)
+            return;
+        wreq.bar = bar;                /* a new bar */
+        if (wst.st != WST_READY || bar % wst.q) {
+            if (wbeat_m != WF_NONE) {  /* a BEAT: its pattern and masks from this bar, the clock runs on */
+                wbeat_swap(wbeat_pat);
+                arr_beat(wbeat_m);
+                wbeat_m = WF_NONE;
+            }
+            return;
+        }
     }
-    if (wst.st != WST_READY) {
-        if (wbeat_pat != WF_NONE)      /* a BEAT: the drum pattern from this bar, the clock runs on */
-            wbeat_swap(wbeat_pat);
-        wbeat_pat = WF_NONE;
-        return;
+    reset = wst.q && (wst.sw || wst.scene != wrt.scene);   /* a scene or a World on its bar: from step 0 */
+    for (t = 0; t < NTRK; t++)         /* the sequencer's notes (not the held keys): nothing hangs. A variation: the */
+        if (reset || wst.pat[t] != wrt.cur_pat[t] || (wst.scene != wrt.scene && t != wrt.keys_trk))   /* tracks */
+            seq_release(&trk[t]);      /* whose pattern changes; at once: not the keys loop, which runs on */
+    if (reset)
+        prec_rebase();                 /* (the keys loop, a take: on from where they are, play_rec.c) */
+    world_commit(1);
+    if (reset) {
+        seq_reset_tracks(clk_pos);     /* on the bar: every track from its step 0, the keys loop in its phase */
+        wreq.bar = wreq.beat = 0;
     }
-    wbeat_pat = WF_NONE;               /* (the stage carries the BEAT)  */
-    for (t = 0; t < NTRK; t++)
-        seq_release(&trk[t]);          /* the sequencer's notes (not the held keys): nothing hangs */
-    prec_rebase();                     /* (the keys loop, a take: on from where they are, play_rec.c) */
-    world_commit();
-    seq_reset_tracks(clk_pos);         /* on the bar: every track from its step 0, the keys loop in its phase */
-    wreq.bar = wreq.beat = 0;
 }
 
 #define WORLD_STALE 254                /* (a cur_pat that is no pool entry: the commit copies the new steps) */
@@ -1152,7 +1238,7 @@ static int world_hot_reload(const uint8_t *b, uint32_t n)
     fm1_irq_off();
     for (t = 0; t < NTRK; t++)
         seq_release(&trk[t]);
-    world_commit();
+    world_commit(0);
     song.g[G_BPM] = wst.bpm;           /* (the authored tempo, as the file now says) */
     fm1_irq_on();
     wst.st = WST_FREE;

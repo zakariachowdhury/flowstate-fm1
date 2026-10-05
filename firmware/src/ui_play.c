@@ -451,8 +451,8 @@ static void pl_world_go(uint32_t i, int reset)
     pl_screen(pl_rest());
     if (world_factory(i, &b, &n))
         return;
-    if (!reset && wrt.active && WORLD_INDEX[i].id == wrt.id)
-        return;
+    if (!reset && wrt.active && WORLD_INDEX[i].id == wrt.id && !wreq.sw)
+        return;                                    /* (a switch waiting for its bar: this one replaces it) */
     if ((rc = play_world(b, n)) != 0) {
         ui_say("WORLD ERROR ", pl_err(rc));
         return;
@@ -1139,14 +1139,22 @@ static void pl_row(uint32_t id, int32_t y, const char *mark, const char *name, u
 static void pl_scenes(void)                        /* SCENES: NEON RAIN / A INTRO .. D BREAKDOWN / CHANGES NEXT BAR */
 {
     uint32_t ps = WF_NONE, pv = WF_NONE, i, blink = (fm1_ms / 250u) & 1u;
-    int pend = world_pending(&ps, &pv) && ps != WF_NONE && ps != wrt.scene;
+    int pend = world_pending(&ps, &pv) && ps != WF_NONE && ps != wrt.scene, ph;
+    char m[20] = "CHANGES IN 0 BARS";             /* (when the change lands: its transition, Phase 11) */
+    uint32_t n = world_bars_left(&ph);
+    if (n <= 1u)
+        str_cpy(m, "CHANGES NEXT BAR", sizeof m);
+    else if (ph)
+        str_cpy(m, "CHANGES NEXT PHRASE", sizeof m);
+    else
+        m[11] = (char)('0' + n % 10u);
     pl_line(PB_B1, 20, 36, 22, &FONT_L, world_name(), C_WHITE);
     for (i = 0; i < WF_NSCENE; i++) {
         char m[2] = {(char)('A' + i), 0};
         uint16_t c = pend && ps == i ? (blink ? PL_VIO : C_WHITE) : i == wrt.scene ? C_WHITE : PL_GRY;
         pl_row(PB_B2 + i, 56 + 20 * (int32_t)i, m, world_scene_name(i), c, i == wrt.scene, pend && ps == i);
     }
-    pl_line(PB_B6, 136, 20, 138, &FONT_S, song.playing ? "CHANGES NEXT BAR" : "", PL_GRY);
+    pl_line(PB_B6, 136, 20, 138, &FONT_S, song.playing ? m : "", PL_GRY);
 }
 static void pl_list(void)                          /* PULSE, BEAT, SAVE: a title, rows with the chevron, a footer */
 {
@@ -1405,7 +1413,7 @@ static void play_leds(void)                        /* H19 (ui_input.c ui_leds): 
 }
 
 /* ------------------------------------------------------------------- service, boot --- */
-static void play_service(void)                     /* main loop, every pass: a World switch on its bar, the modes */
+static void play_service(void)                     /* main loop, every pass: a World switch staged and finished, the modes */
 {
     int rc = world_service();
     if (rc > 0)

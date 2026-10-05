@@ -1186,8 +1186,13 @@ class Compiler:
             else:
                 rec["energy"] = self.energy_use(en)
             tr = s.get("transition", 1)
-            if tr not in F["WF_TRANSITIONS"]:
-                self.e(jp(path, "transition"), "1, 2 or 4 bars")
+            if isinstance(tr, str):              # "bar" = 1; "phrase": the playing progression's length (0)
+                tr = {"bar": 1, "phrase": F["WF_TRANS_PHRASE"]}.get(tr)
+            elif isinstance(tr, bool) or tr not in F["WF_TRANSITIONS"]:
+                tr = None
+            if tr is None:
+                self.e(jp(path, "transition"), '1, 2 or 4 bars, "bar" or "phrase"')
+                tr = 1
             rec["transition"] = tr
             pats = s.get("patterns", {})
             rec["pat"] = [NONE] * 3
@@ -2243,7 +2248,7 @@ def decompile(b):
         if s["energy"] != NONE:
             rec["energy"] = f"e{s['energy']}"
         if s["transition"] != 1:
-            rec["transition"] = s["transition"]
+            rec["transition"] = "phrase" if s["transition"] == F["WF_TRANS_PHRASE"] else s["transition"]
         pt = {}
         for t in range(3):
             if t != k["trk"]:

@@ -604,7 +604,7 @@ static void host_blob_gc(void)
 {
     uint32_t i;
     for (i = 0; i < HOST_BLOBS; i++)
-        if (host_blob[i] && host_blob[i] != wctx.b && host_blob[i] != wreq.sw_b) {
+        if (host_blob[i] && host_blob[i] != wctx.b && (!wreq.sw || host_blob[i] != wnext.b)) {
             free(host_blob[i]);
             host_blob[i] = NULL;
         }
@@ -810,6 +810,9 @@ void host_world(host_world_t *w)
     w->mode = wrt.mode;
     w->pending_scene = w->pending_var = -1;
     if (world_pending(&ps, &pv)) {
+        int ph = 0;
+        w->bars_left = (int)world_bars_left(&ph);
+        w->phrase = ph;
         w->pending = ps == WF_NONE ? 2 : 1;
         w->pending_scene = ps == WF_NONE ? -1 : (int)ps;
         w->pending_var = pv == WF_NONE ? -1 : (int)pv;
