@@ -4,6 +4,7 @@
   - worlds/schema/sloop-params.json is what tools/dump_params.c prints from the firmware sources now;
   - the schema's enums are world_fmt.h's and sloop-params.json's;
   - compile -> decompile -> compile gives the same bytes (the test Worlds);
+  - a scene's transition: 1, 2, 4 bars, "bar" or "phrase" (0 in the blob), its round trip and errors;
   - the notation: degrees, accidentals, octave marks, chord tokens per progression, unrolling, suffixes, drums;
   - bad sources fail with a message that names the place (JSON path) and the problem;
   - the size limits (warning above 2048 B, error above 3072 B), the pool limit;
@@ -89,7 +90,8 @@ def test_schema_enums():
     sk = props["smart_keys"]["properties"]
     check(sk["mode"]["enum"] == worldc.KMODE_NAMES and sk["white"]["enum"] == worldc.WHITE_NAMES and
           sk["black"]["enum"] == worldc.BLACK_NAMES, "schema smart_keys enums")
-    check(defs["scene"]["properties"]["transition"]["enum"] == worldc.F["WF_TRANSITIONS"], "schema transitions")
+    check(defs["scene"]["properties"]["transition"]["enum"] == worldc.F["WF_TRANSITIONS"] + ["bar", "phrase"],
+          "schema transitions")
 
 
 def test_roundtrip():
@@ -103,6 +105,27 @@ def test_roundtrip():
         check(blob2 == blob, f"{name}: compile -> decompile -> compile gives the same bytes")
         check(worldc.decode(blob)["id_hash"] == worldc.fnv1a(f"test_{name}"), f"{name}: world_id = FNV-1a(id)")
     check(worldc.fnv1a("") == 0x811C9DC5 and worldc.fnv1a("a") == 0xE40C292C, "FNV-1a-32 reference values")
+
+
+def test_transitions():
+    """a scene's transition: 1, 2, 4 bars, "bar" (1) or "phrase" (0 in the blob, Phase 11); round trip; errors"""
+    src = load("full")
+    src["scenes"]["A"]["transition"] = "bar"
+    src["scenes"]["D"]["transition"] = "phrase"
+    blob, d = compile_(src)
+    check(blob is not None, f"\"bar\" and \"phrase\" compile: {d.errors}")
+    if blob is None:
+        return
+    sc = worldc.decode(blob)["scenes"]
+    check(sc[0]["transition"] == 1 and sc[2]["transition"] == 2 and sc[3]["transition"] == worldc.F["WF_TRANS_PHRASE"],
+          "transitions in the blob: \"bar\" 1, 2, \"phrase\" 0")
+    dec = worldc.decompile(blob)
+    check(dec["scenes"]["D"].get("transition") == "phrase", "decompiled: \"phrase\"")
+    blob2, _ = compile_(json.loads(json.dumps(dec)))
+    check(blob2 == blob, "a phrase transition: compile -> decompile -> compile gives the same bytes")
+    for bad in (0, 3, "phrases", True):
+        src["scenes"]["D"]["transition"] = bad
+        expect_error(src, "transition", what=f"transition {json.dumps(bad)}")
 
 
 def pattern_steps(src, scene="B", track=1):
@@ -406,8 +429,8 @@ def test_model():
 
 
 def main():
-    for t in (test_params_fresh, test_schema_enums, test_roundtrip, test_notation, test_errors, test_limits,
-              test_decoder, test_gen_worlds, test_guard, test_model):
+    for t in (test_params_fresh, test_schema_enums, test_roundtrip, test_transitions, test_notation, test_errors,
+              test_limits, test_decoder, test_gen_worlds, test_guard, test_model):
         n = len(FAILS)
         t()
         print(f"{t.__name__[5:]:<14} {'ok' if len(FAILS) == n else 'FAIL'}")

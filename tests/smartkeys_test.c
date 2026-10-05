@@ -759,7 +759,7 @@ static void test_held(void)
         song.octave = 2;
         s = (wrt.scene + 1u) % WF_NSCENE;
         CHECK(world_request(s, 0) == WE_OK, "%s: scene request while playing", worlds[i].name);
-        for (t0 = 0; t0 < 2u * t_bar_blocks() && wrt.scene != s; t0++)
+        for (t0 = 0; t0 < 9u * t_bar_blocks() && wrt.scene != s; t0++)   /* (its transition: up to 8 bars) */
             t_block();
         world_service();
         t_mute_others(1);

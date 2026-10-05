@@ -130,16 +130,17 @@ render_test() {
 run "host renderer: example projects, 16 bars each, clean and deterministic (sloop-render, sloop-examples)" render_test
 
 # the real-time simulator (host/sim, needs SDL2) and the World host tools. First the demo (NEON RAIN) headless,
-# 6 s through the null sink in real time (no window, no sound): PLAY, scene C asked for mid-bar and committed
-# exactly on the next bar, mutes, tempo and filter, the audio heard and then silenced (the script's
+# 6 s through the null sink in real time (no window, no sound): PLAY, scene C asked for mid-bar and still waiting
+# after the next bar line (its transition is 2 bars, Phase 11), mutes, tempo and filter, the audio heard and then silenced (the script's
 # expectations), exactly 6 s played, a clean exit. Then --fast twice: the same bytes each time and, when real
 # time had no underrun, the same bytes as real time (nothing dropped or doubled). Then FLOWSTATE STUDIO, --fast:
-# a variation on the bar, a scene on the bar, another World chosen while one plays and switched on the bar, a
+# a variation on the bar, a scene on its 2-bar line, another World chosen while one plays and switched on the bar
+# without a stop (Phase 11), a
 # mute and back, a level, a macro, STOP with no note left held or sounding, a SLOOP project; the Studio and
 # ADVANCED drawn (--shot). Then sloop-render: every factory World clean (build/renders/worlds), and a scene
 # sequence whose changes land on the bars
 SIM_SCRIPT='0.95 expect world = NEON_RAIN; 1 play; 2.5 expect playing = 1; 2.5 expect scene = B; 2.5 expect rms > -35
-    2.6 scene C; 2.7 expect next = C; 4.30 expect scene = B; 4.40 expect scene = C
+    2.6 scene C; 2.7 expect next = C; 4.30 expect scene = B; 4.40 expect next = C
     4.45 mute 4; 4.5 expect mute4 = 1; 4.55 mute 4; 4.6 expect mute4 = 0
     4.6 bpm +2; 4.6 filter -20; 4.65 expect bpm = 74; 4.65 expect filter = -20
     4.7 mute 1 on; 4.7 mute 2 on; 4.7 mute 3 on; 4.7 mute 4 on; 5.95 expect rms < -45'
@@ -429,5 +430,32 @@ play_rec_test() {
 }
 run "PLAY REC: the take, gentle quantise and micro-timing, record guard, layers, undo ring, scenes, session, fuzz" \
     play_rec_test
+
+# Scene transitions and World switches (Phase 11: firmware/src/world.c wreq_block / world_commit, arrange.c fills
+# and BEAT masks, macro.c commit glides, fx.c the delay's crossfade and the level / pan / delay-mix ramps; design 7,
+# 5.7, 9.2; UI spec 6): tests/scene_test.c on the whole firmware (host/core.c, FELUCCA_WORLD 1) under ASan/UBSan,
+# block by block, each scenario in its own process: every factory World playing with a keys loop and a held key
+# through A->B, B->C, C->D, D->A and 12 random requests (some replaced on their way): each commit on the first block
+# of its transition's bar line (1, 2, 4 bars or the phrase, from the section start; a variation the next line), the
+# last request the one that lands, a scene from step 0 once, a variation phase-locked, the held key sounding on, the
+# keys loop in phase, no sample step at a commit beyond the render's largest elsewhere, the wet bus never 6 dB down in
+# the 12 ms after one, nothing left after STOP; fills on the bar before a scene's line (not without drums, muted or
+# MINIMAL); 4 World switches while playing (no stop, on the next line, the new tempo and keys track, the loop cleared,
+# old voices released, no silence gap, the tails going on, the macros ramping in from neutral, one replaced on its
+# way); BEAT masks on the bar; ADVANCED's immediate commits; a "phrase" transition and the SCENES footer; the commit
+# glides; the click detector against unsmoothed jumps on a lone note (level, pan, delay mix; a delay time) and
+# smoothed ones. The renders for the owner: build/renders/worlds/<id>-scenes.wav (A, B, C, D on their lines while
+# playing, a key held across two of them, then a World switch, STOP and a tail), each commit analysed
+scene_test() {
+    $CC -g -w -fsanitize=address,undefined -fno-sanitize=shift-base -fno-sanitize-recover=undefined -Ihost -Ibuild/host-obj \
+        -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/scene_test" tests/scene_test.c -lm || return 1
+    mkdir -p build/renders/worlds
+    "$OUT/scene_test" "$OUT" > "$OUT/scene.txt" 2>&1 || { cat "$OUT/scene.txt"; return 1; }
+    grep -a 'commits: the largest\|switches: the largest\|a lone held note' "$OUT/scene.txt" | sed 's/^scene: //'
+    grep -a '^render: ' "$OUT/scene.txt" | grep -v '^render:   '
+    echo "scenes: $(grep -ac ' ok$' "$OUT/scene.txt") checks passed; the renders in build/renders/worlds/*-scenes.wav"
+}
+run "scenes: transitions on their lines, fills, World switches without a stop, BEAT, ADVANCED, glides, clicks, tails" \
+    scene_test
 
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }

@@ -593,6 +593,8 @@ static void sc_scenes(void)
     t = keys();
     tap(B_PLAY);
     wait_bar();
+    while (gpos() / SLEN / 16u % 4u != 2u)       /* (C's transition is 4 bars: the take's 2nd bar starts on its line) */
+        wait_bar();
     tap(B_REC);
     b0 = (gpos() / SLEN / 16u + 1u) * 16u;
     ev_start();

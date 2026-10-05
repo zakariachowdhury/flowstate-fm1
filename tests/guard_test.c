@@ -757,28 +757,28 @@ static void test_timing(void)
         if (!worlds[wi].factory)
             continue;
         for (k = 0; k < 6; k++) {
-            uint32_t wait = 7u + t_rnd() % (2u * t_bar_blocks()), b, req_beat;
+            uint32_t wait = 7u + t_rnd() % (2u * t_bar_blocks()), b, req_beat, q;
             if (t_start(&worlds[wi]))
                 continue;
             transport_req = 1;
             t_blocks(wait);
             req_beat = clk_beat;
             CHECK(world_request((wrt.scene + 1u) % WF_NSCENE, 0) == WE_OK, "request");
-            for (b = 0; b < 3u * t_bar_blocks() && wst.st == WST_READY; b++) {
+            q = wst.q ? wst.q : 1u;              /* (the scene's transition: 1, 2 or 4 bars, or the phrase) */
+            for (b = 0; b < 9u * t_bar_blocks() && wst.st == WST_READY; b++) {
                 uint32_t before = clk_beat;
                 t_block();
                 if (wst.st == WST_APPLIED) {
-                    /* committed in this block: on a new bar, the first after the request */
+                    /* committed in this block: on the first bar line after the request on its transition's grid */
                     n++;
-                    bad += !(clk_beat < before || (clk_beat & 3u) == 0u) ||
-                           (before >> 2) > (req_beat >> 2) + 1u;
+                    bad += !(clk_beat < before || (clk_beat & 3u) == 0u) || before != 4u * q * (req_beat / 4u / q + 1u);
                 }
             }
             CHECK(wst.st == WST_APPLIED, "%s: the scene committed", worlds[wi].name);
         }
     }
-    CHECK(!bad && n, "%u of %u scene commits not on the next bar", bad, n);
-    printf("timing: %u scene requests at random points of a bar, each committed on the next bar\n", n);
+    CHECK(!bad && n, "%u of %u scene commits not on their boundary", bad, n);
+    printf("timing: %u scene requests at random points of a bar, each committed on its boundary (its transition)\n", n);
 }
 
 int main(int argc, char **argv)

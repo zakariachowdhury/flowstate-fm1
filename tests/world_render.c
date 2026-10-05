@@ -16,8 +16,8 @@
  *                          be in the World's key and range, and nothing may hang after the release
  *     --tail S             seconds after STOP (default 6)
  *     --wav OUT.wav        the audio of a single render
- *     --sequence OUT.wav   scenes A, B, C, D, N bars each. Phase 5 changes scenes while stopped only, so the
- *                          transport stops and starts again at each change (Phase 11 commits on the bar)
+ *     --sequence OUT.wav   scenes A, B, C, D while playing: each asked for in the N-th bar of the one before and
+ *                          committed on its transition's bar line (Phase 11), the bar printed
  *     --bands              every scene at the start of each of its ENERGY bands (ORIGINAL)
  *     --macros             each macro / control mapping over every scene x variation (world_stage's bases): the
  *                          effective value at 0 and at 1 against the parameter's range (design 6.4: inside it,
@@ -51,6 +51,9 @@
  * rises (the bands only add), and the loudness falls by at most BAND_LU from one band to the next (ENERGY's gain
  * compensation, design 5.6, may take back what a layer adds, not more). */
 #define FELUCCA_WORLD 1
+#define FELUCCA_ARRANGER 1                       /* (events_block's World hook, world_block, is in that branch) */
+#include <stdint.h>
+static void arrangement_apply(uint32_t s);       /* arranger.c's song mode: never reached in a World */
 #define main hostsim_main
 #include "hostsim.c"
 #undef main
@@ -62,6 +65,7 @@ static uint32_t trk_def_engine(uint32_t i)       /* (project.c's PROJ_HOST part 
 }
 #include "../firmware/src/project.c"
 #include "../firmware/src/world.c"
+static void arrangement_apply(uint32_t s) { (void)s; }
 
 static const char *const ROLE[WF_NROLES] = {"pad", "chords", "bass", "lead", "keys", "texture", "drums"};
 static const uint16_t QMASK[WF_NQUAL] = WF_QUAL_MASK;
@@ -826,13 +830,14 @@ static void detail(uint32_t s, uint32_t v, const result_t *r)
     printf("check: %s%s\n", r->fails ? "FAIL:" : "ok", r->why);
 }
 
-/* A -> B -> C -> D, bars each, into one file (stopping between scenes: Phase 5 commits while stopped) */
+/* A -> B -> C -> D while playing, into one file: each scene asked for in the bars-th bar of the one before, committed
+ * on its transition's bar line (world.c wreq_block, Phase 11) */
 static int sequence(const char *path, uint32_t v)
 {
     meter_t m;
     result_t r;
     band_t b;
-    uint32_t s, t, n;
+    uint32_t s, t, n, bar = 0;
     int rc, fails = 0;
     memset(&m, 0, sizeof m);
     memset(&r, 0, sizeof r);
@@ -845,26 +850,40 @@ static int sequence(const char *path, uint32_t v)
     wav_begin(m.wav);
     for (t = 0; t < NTRK; t++)
         r.lo[t] = 127;
-    for (s = 0; s < WF_NSCENE; s++) {
-        if (s) {
-            transport_req = 2;                       /* STOP at the bar: Phase 5 changes the scene while stopped */
+    if ((rc = scene_go(0, v, energy_set, &b)) != 0) {
+        printf("sequence: scene A: WORLD ERROR %d\n", rc);
+        return 1;
+    }
+    for (t = 0; t < NTRK; t++)
+        m.last_abs[t] = SEQ_NONE;
+    transport_req = 1;
+    for (s = 1; s <= WF_NSCENE; s++) {
+        uint32_t b0 = bar;
+        while (clk_beat < 4u * (bars - 1u) || !song.playing)
             run(&m, CTL, 1);
-        }
-        rc = scene_go(s, v, energy_set, &b);
-        if (rc) {
+        if (s == WF_NSCENE)
+            break;
+        if ((rc = world_request(s, v)) != 0) {
             printf("sequence: scene %c: WORLD ERROR %d\n", 'A' + s, rc);
             return 1;
         }
+        for (n = 0; wrt.scene != s;) {
+            n = clk_beat;                        /* (the clock at the start of the block that commits) */
+            run(&m, CTL, 1);
+        }
+        bar = b0 + n / 4u;
+        world_service();
+        printf("sequence: scene %c %s (transition %u) from bar %u\n", 'A' + s, world_scene_name(s), scene_rec(s)[14], bar);
         m.scene = s;
-        stopped_play(&m, bars);
     }
+    run(&m, bar_frames() / CTL * CTL, 1);
     finish(&m, &r, &b);
     n = (uint32_t)(tail_s * FS) / CTL * CTL;
     transport_req = 2;
     run(&m, n, 0);
     wav_end(m.wav, m.frames);
-    printf("sequence: %s: scenes A B C D, %u bars each, variation %s: %.1f s, peak %.2f dBFS, rms %.2f dBFS, "
-           "%.2f LUFS, %u at full scale\n", path, bars, (const char *)var_rec(v), (double)m.frames / FS, r.peak,
+    printf("sequence: %s: scenes A B C D while playing, each from its bar line, variation %s: %.1f s, peak %.2f dBFS, "
+           "rms %.2f dBFS, %.2f LUFS, %u at full scale\n", path, (const char *)var_rec(v), (double)m.frames / FS, r.peak,
            r.rms, r.lufs, r.full);
     fails += r.full != 0 || r.peak > -1.0;
     return fails;

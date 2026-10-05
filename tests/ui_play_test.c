@@ -272,16 +272,22 @@ static void sc_screens(void)
     }
     redraw();
     snprintf(b, sizeof b, "%s", world_scene_name(2));
-    check(seen("FROZEN LAKE") && seen("A") && seen("D") && seen(b) && seen("CHANGES NEXT BAR"),
-          "SCENES: the World, A..D with their names, CHANGES NEXT BAR");
+    {   /* (FROZEN LAKE's C has a 4-bar transition: the footer counts the bar lines to it, Phase 11) */
+        uint32_t n = 4u - (clk_beat >> 2) % 4u;
+        char w[24];
+        snprintf(w, sizeof w, n == 1u ? "CHANGES NEXT BAR" : "CHANGES IN %u BARS", n);
+        check(seen("FROZEN LAKE") && seen("A") && seen("D") && seen(b) && seen(w),
+              "SCENES: the World, A..D with their names, CHANGES IN n BARS (C's 4-bar transition)");
+    }
     shot("scenes");
     cost_begin();
     turn(EN_SELECT, 1);
     frames(1);
     cost_end("SCENES, one detent (the rows that changed)");
     turn(EN_SELECT, -1);
-    wait_bar();
-    check(wrt.scene == 2, "SCENES: C from the next bar");
+    for (i = 0; i < 4 && wrt.scene != 2; i++)
+        wait_bar();
+    check(wrt.scene == 2 && i >= 1 && clk_beat < 4u, "SCENES: C from its bar line (4-bar transition)");
     wait_ms(2600);
     check(pl.scr == PS_HOME, "SCENES: back to HOME 2.5 s after");
     /* VARIATION */

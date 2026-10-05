@@ -868,6 +868,19 @@ static void test_smoothing(void)
 }
 
 /* --------------------------------------------- 6. the real mix restores the bases --- */
+/* p[0..n) are the bases want, except values a commit glides (macro.c wgl, Phase 11): on their way to want */
+static int bases_ok(int16_t *p, const int16_t *want, uint32_t n)
+{
+    uint32_t i, k;
+    for (i = 0; i < n; i++)
+        if (p[i] != want[i]) {
+            for (k = 0; k < wgl_n && (wgl[k].p != &p[i] || wgl[k].at != p[i] || wgl[k].to != want[i]); k++)
+                ;
+            if (k == wgl_n)
+                return 0;
+        }
+    return 1;
+}
 static void test_mix(void)
 {
     uint32_t wi, b, t, bad = 0, commits = 0, blocks = 0;
@@ -881,7 +894,7 @@ static void test_mix(void)
             memcpy(base[t], trk[t].p, sizeof base[t]);
         memcpy(gbase, song.g, sizeof gbase);
         transport_req = 1;
-        for (b = 0; b < 4u * (4u * BEAT_U / (uint32_t)song.g[G_BPM] / CTL); b++) {
+        for (b = 0; b < 6u * (4u * BEAT_U / (uint32_t)song.g[G_BPM] / CTL); b++) {   /* (a 4-bar transition) */
             if (!(b % 7))                       /* a hand on the knobs */
                 macro_set(t_rnd() % 4u, (int32_t)(t_rnd() % 1001u));
             if (!(b % 22))
@@ -901,8 +914,8 @@ static void test_mix(void)
                 commits++;
             }
             for (t = 0; t < NTRK; t++)
-                bad += memcmp(base[t], trk[t].p, sizeof base[t]) != 0;
-            bad += memcmp(gbase, song.g, sizeof gbase) != 0;
+                bad += !bases_ok(trk[t].p, base[t], P_COUNT);
+            bad += !bases_ok(song.g, gbase, G_COUNT);
             bad += ov_in != 0;
         }
         transport_req = 2;
@@ -919,7 +932,7 @@ static void test_mix(void)
         transport_req = 1;
         t_block();
         CHECK(world_request((wrt.scene + 1u) % 4u, wrt.var) == WE_OK, "world_request");
-        for (b = 0; b < 4u * (4u * BEAT_U / (uint32_t)song.g[G_BPM] / CTL) && !done; b++) {
+        for (b = 0; b < 6u * (4u * BEAT_U / (uint32_t)song.g[G_BPM] / CTL) && !done; b++) {
             const ov_tab_t *tb;
             uint32_t i;
             world_fx_pre();
@@ -934,7 +947,7 @@ static void test_mix(void)
             world_fx_post();
             if (done)
                 for (t = 0; t < NTRK; t++)
-                    CHECK(!memcmp(trk[t].p, wst.p[t], sizeof trk[t].p), "%s: track %u after the commit's block",
+                    CHECK(bases_ok(trk[t].p, wst.p[t], P_COUNT), "%s: track %u after the commit's block",
                           worlds[wi].name, t + 1);
         }
         CHECK(done, "%s: no commit", worlds[wi].name);
