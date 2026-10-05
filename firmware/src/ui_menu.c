@@ -65,6 +65,11 @@ static void draw_menu(void)
                 int sel = i == ui.menu_sel;
                 if (sel)
                     cv_rect(4, y + 6, 3, 3, C_WHITE);
+#if FELUCCA_WORLD
+                if (id == MI_LEAVE && wleave_ask)
+                    cv_text(14, y, &FONT_S, "LEAVE WORLD? NOT SAVED", sel ? C_WHITE : C_GRAY);
+                else
+#endif
                 cv_text(14, y, &FONT_S, MI_NAME[id], sel ? C_WHITE : C_GRAY);
                 if (id == MI_LOWCUT || id == MI_ZOOM)
                     cv_text(90, y, &FONT_S, (id == MI_LOWCUT ? settings.lowcut : settings.zoom) ? "ON" : "OFF", C_HI);
@@ -92,6 +97,9 @@ static void enc_drop(void)                             /* knob turns nobody take
 
 static void menu_close(void)
 {
+#if FELUCCA_WORLD
+    wleave_ask = 0;
+#endif
     settings_save();                                   /* palette / panel table, if changed */
     ui.menu = 0;
     ui.force = 1;
@@ -146,6 +154,11 @@ static void menu_input(uint32_t pressed)
 #if FELUCCA_WORLD
         case MI_PLAY:
         case MI_LEAVE:
+            if (item == MI_LEAVE && !wleave_ask && play_unsaved()) {
+                wleave_ask = 1;                         /* (Phase 14: unsaved edits or loop: OK again leaves) */
+                ui.force = 1;
+                break;
+            }
             menu_close();
             play_menu(item == MI_LEAVE);                /* (ui_play.c) */
             break;

@@ -21,6 +21,8 @@ typedef struct {
     uint8_t prog, energy, fill;  /* their progression, energy table and fill (pool index), WF_NONE = none */
     uint8_t beat;                /* the BEAT (WF_BEAT_*): which scene drum pattern plays */
     uint8_t cur_pat[NTRK];       /* the pool entry each track's steps came from (written back on a change) */
+    uint8_t eo;                  /* Phase 14: bit per synth track playing another engine than the World's (an edit):
+                                  * the World's MAPS on its engine parameters leave it alone (macro.c mc_add) */
     uint32_t koff;               /* PLAY REC (play_rec.c): added to the keys track's grid step (seq.c trk_grid), so its
                                   * loop goes on in phase through a scene's clock restart; 0 while stopped */
     uint32_t id;                 /* world_id of the loaded World */
@@ -57,6 +59,7 @@ typedef struct {
     uint8_t q, qp;               /* Phase 11: commit on a bar line every q bars from the section start (0: at once,
                                   * ADVANCED); qp: q is the phrase (the playing progression's length) */
     uint8_t kt;                  /* the keys track (another World's at a switch) */
+    uint8_t eo;                  /* wrt.eo as this stage has it */
     uint16_t ereq;               /* the ENERGY position the commit of a World switch starts from (its default) */
     uint8_t pat[NTRK];           /* pool entry per track, WF_NONE = an empty pattern (the keys track: its loop stays) */
     uint8_t eng[NTRK], preset[NTRK];
@@ -93,14 +96,15 @@ typedef struct {
     uint16_t size;               /* the record's size as written */
     uint8_t mode;                /* WM_* */
     uint8_t first;               /* 1: PLAY was pressed once (no FIRST screen at the next boot) */
-    uint32_t world;              /* world_id of the World (a factory one: user Worlds are Phase 14) */
+    uint32_t world;              /* world_id of the World (a factory one, or the user World in slot uslot - 1) */
     uint8_t scene, var, pulse, beat;
     uint8_t ctl[WF_NCTL];        /* the controls, 0..250 (x 4: 0..1000) */
     uint8_t kmode;               /* KEYS mode (WF_KMODE_NAMES order) */
     int8_t octave;
     uint16_t bpm;                /* the tempo (the World's range) */
     uint32_t ctl_lo;             /* each control's last 2 bits (position % 4): the positions exactly */
-    uint8_t rsv[8];
+    uint8_t uslot;               /* Phase 14: a user World: its slot + 1 (MY WORLDS); 0: a factory World */
+    uint8_t rsv[7];
 } wplay_t;
 _Static_assert(sizeof(wplay_t) == 48, "PLAYSTATE is 48 bytes (design 10.4)");
 

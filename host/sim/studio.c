@@ -9,6 +9,9 @@
  *   SLOOP projects the projects in examples/projects (or --worlds DIR), as in Phase 4: loading one stores four
  *                  scenes of it in sections A..D (A its pad and keys, B all, C all with louder drums and more
  *                  echo, D all but the drums) and plays B
+ *   MY WORLDS      the user Worlds in the flash image (Phase 14), last: loaded as the device's CHOOSE WORLD loads
+ *                  them; the list follows the device's SAVE and DELETE (host_world_user_gen). `save` / `saveas` (a
+ *                  script, or OP_WORLD WA_SAVE) are the device's SAVE list rows
  *
  * A World's scenes, variations, roles and keys come from the World (host_world); its scenes and variations
  * change on the next bar while playing (world.c world_request). Choosing another entry highlights it while the
@@ -31,7 +34,10 @@ static const char *const SCENE_NAME[4] = {"INTRO", "MAIN", "LIFT", "BREAKDOWN"};
 static struct {
     int n;
     studio_world_t w[STUDIO_WORLDS];
-    int fidx[STUDIO_WORLDS];                     /* SK_WORLD: the factory index */
+    int fidx[STUDIO_WORLDS];                     /* SK_WORLD: the factory index; SK_USER: the slot */
+    uint32_t uid[STUDIO_WORLDS];                 /* SK_USER: its World id */
+    int nfix;                                    /* the entries before MY WORLDS */
+    uint32_t ugen;                               /* host_world_user_gen as listed */
     char path[STUDIO_WORLDS][512];               /* SK_FILE, SK_PROJECT */
     char role[STUDIO_WORLDS][HOST_NTRK][8];      /* SK_PROJECT: from the sounds' names */
     int world, browse, pending, phase, was_playing, last_beat, want_file;
@@ -77,6 +83,7 @@ static void stem(const char *path, char *out, int n)   /* "x/groove.fun4" -> "GR
 }
 static int by_name(const void *a, const void *b) { return strcmp((const char *)a, (const char *)b); }
 static void say(const char *m) { snprintf(S.msg, sizeof S.msg, "%s", m); }
+static void list_users(void);
 
 /* ---- the entries */
 static int add(int kind, const char *name, const char *cat, const char *key, int bpm)
@@ -133,12 +140,18 @@ static void add_projects(const sim_opts_t *o)
         role_of(&st, S.role[k]);
     }
 }
+static uint32_t id_of(int i)                     /* a factory or user World entry's id, 0: another kind */
+{
+    host_world_entry_t e;
+    if (S.w[i].kind == SK_USER)
+        return S.uid[i];
+    return S.w[i].kind == SK_WORLD && !host_world_factory(S.fidx[i], &e) ? e.id : 0u;
+}
 static int entry_of_world(uint32_t id)           /* the entry of the World loaded (by id) */
 {
     int i;
-    host_world_entry_t e;
     for (i = 0; i < S.n; i++)
-        if (S.w[i].kind == SK_WORLD && !host_world_factory(S.fidx[i], &e) && e.id == id)
+        if (id_of(i) && id_of(i) == id)
             return i;
     for (i = 0; i < S.n; i++)
         if (S.w[i].kind == SK_FILE)
@@ -190,7 +203,8 @@ static void load(int w)
     S.pending = -1;
     switch (S.w[w].kind) {
     case SK_WORLD:
-        rc = host_world_load(S.fidx[w]);
+    case SK_USER:
+        rc = S.w[w].kind == SK_USER ? host_world_user_load(S.fidx[w]) : host_world_load(S.fidx[w]);
         if (rc < 0) {
             snprintf(S.msg, sizeof S.msg, "WORLD ERROR %s", host_world_error(rc));
         } else if (rc == 0) {
@@ -229,6 +243,8 @@ void studio_init(const sim_opts_t *o)
     if (o->world_blob)
         k = add(SK_FILE, "WORLD FILE", "AUTHORING", "", 0), snprintf(S.path[k], sizeof S.path[k], "%s", o->world);
     add_projects(o);
+    S.nfix = S.n;
+    list_users();
     /* the first World: --world (a name or the file), --project (no World), --sloop (none), else NEON RAIN */
     if (o->world_blob) {
         studio_blob(o->world_blob, o->world_blob_n, 0);
@@ -293,17 +309,37 @@ void studio_blob(uint8_t *b, uint32_t n, int reload)
     }
 }
 
-/* the device's own World changes (PLAY MODE's CHOOSE WORLD, the menu's PLAY MODE and LEAVE WORLD): the entry follows */
+/* MY WORLDS again (after a save or a delete): the entries after the fixed ones */
+static void list_users(void)
+{
+    host_world_entry_t e;
+    int k, i;
+    S.ugen = host_world_user_gen();
+    S.n = S.nfix;
+    for (k = 0; k < 10; k++)
+        if (!host_world_user(k, &e) && (i = add(SK_USER, e.name, e.category, "", 0)) >= 0) {
+            S.fidx[i] = k;
+            S.uid[i] = e.id;
+        }
+    if (S.browse >= S.n)
+        S.browse = -1;
+}
+
+/* the device's own World changes (PLAY MODE's CHOOSE WORLD, the menu's PLAY MODE and LEAVE WORLD, SAVE): the entry
+ * follows */
 static void follow_device(void)
 {
     static int n;
     host_world_t w;
-    host_world_entry_t e;
     if (++n % HOST_FRAME_BLOCKS)
         return;
+    if (host_world_user_gen() != S.ugen) {
+        list_users();
+        S.world = -1;                            /* (found again below) */
+    }
     host_world(&w);
     if (w.active && (S.world < 0 || S.w[S.world].kind == SK_PROJECT ||
-                     (S.w[S.world].kind == SK_WORLD && (host_world_factory(S.fidx[S.world], &e) || e.id != w.id))))
+                     (S.w[S.world].kind != SK_FILE && id_of(S.world) != w.id)))
         S.world = entry_of_world(w.id);
     else if (!w.active && S.world >= 0 && S.w[S.world].kind != SK_PROJECT)
         S.world = -1;
@@ -409,6 +445,12 @@ void studio_exec(const sim_cmd_t *c)
             if (i < S.n)
                 S.browse = i;
             break;
+        case WA_SAVE: {
+            static const char *const M[] = {"SAVED", "STOP TO SAVE", "MY WORLDS FULL", "WORLD TOO BIG", "SAVE FAILED"};
+            int rc = host_world_user_save(c->v);
+            say(rc >= 0 && rc < 5 ? M[rc] : "SAVE FAILED");
+            break;
+        }
         case WA_CONFIRM:
             if (S.browse >= 0 && (S.browse != S.world || S.w[S.browse].kind == SK_FILE) && S.pending < 0)
                 load(S.browse);

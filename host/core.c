@@ -661,6 +661,27 @@ int host_world_load(int i)                       /* (ui_play.c play_world: from 
         return -WE_STATE;
     return host_wrc(play_world(b, n));
 }
+int host_world_user(int k, host_world_entry_t *e)
+{
+    memset(e, 0, sizeof *e);
+    if (!wus_ok)
+        wus_scan();
+    if (k < 0 || k >= WF_USER_SLOTS || !wus[k].id)
+        return -1;
+    e->id = wus[k].id;
+    snprintf(e->name, sizeof e->name, "%s", wus[k].name);
+    snprintf(e->category, sizeof e->category, "MY WORLDS");
+    return 0;
+}
+int host_world_user_load(int k)
+{
+    const uint8_t *b;
+    uint32_t n;
+    int rc = k < 0 ? WE_STATE : wuser_read((uint32_t)k, &b, &n);
+    return rc ? -rc : host_wrc(play_world(b, n));
+}
+int host_world_user_save(int over) { return wuser_save(over); }
+uint32_t host_world_user_gen(void) { return wus_gen; }
 int host_world_load_blob(uint8_t *b, uint32_t n)
 {
     int rc;

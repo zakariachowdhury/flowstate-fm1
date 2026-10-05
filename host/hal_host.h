@@ -179,6 +179,7 @@ static void fm1_audio_stop(void) {}
 #define HOST_NOR_SIZE 0x100000u
 static uint8_t host_nor[HOST_NOR_SIZE];
 static uint32_t host_nor_erases, host_nor_progs;
+static uint32_t host_nor_lo = 0xFFFFFFFFu, host_nor_hi; /* the lowest and highest byte erased or programmed (tests) */
 static uint8_t flash_ok;                         /* the expected part answered (project.c persist_boot) */
 static uint32_t fl_jedec_ram(void) { return 0x856014u; }
 static void fl_plain_window_init(void) {}        /* the image is plain: no encrypted window to map */
@@ -195,6 +196,8 @@ static int st_erase(uint32_t off)
         return -8;
     memset(host_nor + off, 0xFF, 0x1000u);
     host_nor_erases++;
+    host_nor_lo = off < host_nor_lo ? off : host_nor_lo;
+    host_nor_hi = off + 0xFFFu > host_nor_hi ? off + 0xFFFu : host_nor_hi;
     return 0;
 }
 static int st_prog(uint32_t off, const void *src, uint32_t n)
@@ -202,6 +205,10 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
     const uint8_t *s = src;
     if (!FL_STORE_OK(off, n))
         return -8;
+    if (n) {
+        host_nor_lo = off < host_nor_lo ? off : host_nor_lo;
+        host_nor_hi = off + n - 1u > host_nor_hi ? off + n - 1u : host_nor_hi;
+    }
     while (n) {                                  /* fl_write: page by page, a program only clears bits */
         uint32_t k = 256u - (off & 0xFFu), i;
         k = k > n ? n : k;

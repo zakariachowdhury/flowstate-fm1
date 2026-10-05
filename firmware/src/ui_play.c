@@ -63,6 +63,7 @@ static struct {
     uint8_t hot;                 /* the CONTROLS column turned last (white), 4 = none */
     uint8_t browse;              /* CHOOSE WORLD: the highlighted factory World */
     uint8_t row;                 /* SAVE: the highlighted row */
+    uint8_t ask;                 /* SAVE: the row armed (RESET WORLD, DELETE USER WORLD: SAVE again confirms) */
     uint8_t rec_seen, rec_prev;  /* play_rec.c's PR_* as last seen; before the press that became a hold */
     uint8_t hold;                /* PH_* */
     uint8_t edit_eat;            /* EDIT's release is not a tap (it opened the dialog, or came from SLOOP's UI) */
@@ -75,7 +76,7 @@ static struct {
     uint32_t hold_t0;
     uint32_t glo_t;              /* GLO's last tap */
     uint32_t toast_t;
-    char toast[24];
+    char toast[28];
     uint32_t bt0[NB];            /* each button's press time | 1, 0 = not pressed in PLAY */
     uint8_t bused[NB];           /* .. a key, knob or other button meanwhile: no tap, no 2 s EDIT */
     uint32_t act_t;              /* the activity bars' last sample */
@@ -234,15 +235,62 @@ static uint32_t pl_rest(void)                      /* the screen the overlays go
 static void pl_screen(uint32_t s)
 {
     if (pl.scr != s)
-        pl.fbody = 1;
+        pl.fbody = 1, pl.ask = 0;
     pl.scr = (uint8_t)s;
     pl.t = fm1_ms;
 }
 static uint32_t pl_keys_trk(void) { return wrt.keys_trk % NPART; }
-static uint32_t pl_world_index(void)               /* the factory index of the World playing, WORLD_NFACTORY: none */
+/* MY WORLDS (Phase 14): the user World slots' ids (0: empty or damaged) and names, read once (world_store.c wus_scan)
+ * and kept by SAVE and DELETE. CHOOSE WORLD's rows: the factory Worlds, then (with any) a MY WORLDS row, then the user
+ * Worlds by slot */
+enum { WU_OK, WU_STOP, WU_FULL, WU_BIG, WU_FAIL, WU_NONE };   /* world_store.c wuser_save / wuser_delete */
+static struct {
+    uint32_t id;
+    char name[WF_NAME_LEN];
+} wus[WF_USER_SLOTS];
+static uint8_t wus_ok;
+static uint32_t wus_gen;                           /* counts the list's changes (the simulator's Studio follows) */
+static void wus_scan(void);
+static int wuser_read(uint32_t k, const uint8_t **b, uint32_t *n);
+static int wuser_save(int over);
+static int wuser_delete(void);
+static int wus_slot(uint32_t id)                   /* the user slot holding World id, -1: none */
 {
-    int i = wrt.loaded ? world_factory_find(wrt.id) : -1;
-    return i < 0 ? WORLD_NFACTORY : (uint32_t)i;
+    int k;
+    if (!wus_ok)
+        wus_scan();
+    for (k = 0; k < WF_USER_SLOTS; k++)
+        if (wus[k].id && wus[k].id == id)
+            return k;
+    return -1;
+}
+static uint32_t pl_nrows(void)
+{
+    uint32_t n = 0, k;
+    if (!wus_ok)
+        wus_scan();
+    for (k = 0; k < WF_USER_SLOTS; k++)
+        n += wus[k].id != 0u;
+    return WORLD_NFACTORY + (n ? n + 1u : 0u);
+}
+static int pl_row_slot(uint32_t r)                 /* row r's user slot, -1: a factory World or the MY WORLDS row */
+{
+    uint32_t k, j = WORLD_NFACTORY;
+    for (k = 0; k < WF_USER_SLOTS; k++)
+        if (wus[k].id && ++j == r)
+            return (int)k;
+    return -1;
+}
+static uint32_t pl_world_index(void)               /* the row of the World playing, pl_nrows(): none */
+{
+    int i = wrt.loaded ? world_factory_find(wrt.id) : -1, k = wrt.loaded ? wus_slot(wrt.id) : -1;
+    uint32_t r, n = pl_nrows();
+    if (i >= 0)
+        return (uint32_t)i;
+    for (r = WORLD_NFACTORY + 1u; k >= 0 && r < n; r++)
+        if (pl_row_slot(r) == k)
+            return r;
+    return n;
 }
 static uint32_t pl_pulse(void)                     /* the keys track's arp as a PULSE; WF_NPULSE: another one */
 {
@@ -288,6 +336,7 @@ static void pl_ui_reset(void)                      /* SLOOP's UI state that must
 {
     uint32_t b;
     ui.menu = 0;
+    wleave_ask = 0;
     ui.layer = LY_PLAY;
     ui.hold_kind = 0;
     ui.confirm = 0;
@@ -323,21 +372,33 @@ static void play_adv_enter(void)                   /* PLAY -> ADVANCED: SLOOP's 
     pl_ui_reset();
     wrt.mode = WM_ADV;
     wrt.keys_on = 0;                               /* the keys: SLOOP's kb_map; the macros stay where they are */
+    world_immediate(0);                            /* (scenes on their bar until SAVE + key 5 says at once) */
     layers_init();
     song.sel = wrt.keys_trk;
     go_home();
     lcd_fill(0, 0, 240, 240, C_BLACK);             /* (PLAY's bands cover the screen; SLOOP's pages expect it clear) */
     ui.force = 1;
 }
-static void play_adv_exit(void)                    /* ADVANCED -> PLAY: the tempo back in the World's range */
+static void play_adv_exit(void)                    /* ADVANCED -> PLAY: the edits kept, the tempo in the World's range */
 {
     uint32_t lo, hi;
+    int drop = world_capture();                    /* (design 8.3, 10.2: they become the working World's overrides) */
     world_tempo(&lo, &hi);
     song.g[G_BPM] = (int16_t)clamp(song.g[G_BPM], (int32_t)lo, (int32_t)hi);
     song.rec = 0;                                  /* (SLOOP's recording, an arm, a free take: over) */
     rec_wait = 0;
     ft_on = 0;
     pl_enter();
+    if (drop)
+        pl_toast("TOO MANY EDITS");
+    else if (world_dirty())
+        pl_toast("EDITS KEPT \xB7 SAVE TO KEEP");
+}
+static int play_unsaved(void)                      /* LEAVE WORLD asks first: edits or a loop the World does not hold */
+{
+    if (wrt.mode == WM_ADV)
+        world_capture();
+    return wrt.active && world_dirty();
 }
 /* a World from SLOOP or in a World session: SLOOP's project parked first; now while stopped, on the next bar while a
  * World plays, after a stop while SLOOP plays (world.c world_switch). 0, or WE_* */
@@ -360,16 +421,24 @@ static int play_world(const uint8_t *b, uint32_t n)
     pl_enter();
     return 0;
 }
-static uint32_t wss_world(void);                   /* world_store.c: the session's World (the last one played) */
+static uint32_t wss_world(uint32_t *uslot);        /* world_store.c: the session's World (the last one played) */
 static void wplay_capture(wplay_t *s);
+/* World id (a user World: the one in slot uslot - 1, MY WORLDS): 0; not there: NEON RAIN, 1; no World at all: 2 */
+static int pl_find(uint32_t id, uint32_t uslot, const uint8_t **b, uint32_t *n)
+{
+    int i = uslot ? -1 : world_factory_find(id);
+    if (uslot && !wuser_read(uslot - 1u, b, n) && wb_u32(*b + 8) == id)
+        return 0;
+    if (i >= 0)
+        return world_factory((uint32_t)i, b, n) ? 2 : 0;
+    i = world_factory_find(PL_FIRST_WORLD);
+    return world_factory(i < 0 ? 0u : (uint32_t)i, b, n) ? 2 : 1;
+}
 static int play_from_sloop(void)                   /* SLOOP -> PLAY: the session's World, else NEON RAIN */
 {
     const uint8_t *b;
-    uint32_t n;
-    int i = world_factory_find(wss_world());
-    if (i < 0)
-        i = world_factory_find(PL_FIRST_WORLD);
-    if (world_factory(i < 0 ? 0u : (uint32_t)i, &b, &n))
+    uint32_t n, us, id = wss_world(&us);
+    if (pl_find(id, us, &b, &n) > 1)
         return WE_STATE;
     return play_world(b, n);
 }
@@ -442,20 +511,21 @@ static void pl_var(int32_t s)                      /* ALGORITHM: a variation, th
     else if ((rc = world_request(scene, cur)) != 0 && rc != WE_BUSY)
         ui_say("WORLD ERROR ", pl_err(rc));
 }
-/* CHOOSE WORLD + PLAY (design D10): factory World i; stopped: loaded and started, playing: from the next bar. The
- * World playing chosen again: the list closes (reset: loaded again, its defaults) */
+/* CHOOSE WORLD + PLAY (design D10): row i's World (a factory one, or MY WORLDS'); stopped: loaded and started,
+ * playing: from the next bar. The World playing chosen again: the list closes (reset: loaded again, its defaults; a
+ * user World as last saved) */
 static void pl_world_go(uint32_t i, int reset)
 {
     const uint8_t *b;
     uint32_t n, stopped = !song.playing && !transport_req;
     char m[24];
-    int rc;
+    int rc, k = pl_row_slot(i);
     pl_screen(pl_rest());
-    if (world_factory(i, &b, &n))
+    if (i >= WORLD_NFACTORY && k < 0)
         return;
-    if (!reset && wrt.active && WORLD_INDEX[i].id == wrt.id && !wreq.sw)
+    if (!reset && wrt.active && (k < 0 ? WORLD_INDEX[i].id : wus[k].id) == wrt.id && !wreq.sw)
         return;                                    /* (a switch waiting for its bar: this one replaces it) */
-    if ((rc = play_world(b, n)) != 0) {
+    if ((rc = k < 0 ? world_factory(i, &b, &n) : wuser_read((uint32_t)k, &b, &n)) != 0 || (rc = play_world(b, n)) != 0) {
         ui_say("WORLD ERROR ", pl_err(rc));
         return;
     }
@@ -470,7 +540,9 @@ static void pl_world_go(uint32_t i, int reset)
         char cat[WF_CAT_LEN];
         uint32_t bpm;
         str_cpy(m, "NEXT: ", sizeof m);            /* (the old World plays on until the bar) */
-        if (world_factory_info(i, m + 6, cat, &bpm))
+        if (k >= 0)
+            str_cpy(m + 6, wus[k].name, sizeof m - 6u);
+        else if (world_factory_info(i, m + 6, cat, &bpm))
             m[0] = 0;
     }
     pl_toast(m);
@@ -533,6 +605,35 @@ static void pl_rec_service(void)                   /* every pass: what the audio
 
 /* ------------------------------------------------------------------- input --- */
 #define PL_BT(b) (1u << panel.btn[b])
+/* SAVE on the SAVE list's row (design 10.3, Phase 14): SAVE AS USER WORLD, SAVE (a factory World: as SAVE AS), RESET
+ * WORLD (the World again: a factory one without the edits, a user World as last saved; on the bar while playing),
+ * DELETE USER WORLD. RESET and DELETE ask first: the row armed, SAVE again confirms (a knob or another screen: not) */
+static void pl_save_row(void)
+{
+    static const char *const MSG[] = {"SAVED: ", "STOP TO SAVE", "MY WORLDS FULL", "WORLD TOO BIG", "SAVE FAILED",
+                                      "NOT A USER WORLD"};
+    uint32_t r = pl.row;
+    char m[28];
+    int rc;
+    if (r >= 2u && pl.ask != r) {
+        pl.ask = (uint8_t)r;
+        pl.t = fm1_ms;
+        return;
+    }
+    pl_screen(pl_rest());
+    if (r == 2u) {
+        if ((r = pl_world_index()) < pl_nrows()) {
+            pl_world_go(r, 1);
+            pl_toast("WORLD RESET");
+        }
+        return;
+    }
+    rc = r == 3u ? wuser_delete() : wuser_save(r == 1u);
+    str_cpy(m, rc == WU_OK && r == 3u ? "DELETED" : MSG[rc], sizeof m);
+    if (rc == WU_OK && r < 3u)
+        str_cpy(m + 7, world_name(), sizeof m - 7u);
+    pl_toast(m);
+}
 static int pl_tap(uint32_t b, uint32_t now)       /* button b let go: a tap (short, nothing else touched) */
 {
     return pl.bt0[b] && !pl.bused[b] && now - (pl.bt0[b] & ~1u) < TAP_MS;
@@ -709,15 +810,8 @@ static void play_input(void)
         if (pl.scr != PS_SAVE) {
             pl.row = 0;
             pl_screen(PS_SAVE);
-        } else if (pl.row == 0) {
-            pl_toast("NOT IN THIS VERSION");      /* SAVE AS USER WORLD: Phase 14 */
-            pl_screen(pl_rest());
         } else {
-            uint32_t i = pl_world_index();
-            if (i < WORLD_NFACTORY) {
-                pl_world_go(i, 1);
-                pl_toast("WORLD RESET");
-            }
+            pl_save_row();
         }
     }
     if (pr & (PL_BT(B_OCTDN) | PL_BT(B_OCTUP))) {
@@ -738,17 +832,21 @@ static void play_input(void)
     /* the knobs */
     if (es[EN_PRESET]) {
         if (pl.scr == PS_SAVE) {
-            pl.row = (uint8_t)clamp((int32_t)pl.row + es[EN_PRESET], 0, 1);
+            pl.row = (uint8_t)clamp((int32_t)pl.row + es[EN_PRESET], 0, 3);
+            pl.ask = 0;
             pl.t = now;
         } else {
-            uint32_t n = WORLD_NFACTORY;
+            uint32_t n = pl_nrows();
+            int32_t b;
             if (pl.scr != PS_WORLDS) {
                 uint32_t i = pl_world_index();
                 pl.browse = (uint8_t)(i < n ? i : 0u);
             }
             pl_screen(PS_WORLDS);
-            if (n)
-                pl.browse = (uint8_t)clamp((int32_t)pl.browse + es[EN_PRESET], 0, (int32_t)n - 1);
+            b = clamp((int32_t)pl.browse + es[EN_PRESET], 0, (int32_t)n - 1);
+            if (b == WORLD_NFACTORY && n > WORLD_NFACTORY)   /* (the MY WORLDS row: over it) */
+                b = clamp(b + (es[EN_PRESET] > 0 ? 1 : -1), 0, (int32_t)n - 1);
+            pl.browse = (uint8_t)b;
         }
     }
     if (es[EN_SELECT]) {
@@ -820,18 +918,24 @@ static int play_input_hook(void)                   /* H19 (ui_input.c): 1 = PLAY
     return pl_edit_watch();
 }
 
-/* H17 (ui_layers.c): SAVE + key in a World session (ADVANCED): keys 1..4 its scenes, the section store and the song
- * refused (no song mode over a World's scenes in v1, H26) */
+/* H17 (ui_layers.c): SAVE + key in a World session (ADVANCED): keys 1..4 its scenes (the edits captured first), key 5
+ * toggles world_immediate (Phase 14: a scene or variation commits at the next block instead of its bar line), keys 6..8
+ * (the section store) and the song refused (no song mode over a World's scenes in v1, H26) */
 static int play_scene_key(uint32_t w)
 {
     char b[2] = {(char)('A' + (w & 3u)), 0};
     if (w < 4u) {
         uint32_t playing = song.playing || transport_req;
-        int rc = world_request(w, wrt.var);
+        int rc;
+        world_capture();                           /* (the edits so far: every scene keeps them, design 10.2) */
+        rc = world_request(w, wrt.var);
         if (rc)
             ui_say("WORLD ERROR ", pl_err(rc));
         else
             ui_say(playing ? "NEXT: " : "SCENE ", b);
+    } else if (w == 4u) {                          /* Phase 14: scenes and variations at once / on their bar */
+        world_immediate(!wnow);
+        ui_say("SCENES: ", wnow ? "AT ONCE" : "ON THEIR BAR");
     } else if (w < 8u) {
         ui_message("SCENES ARE THE WORLD'S");
     } else if (w == 12u || w == 13u || w == 15u) {
@@ -1160,16 +1264,16 @@ static void pl_scenes(void)                        /* SCENES: NEON RAIN / A INTR
 }
 static void pl_list(void)                          /* PULSE, BEAT, SAVE: a title, rows with the chevron, a footer */
 {
-    static const char *const SAVE_ROW[2] = {"SAVE AS USER WORLD", "RESET WORLD"};
+    static const char *const SAVE_ROW[4] = {"SAVE AS USER WORLD", "SAVE", "RESET WORLD", "DELETE USER WORLD"};
     const char *const *names = pl.scr == PS_PULSE ? PL_PULSE : pl.scr == PS_BEAT ? PL_BEAT : SAVE_ROW;
-    uint32_t n = pl.scr == PS_SAVE ? 2u : 4u, cur = pl.scr == PS_PULSE ? pl_pulse() : pl.scr == PS_BEAT ? wrt.beat : pl.row;
-    uint32_t i;
+    uint32_t cur = pl.scr == PS_PULSE ? pl_pulse() : pl.scr == PS_BEAT ? wrt.beat : pl.row, i;
+    uint32_t fac = pl.scr == PS_SAVE && wus_slot(wrt.id) < 0;   /* (a factory World: no DELETE) */
     pl_line(PB_B1, 20, 36, 22, &FONT_L, pl.scr == PS_PULSE ? "PULSE" : pl.scr == PS_BEAT ? "BEAT" : "SAVE", C_WHITE);
     for (i = 0; i < 4u; i++)
-        pl_row(PB_B2 + i, 56 + 20 * (int32_t)i, "", i < n ? names[i] : "", i == cur ? PL_VIO : pl.scr == PS_SAVE && !i ?
-               PL_HINT : C_WHITE, 0, i == cur);
+        pl_row(PB_B2 + i, 56 + 20 * (int32_t)i, "", names[i], i == cur ? PL_VIO : fac && i == 3u ? PL_HINT : C_WHITE, 0,
+               i == cur);
     pl_line(PB_B6, 136, 20, 138, &FONT_S, pl.scr == PS_PULSE ? "HOLD KEYS AND LISTEN" : pl.scr == PS_BEAT ?
-            "TURN TO CHANGE FEEL" : "SAVE TO CONFIRM", PL_GRY);
+            "TURN TO CHANGE FEEL" : pl.ask ? "SAVE AGAIN TO CONFIRM" : "SAVE TO CONFIRM", PL_GRY);
 }
 static void pl_vars(void)                          /* VARIATION 03 / sparkle / DREAMY / SAME WORLD · NEW FEEL */
 {
@@ -1244,11 +1348,11 @@ static void pl_advdlg(void)                        /* ADVANCED MODE / electric a
     pl_line(PB_B3, 76, 56, 96, &FONT_S, "FULL SLOOP CONTROL", C_WHITE);
     pl_line(PB_B4, 132, 24, 136, &FONT_S, "ENTER / CANCEL", PL_LAV);
 }
-/* CHOOSE WORLD: one knob scrolls, the category below, PLAY loads. The factory Worlds (by category, as built); the
- * user Worlds will follow them under MY WORLDS (Phase 14: the list's length grows, the rows scroll as they do now) */
+/* CHOOSE WORLD: one knob scrolls, the category below, PLAY loads. The factory Worlds (by category, as built), then the
+ * user Worlds under a MY WORLDS row (Phase 14; the knob steps over that row) */
 static void pl_worlds(void)
 {
-    uint32_t n = WORLD_NFACTORY, i, top, cur = pl_world_index(), bpm;
+    uint32_t n = WORLD_NFACTORY, i, top, cur = pl_world_index(), bpm, rows = pl_nrows();
     if (!pl_wnames) {
         for (i = 0; i < n; i++)
             if (world_factory_info(i, pl_wname[i], pl_wcat[i], &bpm))
@@ -1258,22 +1362,25 @@ static void pl_worlds(void)
     top = pl.browse < 5u ? 0u : pl.browse - 4u;
     pl_line(PB_B1, 20, 36, 22, &FONT_L, "CHOOSE WORLD", C_WHITE);
     for (i = 0; i < 5u; i++) {
-        uint32_t e = top + i, hl = e == pl.browse, play = e == cur;
+        uint32_t e = top + i, hl = e == pl.browse, play = e == cur, my = e == n && rows > n;
+        int k = pl_row_slot(e);
         char nm[WF_NAME_LEN];
         nm[0] = 0;
-        if (e < n)
-            pl_title_case(nm, pl_wname[e], sizeof nm);
-        if (!pl_need(PB_B2 + i, pl_hash(hl * 2u + play, nm)))
+        if (e < n || k >= 0)
+            pl_title_case(nm, k >= 0 ? wus[k].name : pl_wname[e], sizeof nm);
+        else if (my)
+            str_cpy(nm, "MY WORLDS", sizeof nm);
+        if (!pl_need(PB_B2 + i, pl_hash(hl * 2u + play + 4u * my, nm)))
             continue;
         pl_band(56 + 24 * (int32_t)i, 24);
         if (hl && nm[0])
             pl_chevron(26, 63 + 24 * (int32_t)i, PL_VIO);
-        pl_text(40, 60 + 24 * (int32_t)i, &FONT_S, nm, hl ? PL_VIO : C_WHITE);
+        pl_text(my ? 24 : 40, 60 + 24 * (int32_t)i, &FONT_S, nm, hl ? PL_VIO : my ? PL_LAV : C_WHITE);
         if (play && nm[0])
             pl_play_icon(214, 62 + 24 * (int32_t)i, hl ? PL_VIO : PL_LAV);   /* the World that plays on */
         pl_end();
     }
-    pl_line(PB_B7, 176, 24, 180, &FONT_S, pl.browse < n ? pl_wcat[pl.browse] : "", PL_LAV);
+    pl_line(PB_B7, 176, 24, 180, &FONT_S, pl.browse < n ? pl_wcat[pl.browse] : rows > n ? "MY WORLDS" : "", PL_LAV);
     pl_line(PB_C0, 200, 40, 214, &FONT_S, "PRESS PLAY", PL_HINT);
 }
 
@@ -1434,10 +1541,8 @@ static void play_boot(const wplay_t *s, int restore)
 {
     const uint8_t *b;
     uint32_t n, sc, var, k, lo, hi;
-    int i = world_factory_find(s->world), missing = i < 0;
-    if (missing)
-        i = world_factory_find(PL_FIRST_WORLD);
-    if (world_factory(i < 0 ? 0u : (uint32_t)i, &b, &n) || world_load(b, n))
+    int missing = pl_find(s->world, s->uslot, &b, &n);   /* (a user World gone or damaged: NEON RAIN) */
+    if (missing > 1 || world_load(b, n))
         return;                                    /* (SLOOP, as it booted) */
     wpark_save();
     sc = wctx.b[wctx.off[WF_S_DEFAULTS]];

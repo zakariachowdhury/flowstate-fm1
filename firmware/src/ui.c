@@ -29,6 +29,8 @@ static void play_draw(void);                 /* H19 */
 static void play_menu(uint32_t item);        /* H24: the menu's PLAY MODE (0) and LEAVE WORLD (1) */
 static void play_leave(void);                /* back to SLOOP: the parked project as it was */
 static int play_scene_key(uint32_t w);       /* H17: SAVE + key in a World session (1: taken) */
+static int play_unsaved(void);               /* Phase 14: edits or a loop the World does not hold (LEAVE WORLD asks) */
+static uint8_t wleave_ask;                   /* the menu's LEAVE WORLD asked once: OK again leaves */
 #endif
 static uint32_t up_gen;                      /* bumped on every user bank change (redraws) */
 static uint8_t sync_reload;                  /* engine / preset / project / user preset loaded: editor RELOAD push */

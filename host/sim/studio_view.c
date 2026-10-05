@@ -307,9 +307,9 @@ static void draw_keys_line(canvas_t *c, const studio_t *m)   /* SMART MELODY onc
 static int browser_rows(const studio_t *m, int *row, int *first)
 {
     int i, n = 0, cur = 0;
-    for (i = 0; i < m->nworlds && n < STUDIO_WORLDS; i++) {
-        if (m->w[i].kind == SK_PROJECT && (!i || m->w[i - 1].kind != SK_PROJECT))
-            row[n++] = -1;
+    for (i = 0; i < m->nworlds && n < STUDIO_WORLDS + 1; i++) {
+        if ((m->w[i].kind == SK_PROJECT || m->w[i].kind == SK_USER) && (!i || m->w[i - 1].kind != m->w[i].kind))
+            row[n++] = m->w[i].kind == SK_USER ? -2 : -1;
         if (i == m->browse)
             cur = n;
         row[n++] = i;
@@ -322,7 +322,7 @@ static int browser_rows(const studio_t *m, int *row, int *first)
 
 static void draw_browser(canvas_t *c, const studio_t *m)
 {
-    int row[STUDIO_WORLDS + 1], r, first, n = browser_rows(m, row, &first);
+    int row[STUDIO_WORLDS + 2], r, first, n = browser_rows(m, row, &first);
     c_frame(c, BRX - 2, BRY - 2, BRW + 4, BRH + 4, 12.0f, 2.0f, ACCENT, RGBX(17, 17, 23));
     label(c, BRX + 18, BRY + 14, "CHOOSE WORLD");
     c_text_r(c, BRX + BRW - 18, BRY + 14, "THE CURRENT ONE PLAYS ON", FAINT);
@@ -330,7 +330,7 @@ static void draw_browser(canvas_t *c, const studio_t *m)
         int i = row[r], y = BRY + 42 + (r - first) * 22, sel = i == m->browse;
         char b[48];
         if (i < 0) {
-            label(c, BRX + 40, y + 2, "SLOOP PROJECTS");
+            label(c, BRX + 40, y + 2, i == -2 ? "MY WORLDS" : "SLOOP PROJECTS");
             continue;
         }
         if (sel)
@@ -340,6 +340,8 @@ static void draw_browser(canvas_t *c, const studio_t *m)
         c_text(c, BRX + 40, y, b, sel ? TEXT : DIM);
         if (m->w[i].kind == SK_FILE)
             snprintf(b, sizeof b, "FILE%s", i == m->world ? "  \xB7 PLAYING" : "");
+        else if (m->w[i].kind == SK_USER)
+            snprintf(b, sizeof b, "USER WORLD%s", i == m->world ? "  \xB7 PLAYING" : "");
         else
             snprintf(b, sizeof b, "%s \xB7 %d BPM%s", m->w[i].category, m->w[i].bpm, i == m->world ? "  \xB7 PLAYING" : "");
         c_text_r(c, BRX + BRW - 20, y, b, i == m->world ? LAV : FAINT);

@@ -148,6 +148,10 @@ static int parse(char **w, int n, sim_cmd_t *c)
             c->a = WA_NAME;
             snprintf(c->s, sizeof c->s, "%s", a);
         }
+    } else if ((ieq(w[0], "save") || ieq(w[0], "saveas")) && n == 1) {   /* the SAVE list's SAVE / SAVE AS USER WORLD */
+        c->op = OP_WORLD;
+        c->a = WA_SAVE;
+        c->v = ieq(w[0], "save");
     } else if ((ieq(w[0], "confirm") || ieq(w[0], "cancel")) && n == 1) {
         c->op = OP_WORLD;
         c->a = ieq(w[0], "confirm") ? WA_CONFIRM : WA_CANCEL;

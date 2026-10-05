@@ -57,7 +57,8 @@ enum {
     OP_VAR,                              /* a = WA_STEP (v = step) or WA_PICK (v = index) or WA_NAME (s) */
     OP_PRINT, OP_EXPECT, OP_QUIT,
 };
-enum { WA_STEP, WA_PICK, WA_NAME, WA_CONFIRM, WA_CANCEL };   /* OP_WORLD: v = step / index; s = name */
+enum { WA_STEP, WA_PICK, WA_NAME, WA_CONFIRM, WA_CANCEL, WA_SAVE };   /* OP_WORLD: v = step / index; s = name;
+                                                                       * WA_SAVE: v 1 SAVE, 0 SAVE AS USER WORLD */
 enum { F_PLAYING, F_SCENE, F_NEXT, F_BPM, F_FILTER, F_MUTE, F_LEVEL, F_RMS, F_PEAK, F_TIME, F_MASTER,
        F_MACRO, F_SEL, F_VOICES, F_GATED, F_REC, F_LOOP, F_WORLD, F_BROWSE, F_PENDING, F_VAR, F_VARNEXT, F_NF };
                                          /* F_WORLD..: names */
@@ -78,8 +79,9 @@ extern const char *const MACRO_NAME[4];  /* COLOR MOTION SPACE ENERGY */
 
 /* ---- the Studio's model of what plays (studio.c fills it on the firmware thread, the views draw it): the
  * Musical Worlds (world.c), a World file being authored, and SLOOP projects. */
-#define STUDIO_WORLDS 24
-enum { SK_WORLD, SK_FILE, SK_PROJECT };  /* a factory World, a World file (--world PATH), a SLOOP project */
+#define STUDIO_WORLDS 32
+enum { SK_WORLD, SK_FILE, SK_PROJECT, SK_USER };   /* a factory World, a World file (--world PATH), a SLOOP project,
+                                                     * a user World (MY WORLDS, Phase 14: the flash image's slots) */
 typedef struct {
     char name[16], category[12], key[12];   /* "NEON RAIN", "CINEMATIC", "D MIN" */
     int bpm, kind;

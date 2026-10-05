@@ -290,6 +290,8 @@ static void mc_add(ov_tab_t *nt, uint32_t tg, uint32_t id, uint32_t cls, int32_t
         if (!(m >> t & 1u))
             continue;
         if (kind == WF_K_PARAM) {
+            if (id >= P_E0 && (wrt.eo >> t & 1u))
+                continue;                                /* (Phase 14: the player's engine has other parameters) */
             mc_put(mc_slot(nt, OV_P, t, id, make), cls, off);
         } else if (t >= NPART) {
             continue;                                    /* (roles and vmod: synth tracks only) */

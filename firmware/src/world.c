@@ -19,8 +19,8 @@
 typedef struct {                       /* a checked blob: where its sections and records are */
     const uint8_t *b;
     uint32_t len, have;                /* have: bit per section type present */
-    uint16_t off[WF_S_LAST + 1], slen[WF_S_LAST + 1];   /* payload offset (from b) and length per type */
-    uint8_t cnt[WF_S_LAST + 1];
+    uint16_t off[WF_S_OVERRIDES + 1], slen[WF_S_OVERRIDES + 1];   /* payload offset (from b) and length per type */
+    uint8_t cnt[WF_S_OVERRIDES + 1];
     uint8_t scale, keys;               /* META scale, KEYS track */
     uint16_t trk[WF_NTRK], pat[WF_MAX_PAT], scene[WF_NSCENE], var[WF_MAX_VARS];   /* record offsets */
 } wb_ctx_t;
@@ -224,7 +224,7 @@ static int wb_check(const uint8_t *b, uint32_t n, wb_ctx_t *c)
     WB_NEED(off <= L, WE_TABLE);
     for (i = 0; i < ns; i++) {                            /* the table: types ascending, payloads back to back */
         p = b + WF_HDR + WF_SECENT * i;
-        WB_NEED(p[0] > prev && p[0] <= WF_S_LAST, WE_SECTION);
+        WB_NEED(p[0] > prev && p[0] <= (b[5] & WF_F_USER ? WF_S_OVERRIDES : WF_S_LAST), WE_SECTION);
         prev = p[0];
         k = wb_u16(p + 2);
         WB_NEED(off + k <= L, WE_TABLE);
@@ -494,6 +494,20 @@ static int wb_check(const uint8_t *b, uint32_t n, wb_ctx_t *c)
                                                 p[0] >> 5 == WF_K_GLOBAL), WE_GUARD);
     }
 
+    /* OVERRIDES (a user World, Phase 14): {scope, id, value}: a track's parameter (as in TRACKS; the drum track also
+     * its kit), a whitelisted global, or a synth track's sound {128 | track, engine, preset} */
+    if (c->have >> WF_S_OVERRIDES & 1u) {
+        k = c->cnt[WF_S_OVERRIDES];
+        p = b + c->off[WF_S_OVERRIDES];
+        WB_NEED(k >= 1u && k <= WF_MAX_OVR + NPART, WE_COUNT);
+        WB_NEED(c->slen[WF_S_OVERRIDES] == WF_SPAIR * k, WE_LENGTH);
+        for (i = 0; i < k; i++, p += WF_SPAIR)
+            WB_NEED(p[0] == WF_SCOPE_G ? WB_HAS(WB_GWHITE, p[1]) :
+                    p[0] < NTRK ? wb_pid_ok(c, p[0], p[1], 0) || (p[0] == TRK_DRUM && p[1] == P_E0 && p[2] < DRUM_KITS) :
+                    p[0] >= WF_OVR_SOUND && p[0] < WF_OVR_SOUND + NPART && p[1] < NENGINES &&
+                    p[2] < ENGINES[p[1]]->npresets, WE_PARAM);
+    }
+
     /* DEFAULTS: scene var ctl[4] pulse beat shape[4] move[4] */
     p = b + c->off[WF_S_DEFAULTS];
     WB_NEED(c->cnt[WF_S_DEFAULTS] == 1u && c->slen[WF_S_DEFAULTS] == WF_DEFAULTS_LEN, WE_LENGTH);
@@ -571,6 +585,34 @@ static void wb_pattern(const uint8_t *r, wpat_t *w)
     }
 }
 
+/* Phase 14: the working World (design 10.2). What the player changed in ADVANCED over the World as loaded: the
+ * parameter and sound overrides (world_capture; the blob's OVERRIDES records, applied by world_stage after the scene),
+ * the edited steps in the pool (written back at every commit) and each pool entry's length and division */
+static struct {
+    uint8_t n;
+    uint8_t r[WF_MAX_OVR + NPART][WF_SPAIR];   /* {scope, id, value}, as a user World's OVERRIDES section */
+} wovr;
+static uint8_t wpl[WF_MAX_PAT][2];     /* each pool entry's len and div (the record's, until an edit) */
+static uint8_t wcap;                   /* world_stage for world_capture: no parameter overrides, nothing READY */
+static uint32_t wsaved;                /* world_sum as loaded or saved (world_dirty) */
+static uint32_t world_sum(void)        /* the pool, its lengths and the overrides: what a save keeps */
+{
+    return wb_crc_run(wb_crc_run(wb_crc_run(0, (const uint8_t *)wpool, sizeof wpool), wpl[0], sizeof wpl), &wovr.n,
+                      1u + WF_SPAIR * wovr.n);
+}
+static void wb_pool(const wb_ctx_t *c) /* a checked World's patterns into the pool, its overrides (none: a factory one) */
+{
+    uint32_t i;
+    for (i = 0; i < c->cnt[WF_S_PATTERNS]; i++) {
+        wb_pattern(c->b + c->pat[i], &wpool[i]);
+        wpl[i][0] = c->b[c->pat[i] + 1u];
+        wpl[i][1] = c->b[c->pat[i]] & WF_PAT_DIVMASK;
+    }
+    wovr.n = c->have >> WF_S_OVERRIDES & 1u ? c->cnt[WF_S_OVERRIDES] : 0u;
+    memcpy(wovr.r, c->b + c->off[WF_S_OVERRIDES], WF_SPAIR * wovr.n);
+    wsaved = world_sum();
+}
+
 /* the loaded World's MAPS, CURVES, RULES and DEFAULTS to the macros (keep: the player's positions stay), its
  * GUARD to the guardrails (guard.c) */
 static void wb_macros(int keep)
@@ -594,8 +636,7 @@ static int world_load(const uint8_t *b, uint32_t n)
     if (rc)
         return rc;
     wctx = c;
-    for (i = 0; i < c.cnt[WF_S_PATTERNS]; i++)
-        wb_pattern(c.b + c.pat[i], &wpool[i]);
+    wb_pool(&c);
     for (i = 0; i < NTRK; i++)
         wrt.cur_pat[i] = WF_NONE;                         /* (the pool is new: nothing to write back into it) */
     wbeat_m = wvar_on = WF_NONE;
@@ -660,6 +701,7 @@ static int world_stage(uint32_t scene, uint32_t var)
     vp = sw + 2u * nb;                                    /* npairs, pairs */
     wst.scene = (uint8_t)scene;
     wst.var = (uint8_t)var;
+    wst.eo = 0;
     wst.prog = sc[12];
     wst.energy = sc[13];
     wst.fill = sc[15];
@@ -667,10 +709,17 @@ static int world_stage(uint32_t scene, uint32_t var)
     for (t = 0; t < NTRK; t++) {
         const uint8_t *tr = wctx.b + wctx.trk[t];
         int16_t *p = wst.p[t];
-        uint32_t e = t == TRK_DRUM ? 0u : tr[1], pre = tr[2], pat;
+        uint32_t e = t == TRK_DRUM ? 0u : tr[1], pre = tr[2], pat, eo = 0;
+        int16_t pe[8];
         for (i = 0; i < na; i++)                          /* the variation's sound (the drum track: its kit) */
             if (vr[1u + 2u * i] == t)
                 pre = vr[2u + 2u * i];
+        for (i = 0; i < wovr.n; i++)                      /* the player's sound (Phase 14): another preset or engine */
+            if (wovr.r[i][0] == (WF_OVR_SOUND | t)) {
+                e = wovr.r[i][1];
+                pre = wovr.r[i][2];
+                eo = e != tr[1];
+            }
         for (i = 0; i < P_E0; i++)
             p[i] = TP[i].def;
         if (t == TRK_DRUM) {
@@ -684,10 +733,16 @@ static int world_stage(uint32_t scene, uint32_t var)
             p[P_ROOT] = meta[3];
             p[P_SCALE] = meta[4];
         }
+        memcpy(pe, p + P_E0, sizeof pe);
         for (i = 0; i < tr[4]; i++)                       /* the World's sound */
             p[tr[WF_TRACK_HDR + WF_PAIR * i]] = (int8_t)tr[WF_TRACK_HDR + WF_PAIR * i + 1u];
         ws_spairs(vp + 1, vp[0], t, p);                   /* the variation */
         ws_spairs(sc + WF_SCENE_HDR, sc[23], t, p);       /* the scene */
+        if (eo)
+            memcpy(p + P_E0, pe, sizeof pe);              /* (another engine: the World's engine values are not its) */
+        if (!wcap)
+            ws_spairs(wovr.r[0], wovr.n, t, p);           /* the player's edits (Phase 14): in every scene, variation */
+        wst.eo |= (uint8_t)(eo << t);
         /* the pattern: the scene's (the drum track: the BEAT's, else the GROOVE), through the variation's swaps */
         pat = t < NPART ? sc[16u + t] : sc[19u + wrt.beat] != WF_NONE ? sc[19u + wrt.beat] : sc[19u + WF_BEAT_GROOVE];
         for (i = 0; i < nb; i++)
@@ -696,9 +751,8 @@ static int world_stage(uint32_t scene, uint32_t var)
                 break;
             }
         if (pat != WF_NONE) {
-            const uint8_t *pr = wctx.b + wctx.pat[pat];
-            p[P_SLEN] = pr[1];
-            p[P_SDIV] = pr[0] & WF_PAT_DIVMASK;
+            p[P_SLEN] = wpl[pat][0];                      /* (the pattern's, as the player left it) */
+            p[P_SDIV] = wpl[pat][1];
         }
         if (t == kt) {                                    /* the keys track: its loop, and PULSE's arp group */
             pat = WF_NONE;
@@ -715,6 +769,10 @@ static int world_stage(uint32_t scene, uint32_t var)
                     p[k] = TP[k].def;
                 for (k = 0; k < 4u; k++)
                     p[P_AMODE + k] = WB_PULSE[def[6]][k];
+                if ((pat = wctx.b[wctx.off[WF_S_KEYS] + 7u]) != WF_NONE) {   /* a user World's loop (Phase 14) */
+                    p[P_SLEN] = wpl[pat][0];
+                    p[P_SDIV] = wpl[pat][1];
+                }
             } else {
                 p[P_SLEN] = trk[t].p[P_SLEN];
                 p[P_SDIV] = trk[t].p[P_SDIV];
@@ -742,6 +800,8 @@ static int world_stage(uint32_t scene, uint32_t var)
             wst.g[wctx.b[wctx.off[WF_S_GLOBALS] + WF_PAIR * i]] = (int8_t)wctx.b[wctx.off[WF_S_GLOBALS] + WF_PAIR * i + 1u];
     ws_spairs(vp + 1, vp[0], WF_SCOPE_G, wst.g);
     ws_spairs(sc + WF_SCENE_HDR, sc[23], WF_SCOPE_G, wst.g);
+    if (!wcap)
+        ws_spairs(wovr.r[0], wovr.n, WF_SCOPE_G, wst.g);
     for (i = 0; i < sizeof WB_GWHITE; i++) {
         uint32_t g = WB_GWHITE[i];
         wst.g[g] = (int16_t)clamp(wst.g[g], GP[g].min, GP[g].max);
@@ -773,7 +833,7 @@ static int world_stage(uint32_t scene, uint32_t var)
         wst.qp = 1;
     }
     wst.q = (uint8_t)(wnow && wrt.mode == WM_ADV && !wst.sw ? 0u : i);
-    wst.st = WST_READY;
+    wst.st = wcap ? WST_FREE : WST_READY;
     return WE_OK;
 }
 
@@ -838,6 +898,7 @@ static void world_commit(uint32_t gl)
     }
     wrt.scene = wst.scene;
     wrt.var = wst.var;
+    wrt.eo = wst.eo;
     wrt.prog = wst.prog;
     wrt.energy = wst.energy;
     wrt.fill = wst.fill;
@@ -846,6 +907,8 @@ static void world_commit(uint32_t gl)
     arr_commit(&wst.et);                                  /* its ENERGY table, the band at the position (Phase 7) */
     if (wst.sw) {                                         /* a World switch: a different instrument */
         prec_reset();                                     /* (its keys loop is cleared above: no take, no ring) */
+        prec.layers = wst.pat[wst.kt] < WF_MAX_PAT;       /* (a user World's own loop, Phase 14: copied in above) */
+        prec_sync();
         song.g[G_BPM] = wst.bpm;
         panic_req = (uint8_t)((1u << NTRK) - 1u);
         song.sel = wrt.keys_trk;
@@ -863,7 +926,7 @@ static void world_commit(uint32_t gl)
 static void wvar_macros(void)
 {
     const uint8_t *def = wctx.b + wctx.off[WF_S_DEFAULTS], *vr, *q;
-    uint32_t c, n, to[4];
+    uint32_t c, n, to[4], user = wvar_on == WF_NONE && (wctx.b[5] & WF_F_USER);
     if (wrt.var == wvar_on)
         return;
     wvar_on = wrt.var;
@@ -872,7 +935,7 @@ static void wvar_macros(void)
     vr = wctx.b + wctx.var[wrt.var] + WF_LABEL_LEN + 1u;  /* nsound, sounds, nswap, swaps, npairs, pairs */
     q = vr + 2u + 2u * vr[0];
     q += 2u * q[-1];
-    for (n = *q++; n; n--, q += WF_SPAIR)
+    for (n = user ? 0u : *q++; n; n--, q += WF_SPAIR)  /* (a user World loads at the positions it was saved with) */
         if (q[0] == WF_SCOPE_CTL)
             to[q[1] & 3u] = q[2] * 4u;
     for (c = 0; c < 4u; c++)
@@ -1117,15 +1180,13 @@ static void wbeat_swap(uint32_t pat)   /* the drum track to pool entry pat (ISR 
 {
     track_t *d = TDRUM;
     uint32_t cp = wrt.cur_pat[TRK_DRUM];
-    const uint8_t *pr;
     if (pat >= WF_MAX_PAT || pat == cp)
         return;
-    pr = wctx.b + wctx.pat[pat];
     if (cp < WF_MAX_PAT)
         memcpy(&wpool[cp], d->dstep, sizeof d->dstep);   /* (with any edits) */
     memcpy(d->dstep, &wpool[pat], sizeof d->dstep);
-    d->p[P_SLEN] = pr[1];
-    d->p[P_SDIV] = pr[0] & WF_PAT_DIVMASK;
+    d->p[P_SLEN] = wpl[pat][0];
+    d->p[P_SDIV] = wpl[pat][1];
     wrt.cur_pat[TRK_DRUM] = (uint8_t)pat;
 }
 static int world_beat(uint32_t b)
@@ -1193,11 +1254,9 @@ static int world_service(void)         /* main loop: a switch's result (WE_*), o
     if (wreq.sw == 1u && wst.st == WST_FREE) {   /* a World switch while one plays: staged now, on the next bar */
         wb_ctx_t cur = wctx;
         const uint8_t *def;
-        uint32_t i;
         wrt.swp = 1;                   /* (macro_service waits: the old World's table stays until the commit) */
         wctx = wnext;
-        for (i = 0; i < wctx.cnt[WF_S_PATTERNS]; i++)
-            wb_pattern(wctx.b + wctx.pat[i], &wpool[i]);
+        wb_pool(&wctx);                /* (the old World's edits go: it leaves on the bar) */
         def = wctx.b + wctx.off[WF_S_DEFAULTS];
         wrt.beat = def[7];
         wst.sw = 1;
@@ -1247,7 +1306,7 @@ static void wreq_block(void)
 static int world_hot_reload(const uint8_t *b, uint32_t n)
 {
     wb_ctx_t c;
-    uint32_t i, t, var;
+    uint32_t t, var;
     int rc;
     if (!wrt.loaded || wreq.sw)
         return WE_STATE;
@@ -1256,8 +1315,7 @@ static int world_hot_reload(const uint8_t *b, uint32_t n)
     fm1_irq_off();
     wst.st = WST_FREE;                 /* (a request not yet committed: restaged below) */
     wctx = c;
-    for (i = 0; i < c.cnt[WF_S_PATTERNS]; i++)
-        wb_pattern(c.b + c.pat[i], &wpool[i]);
+    wb_pool(&c);                       /* (the file is the truth: the edits go) */
     if (c.keys != wrt.keys_trk)
         wst.sw = 1;                    /* (another keys track: as a new World) */
     wrt.keys_trk = c.keys;
@@ -1277,5 +1335,304 @@ static int world_hot_reload(const uint8_t *b, uint32_t n)
     song.g[G_BPM] = wst.bpm;           /* (the authored tempo, as the file now says) */
     fm1_irq_on();
     wst.st = WST_FREE;
+    return WE_OK;
+}
+
+/* ======================================================= the working World and user Worlds (Phase 14) ======
+ * design 10.2, 10.3. Main loop.
+ *
+ *   world_capture  ADVANCED -> the working World (on leaving it, before a scene key, before a save): the glides at
+ *                  their ends, the steps and lengths playing into their pool entries, then the overrides: the stage of
+ *                  the scene and variation playing without the parameter overrides (wcap) is the reference; a synth
+ *                  track's engine or preset the player changed becomes a sound record, each parameter he changed one
+ *                  record with its value (an edit set back to the reference drops it; one untouched keeps its old
+ *                  record, so an edit made in another scene stays). World pairs on the engine parameters of a track
+ *                  playing another engine are not applied (that engine has other ones). Not captured: P_ROOT P_SCALE
+ *                  P_SLEN P_SDIV P_MUTE (the World's key, the patterns, the player's mutes), the keys track's arp
+ *                  group (PULSE), the drum track's parameters outside WF_P_DRUM except its kit, globals outside the
+ *                  whitelist (the tempo is the session's). 1: some did not fit (WF_MAX_OVR)
+ *   world_dirty    edits or a loop that the World as loaded or saved does not hold (LEAVE WORLD asks first)
+ *   world_encode   the working World as a self-contained user World blob (flag USER): every section of the loaded
+ *                  one as it is, except META (the name, MY WORLDS, the tempo), PATTERNS (the pool re-encoded, the keys
+ *                  loop as one more pattern), KEYS (that pattern), DEFAULTS (scene, variation, controls, PULSE, BEAT
+ *                  now) and OVERRIDES. It must pass wb_check. Its length, or 0: over cap
+ *   world_adopt    the working World is that blob now (after a save): same pool, its name, id and sections */
+static int wov_at(const uint8_t (*r)[WF_SPAIR], uint32_t n, uint32_t scope, uint32_t id)
+{
+    while (n--)
+        if (r[n][0] == scope && ((scope & WF_OVR_SOUND) || r[n][1] == id))
+            return (int)n;
+    return -1;
+}
+static int wov_put(uint32_t scope, uint32_t id, int32_t v)
+{
+    if (wovr.n >= WF_MAX_OVR + NPART)
+        return 1;
+    wovr.r[wovr.n][0] = (uint8_t)scope;
+    wovr.r[wovr.n][1] = (uint8_t)id;
+    wovr.r[wovr.n++][2] = (uint8_t)v;                     /* (every value a pair may hold fits a byte: FWD1's rule) */
+    return 0;
+}
+static int world_capture(void)
+{
+    uint8_t old[WF_MAX_OVR + NPART][WF_SPAIR], chg = 0;
+    uint32_t on = wovr.n, t, i, ps = WF_NONE, pv = 0;
+    int drop = 0;
+    if (!wrt.active || wreq.sw)
+        return 0;
+    wsv_free();
+    fm1_irq_off();
+    if (wst.st == WST_READY) {                            /* (a change on its way: asked for again below) */
+        ps = wst.scene;
+        pv = wst.var;
+        wst.st = WST_FREE;
+    }
+    for (i = 0; i < wgl_n; i++)
+        *wgl[i].p = wgl[i].to;
+    wgl_n = 0;
+    for (t = 0; t < NTRK; t++) {
+        uint32_t c = wrt.cur_pat[t], len = (uint32_t)trk[t].p[P_SLEN], dv = (uint32_t)trk[t].p[P_SDIV];
+        if (t == wrt.keys_trk || c >= WF_MAX_PAT)
+            continue;
+        memcpy(&wpool[c], trk[t].step, sizeof wpool[c]);
+        if (len >= 1u && len <= NSTEP && dv < WF_NDIV &&
+            (t != TRK_DRUM || (dv == WF_DIV_16 && (len == 16u || len == 32u || len == 64u)))) {
+            wpl[c][0] = (uint8_t)len;
+            wpl[c][1] = (uint8_t)dv;
+        }
+    }
+    fm1_irq_on();
+    if (wst.st != WST_FREE)
+        return 0;
+    memcpy(old, wovr.r, sizeof old);
+    wcap = 1;
+    world_stage(wrt.scene, wrt.var);                      /* the sounds as staged, without the parameter edits */
+    wovr.n = 0;
+    for (t = 0; t < NPART; t++) {
+        const track_t *k = &trk[t];
+        uint32_t e = k->eng_req % NENGINES, pre = k->preset;
+        int s = wov_at(old, on, WF_OVR_SOUND | t, 0);
+        if (e != wst.eng[t] || (!k->user && pre != wst.preset[t])) {
+            if (k->user || pre >= ENGINES[e]->npresets)
+                pre = e == wst.eng[t] ? wst.preset[t] : 0u;   /* (a user preset: its values are the edits) */
+            chg |= (uint8_t)(1u << t);
+            wov_put(WF_OVR_SOUND | t, e, (int32_t)pre);
+        } else if (s >= 0) {
+            wov_put(old[s][0], old[s][1], old[s][2]);
+        }
+    }
+    if (chg)
+        world_stage(wrt.scene, wrt.var);                  /* (the new sounds: the reference for their parameters) */
+    for (t = 0; t < NTRK; t++)
+        for (i = 0; i < P_COUNT; i++) {
+            int32_t v = trk[t].p[i], b = wst.p[t][i];
+            int s;
+            if (WB_HAS(WB_PFIXED, i) || (t == TRK_DRUM ? !WB_HAS(WB_PDRUM, i) && i != P_E0 :
+                                         t == wrt.keys_trk && i >= P_AMODE && i <= P_AORDER))
+                continue;
+            s = chg >> t & 1u ? -1 : wov_at(old, on, t, i);
+            if (s >= 0 ? v == (int8_t)old[s][2] || v != b : v != b)
+                drop |= wov_put(t, i, v);
+        }
+    for (i = 0; i < sizeof WB_GWHITE; i++) {
+        uint32_t g = WB_GWHITE[i];
+        int32_t v = song.g[g];
+        int s = wov_at(old, on, WF_SCOPE_G, g);
+        if (s >= 0 ? v == (int8_t)old[s][2] || v != wst.g[g] : v != wst.g[g])
+            drop |= wov_put(WF_SCOPE_G, g, v);
+    }
+    wcap = 0;
+    if (ps != WF_NONE)
+        world_stage(ps, pv);
+    return drop;
+}
+
+static int world_dirty(void)
+{
+    const track_t *k = &trk[wrt.keys_trk % NPART];
+    uint32_t l = wctx.b[wctx.off[WF_S_KEYS] + 7u], n = (uint32_t)k->p[P_SLEN];
+    if (!wrt.loaded)
+        return 0;
+    if (world_sum() != wsaved)
+        return 1;
+    return prec_has(k) && (l >= WF_MAX_PAT || n != wpl[l][0] || n > NSTEP || memcmp(k->step, &wpool[l], n * sizeof(step_t)));
+}
+
+static uint32_t we_kind(const step_t *s)
+{
+    return s->time == ST_NOTE && s->n ? WF_R_NOTE : s->time == ST_TIE ? WF_R_TIE : WF_R_REST;
+}
+static uint32_t we_synth(uint8_t *d, const step_t *s, uint32_t len)   /* steps -> a record stream (fwd1-format 6.1) */
+{
+    uint32_t o = 0, c = 0, a, k, kind, n, nf, m;
+    while (c < len) {
+        const step_t *x;
+        for (a = 0; c + a < len && a < 63u && we_kind(&s[c + a]) == WF_R_REST; a++)
+            ;
+        if (c + a == len)
+            break;                                        /* (the rest is REST: no END needed) */
+        if (we_kind(&s[c + a]) != WF_R_NOTE) {            /* rests (63, or before a TIE), or TIEs */
+            kind = a ? WF_R_REST : WF_R_TIE;
+            if (!a)
+                while (c + a < len && a < 63u && we_kind(&s[c + a]) == WF_R_TIE)
+                    a++;
+            d[o++] = (uint8_t)(kind << 6 | a);
+            c += a;
+            continue;
+        }
+        x = &s[c + a];
+        c += a + 1u;
+        n = x->n > 4u ? 4u : x->n;
+        m = x->flags >> 2 & 7u;
+        nf = n | (x->flags & SF_ACCENT ? WF_NF_ACCENT : 0u) | (x->flags & SF_SLIDE ? WF_NF_SLIDE : 0u) |
+             (x->lvl || x->rat ? WF_NF_LVLRAT : 0u) | (x->vel ? WF_NF_VEL : 0u) | (m ? WF_NF_MICRO : 0u);
+        d[o++] = (uint8_t)(WF_R_NOTE << 6 | a);
+        d[o++] = (uint8_t)nf;
+        for (k = 0; k < n; k++)
+            d[o++] = x->note[k] & 127u;
+        if (nf & WF_NF_LVLRAT) {
+            d[o++] = x->lvl;
+            d[o++] = x->rat;
+        }
+        if (x->vel)
+            d[o++] = x->vel > 127u ? 127u : x->vel;
+        if (m)
+            d[o++] = (uint8_t)m;
+    }
+    return o;
+}
+static uint32_t we_drum(uint8_t *d, const dstep_t *s, uint32_t len)  /* steps -> lanes (fwd1-format 6.2) */
+{
+    uint32_t o = 1, l, st, q, h, nh, f, nl = 0, bytes = len / 8u;
+    for (l = 0; l < DRUM_LANES; l++) {
+        uint32_t sh = 2u * (l & 3u);
+        memset(d + o + 1u, 0, bytes);
+        for (st = nh = f = 0; st < len; st++)
+            if (s[st].on[l >> 3] >> (l & 7u) & 1u) {
+                d[o + 1u + (st >> 3)] |= (uint8_t)(1u << (st & 7u));
+                nh++;
+                f |= (s[st].lvl[l >> 2] >> sh & 3u ? WF_DL_LVL : 0u) | (s[st].rat[l >> 2] >> sh & 3u ? WF_DL_RAT : 0u);
+            }
+        if (!nh)
+            continue;
+        d[o] = (uint8_t)(l | f);
+        o += 1u + bytes;
+        for (q = 0; q < 2u; q++) {                        /* the levels, then the ratchets: 2 bits a hit */
+            if (!(f & (q ? WF_DL_RAT : WF_DL_LVL)))
+                continue;
+            memset(d + o, 0, (2u * nh + 7u) / 8u);
+            for (st = h = 0; st < len; st++)
+                if (s[st].on[l >> 3] >> (l & 7u) & 1u) {
+                    d[o + (h >> 2)] |= (uint8_t)(((q ? s[st].rat : s[st].lvl)[l >> 2] >> sh & 3u) << (2u * (h & 3u)));
+                    h++;
+                }
+            o += (2u * nh + 7u) / 8u;
+        }
+        nl++;
+    }
+    d[0] = (uint8_t)nl;
+    return o;
+}
+static uint32_t world_encode(uint8_t *o, uint32_t cap, const char *name, uint32_t pulse)
+{
+    const track_t *k = &trk[wrt.keys_trk % NPART];
+    const uint8_t *src = wctx.b;
+    uint8_t tmp[WF_PAT_HDR + 1u + DRUM_LANES * (1u + NSTEP / 8u + NSTEP / 2u)];
+    uint32_t have, ns = 0, off, t, i, n, id = 2166136261u, np = wctx.cnt[WF_S_PATTERNS];
+    uint32_t lp = src[wctx.off[WF_S_KEYS] + 7u], loop = prec_has(k) && k->p[P_SLEN] >= 1 && k->p[P_SLEN] <= NSTEP;
+    if (!wrt.loaded || cap < WF_MIN_LEN)
+        return 0;
+    if (loop && lp == WF_NONE) {
+        if (np >= WF_MAX_PAT)
+            return 0;
+        lp = np++;
+    }
+    if (lp < WF_MAX_PAT) {                                /* the keys loop: one more synth pattern (or none now) */
+        memcpy(&wpool[lp], k->step, sizeof wpool[lp]);
+        if (!loop)
+            memset(&wpool[lp], 0, sizeof wpool[lp]);
+        wpl[lp][0] = (uint8_t)(loop ? k->p[P_SLEN] : 16);
+        wpl[lp][1] = (uint8_t)(loop ? k->p[P_SDIV] % WF_NDIV : WF_DIV_16);
+    }
+    have = (wctx.have & ~(1u << WF_S_OVERRIDES)) | (np ? 1u << WF_S_PATTERNS : 0u) | (wovr.n ? 1u << WF_S_OVERRIDES : 0u);
+    for (t = 1; t <= WF_S_OVERRIDES; t++)
+        ns += have >> t & 1u;
+    off = WF_HDR + WF_SECENT * ns;
+    memset(o, 0, WF_HDR);
+    for (ns = 0, t = 1; t <= WF_S_OVERRIDES; t++) {
+        uint8_t *e = o + WF_HDR + WF_SECENT * ns, *d = o + off;
+        uint32_t cnt = t == WF_S_PATTERNS ? np : t == WF_S_OVERRIDES ? wovr.n : wctx.cnt[t];
+        if (!(have >> t & 1u))
+            continue;
+        if (t == WF_S_PATTERNS) {
+            for (n = 0, i = 0; i < np; i++) {
+                uint32_t drum = i < wctx.cnt[t] && (src[wctx.pat[i]] & WF_PAT_DRUM), len = wpl[i][0], nb;
+                nb = drum ? we_drum(tmp + WF_PAT_HDR, wpool[i].dstep, len) : we_synth(tmp + WF_PAT_HDR, wpool[i].step, len);
+                tmp[0] = (uint8_t)((drum ? WF_PAT_DRUM : 0u) | wpl[i][1]);
+                tmp[1] = (uint8_t)len;
+                tmp[2] = (uint8_t)nb;
+                tmp[3] = (uint8_t)(nb >> 8);
+                if (off + n + WF_PAT_HDR + nb > cap)
+                    return 0;
+                memcpy(d + n, tmp, WF_PAT_HDR + nb);
+                n += WF_PAT_HDR + nb;
+            }
+        } else {
+            n = t == WF_S_OVERRIDES ? WF_SPAIR * wovr.n : wctx.slen[t];
+            if (off + n > cap)
+                return 0;
+            memcpy(d, t == WF_S_OVERRIDES ? wovr.r[0] : src + wctx.off[t], n);
+        }
+        if (t == WF_S_META) {                             /* the name, MY WORLDS, the tempo playing */
+            const uint8_t *m = src + wctx.off[t] + WF_NAME_LEN + WF_CAT_LEN + WF_BLURB_LEN;
+            memset(d, 0, WF_NAME_LEN + WF_CAT_LEN);
+            str_cpy((char *)d, name, WF_NAME_LEN);
+            str_cpy((char *)d + WF_NAME_LEN, "MY WORLDS", WF_CAT_LEN);
+            d[WF_NAME_LEN + WF_CAT_LEN + WF_BLURB_LEN] = (uint8_t)clamp(song.g[G_BPM], m[1], m[2]);
+        } else if (t == WF_S_KEYS) {
+            d[7] = (uint8_t)(loop ? lp : WF_NONE);
+        } else if (t == WF_S_DEFAULTS) {                  /* scene var ctl[4] pulse beat shape[4] move[4] */
+            d[0] = wrt.scene;
+            d[1] = wrt.var;
+            for (i = 0; i < 12u; i++)
+                d[i < 4u ? 2u + i : 4u + i] = (uint8_t)(macro_pos(i) / 4u);
+            if (pulse < WF_NPULSE)
+                d[6] = (uint8_t)pulse;
+            d[7] = wrt.beat;
+        }
+        e[0] = (uint8_t)t;
+        e[1] = (uint8_t)cnt;
+        e[2] = (uint8_t)n;
+        e[3] = (uint8_t)(n >> 8);
+        off += n;
+        ns++;
+    }
+    memcpy(o, "FWD1", 4);
+    o[4] = WF_VERSION;
+    o[5] = WF_F_USER;
+    o[6] = (uint8_t)off;
+    o[7] = (uint8_t)(off >> 8);
+    for (i = 0; name[i]; i++)
+        id = (id ^ (uint8_t)name[i]) * 16777619u;         /* (FNV-1a of the name: user names are unique) */
+    for (i = 0; i < 4u; i++)
+        o[8u + i] = (uint8_t)(id >> 8u * i);
+    o[16] = (uint8_t)ns;
+    id = wb_crc(o, off);
+    for (i = 0; i < 4u; i++)
+        o[WF_CRC_AT + i] = (uint8_t)(id >> 8u * i);
+    {
+        wb_ctx_t c;
+        return wb_check(o, off, &c) == WE_OK ? off : 0u;
+    }
+}
+static int world_adopt(const uint8_t *b, uint32_t n)
+{
+    wb_ctx_t c;
+    if (wb_check(b, n, &c) != WE_OK)
+        return WE_STATE;
+    wctx = c;
+    wrt.id = wb_u32(b + 8);
+    wb_macros(1);                                         /* (MAPS and GUARD read from the blob: this one now) */
+    wsaved = world_sum();
     return WE_OK;
 }

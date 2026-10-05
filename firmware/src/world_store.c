@@ -18,7 +18,23 @@
  *                   meanwhile, so it stays), with what a project_t does not hold (octave, solo, song mode, the
  *                   section playing, user preset marks). Not in flash yet: written first at the next quiet moment
  *   wpark_restore   LEAVE WORLD: it back, exactly (proj_apply, the autosave_resume path)
- * Never the project slots (the sections A..D): only an explicit TOOLS > SAVE in ADVANCED writes one. */
+ * Never the project slots (the sections A..D): only an explicit TOOLS > SAVE in ADVANCED writes one.
+ *
+ * User Worlds (Phase 14; design 10.1, 10.3, D12): MY WORLDS. Slot k is the storage object OBJ_UWORLD0 + k (0xE5000 +
+ * 0x2000 k, copies A and B), a whole FWD1 blob with flag USER (world.c world_encode: it needs no factory World) of at
+ * most ST_LOW_MAX = 3,584 B, so nothing is programmed past offset 0xF00 of its sector. The factory Worlds are const in
+ * the app image: nothing here writes them.
+ *   wub[2]          a user World's blob in RAM while it plays (st_buf is every storage call's), and the next one: a
+ *                   load reads into the one the World playing does not use (a switch lands on the bar)
+ *   wus_scan        the slots' ids and names for CHOOSE WORLD (ui_play.c wus), once; save and delete keep them. A
+ *                   slot that fails its CRCs or wb_check is not listed (and not loaded)
+ *   wuser_read      slot k into the free buffer, checked; not while a World switch waits for its bar
+ *   wuser_save      SAVE (over: into the slot of the user World loaded, with its name) or SAVE AS USER WORLD (the
+ *                   first free slot; the name with the next free number: NEON RAIN 2, MIDNIGHT DRI 10). Stopped
+ *                   only: an erase stalls the audio for about 50 ms (audit 4.1). The working World is then that one
+ *   wuser_delete    DELETE USER WORLD: the slot of the user World loaded erased (both copies); it plays on, unsaved
+ * The session refers to a user World by slot + 1 and id (wplay_t uslot, world): a slot emptied or saved over with
+ * another World is not found, and the boot falls back to NEON RAIN (ui_play.c pl_find). */
 
 static wplay_t wss;                                /* the session: as read, then the last World's state (RAM) */
 static uint32_t wss_hash, wss_ms, wss_checked;
@@ -29,7 +45,11 @@ static struct {
     uint8_t solo, arr, user[NTRK], ok;
 } wpark;
 
-static uint32_t wss_world(void) { return wss.world ? wss.world : PL_FIRST_WORLD; }
+static uint32_t wss_world(uint32_t *uslot)
+{
+    *uslot = wss.world ? wss.uslot : 0u;
+    return wss.world ? wss.world : PL_FIRST_WORLD;
+}
 
 static void wpark_save(void)
 {
@@ -81,6 +101,7 @@ static void wplay_capture(wplay_t *s)              /* the session now (SLOOP: th
         return;
     s->first = pl.played;
     s->world = wrt.id;
+    s->uslot = (uint8_t)(wus_slot(wrt.id) + 1);
     s->scene = wrt.scene;
     s->var = wrt.var;
     s->pulse = (uint8_t)pl_pulse();
@@ -187,8 +208,102 @@ static void wsession_boot(void)
         return;
     }
     play_boot(&wss, ok);
-    if (ok && wrt.active && wrt.id == wss.world && (uint32_t)n >= WSS_LOOP + 2u &&
-        (uint32_t)n >= WSS_LOOP + 2u + st_buf[WSS_LOOP] * (uint32_t)sizeof(step_t))   /* (play_boot leaves st_buf) */
+    if (ok && wrt.active && wrt.id == wss.world && (n = st_load(OBJ_WSESSION, st_buf, ST_LOW_MAX)) >= (int)WSS_LOOP + 2 &&
+        (uint32_t)n >= WSS_LOOP + 2u + st_buf[WSS_LOOP] * (uint32_t)sizeof(step_t))   /* (a user World read st_buf) */
         prec_load((const step_t *)(st_buf + WSS_LOOP + 2u), st_buf[WSS_LOOP], st_buf[WSS_LOOP + 1u]);
     wpark_dirty = wpark_dirty && autosave_hash;    /* (a first boot parks the power-on project: nothing to keep) */
+}
+
+/* ---- user Worlds (above) */
+static uint8_t wub[2][ST_LOW_MAX] __attribute__((aligned(4)));
+static uint8_t *wub_free(void) { return wctx.b == wub[0] ? wub[1] : wub[0]; }
+
+static void wus_scan(void)
+{
+    uint32_t k;
+    wb_ctx_t c;
+    wus_ok = 1;
+    wus_gen++;
+    for (k = 0; k < WF_USER_SLOTS; k++) {
+        int n = flash_ok ? st_load(OBJ_UWORLD0 + k, st_buf, ST_LOW_MAX) : -1;
+        wus[k].id = 0;
+        if (n > 0 && wb_check(st_buf, (uint32_t)n, &c) == WE_OK && (st_buf[5] & WF_F_USER)) {
+            wus[k].id = wb_u32(st_buf + 8);
+            str_cpy(wus[k].name, (const char *)st_buf + c.off[WF_S_META], WF_NAME_LEN);
+        }
+    }
+}
+
+static int wuser_read(uint32_t k, const uint8_t **b, uint32_t *n)
+{
+    uint8_t *d = wub_free();
+    wb_ctx_t c;
+    int len;
+    if (wreq.sw)
+        return WE_BUSY;                                /* (the other buffer may be the World on its way) */
+    len = flash_ok && k < WF_USER_SLOTS ? st_load(OBJ_UWORLD0 + k, d, ST_LOW_MAX) : -1;
+    if (len <= 0 || wb_check(d, (uint32_t)len, &c) != WE_OK || !(d[5] & WF_F_USER))
+        return WE_STATE;
+    *b = d;
+    *n = (uint32_t)len;
+    return WE_OK;
+}
+
+static int wuser_save(int over)
+{
+    char nm[WF_NAME_LEN];
+    uint8_t *d = wub_free();
+    int k = over ? wus_slot(wrt.id) : -1;
+    uint32_t i, num, len, cut;
+    if (song.playing || transport_req || wreq.sw || !wrt.loaded)
+        return WU_STOP;
+    world_capture();                                   /* (the steps playing into the pool) */
+    if (k < 0) {
+        for (k = 0; k < WF_USER_SLOTS && wus[k].id; k++)
+            ;
+        if (k == WF_USER_SLOTS)
+            return WU_FULL;
+        str_cpy(nm, world_name(), sizeof nm);
+        cut = str_len(nm);
+        while (wus_slot(wrt.id) >= 0 && cut && nm[cut - 1u] >= '0' && nm[cut - 1u] <= '9')
+            cut--;                                     /* (a user World's own number goes: NEON RAIN 2 -> 3) */
+        if (cut > 1u && cut < str_len(nm) && nm[cut - 1u] == ' ')
+            nm[cut - 1u] = 0;
+        cut = str_len(nm);
+        for (num = 2; ; num++) {                       /* the next number no user World has */
+            char dg[4];
+            fmt_int(dg, (int32_t)num);
+            nm[cut < WF_NAME_LEN - 2u - str_len(dg) ? cut : WF_NAME_LEN - 2u - str_len(dg)] = 0;
+            pl_append(nm, sizeof nm, " ");
+            pl_append(nm, sizeof nm, dg);
+            for (i = 0; i < WF_USER_SLOTS && !(wus[i].id && str_eq(wus[i].name, nm)); i++)
+                ;
+            if (i == WF_USER_SLOTS)
+                break;
+        }
+    } else {
+        str_cpy(nm, wus[k].name, sizeof nm);
+    }
+    if (!(len = world_encode(d, ST_LOW_MAX, nm, pl_pulse())))
+        return WU_BIG;
+    if (!flash_ok || st_save(OBJ_UWORLD0 + (uint32_t)k, d, len) || world_adopt(d, len))
+        return WU_FAIL;
+    wus[k].id = wrt.id;
+    str_cpy(wus[k].name, nm, WF_NAME_LEN);
+    wus_gen++;
+    return WU_OK;
+}
+
+static int wuser_delete(void)
+{
+    int k = wus_slot(wrt.id);
+    if (k < 0)
+        return WU_NONE;
+    if (song.playing || transport_req)
+        return WU_STOP;
+    if (!flash_ok || st_erase(st_sector(OBJ_UWORLD0 + (uint32_t)k, 0)) || st_erase(st_sector(OBJ_UWORLD0 + (uint32_t)k, 1)))
+        return WU_FAIL;
+    wus[k].id = 0;
+    wus_gen++;
+    return WU_OK;
 }

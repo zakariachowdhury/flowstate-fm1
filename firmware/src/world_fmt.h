@@ -46,10 +46,10 @@
 #define WF_S_GUARD 12
 #define WF_S_KEYS 13
 #define WF_S_DEFAULTS 14
-#define WF_S_OVERRIDES 15            /* reserved: user Worlds and sessions (Phases 9, 14); rejected by this parser */
+#define WF_S_OVERRIDES 15            /* Phase 14: a user World's edits (flag USER only): {scope, id, value} x count */
 #define WF_S_PATCHES 16              /* reserved (session) */
 #define WF_S_PLAYSTATE 17            /* reserved (session) */
-#define WF_S_LAST 14                 /* the highest type this parser accepts */
+#define WF_S_LAST 14                 /* the highest type this parser accepts (a user World: WF_S_OVERRIDES) */
 #define WF_S_REQUIRED ((1u << WF_S_META) | (1u << WF_S_TRACKS) | (1u << WF_S_PROGS) | (1u << WF_S_SCENES) | \
                        (1u << WF_S_VARS) | (1u << WF_S_KEYS) | (1u << WF_S_DEFAULTS))
 #define WF_S_NAMES "- META TRACKS GLOBALS PATTERNS PROGS SCENES VARS MAPS CURVES RULES ENERGY GUARD KEYS DEFAULTS"
@@ -215,6 +215,9 @@
 #define WF_NBEATS 4
 #define WF_SCOPE_G 4                 /* a scoped pair's scope: 0..3 a track (id: P_*), 4 the globals (id: G_*) */
 #define WF_SCOPE_CTL 5               /* VARS only (Phase 12): a macro default, id 0..3 (COLOR .. ENERGY), u8 value 0..250 */
+#define WF_OVR_SOUND 128             /* OVERRIDES (Phase 14): scope 128 | track (synth): id the engine, value the preset */
+#define WF_MAX_OVR 64                /* OVERRIDES: parameter records (scopes 0..4), plus one sound record per synth track */
+#define WF_USER_SLOTS 10             /* user Worlds (MY WORLDS): storage objects OBJ_UWORLD0..9 */
 #define WF_SCENE_NAMES "A B C D"
 
 /* -------------------------------------------------------------------- VARS --- */

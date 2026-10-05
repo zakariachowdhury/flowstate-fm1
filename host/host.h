@@ -128,6 +128,14 @@ int host_world_reload_blob(uint8_t *b, uint32_t n);     /* the same World change
 int host_world_load_file(const char *path, char *msg, int mlen);   /* host_world_compile + host_world_load_blob */
 int host_world_request(int scene, int var);  /* -1 keeps the current one */
 void host_world_unload(void);                /* back to SLOOP: LEAVE WORLD, the SLOOP project parked before back */
+/* MY WORLDS (Phase 14): the user World slots in the flash image, through the device's own paths (ui_play.c,
+ * world_store.c). host_world_user: slot k (0..9): 0, -1 empty or damaged (category "MY WORLDS"). _load: as CHOOSE
+ * WORLD loads it (0 now, 1 on the bar, < 0 -WE_*). _save: the SAVE list's SAVE (over 1) or SAVE AS USER WORLD (0):
+ * 0 saved, 1 stop first, 2 MY WORLDS full, 3 too big, 4 the flash failed. _gen: counts the list's changes */
+int host_world_user(int k, host_world_entry_t *e);
+int host_world_user_load(int k);
+int host_world_user_save(int over);
+uint32_t host_world_user_gen(void);
 void host_world_service(void);               /* the main loop's part: call it every pass (host_ui_frame does) */
 void host_world(host_world_t *w);
 const char *host_world_error(int code);      /* "BUSY", "CRC", ... (code: WE_*, or its negative) */
