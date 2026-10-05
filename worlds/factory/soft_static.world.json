@@ -1,0 +1,121 @@
+{
+  "notes": "Lo-fi, E-flat lydian, 78 BPM, swung sixteenths (62 %). A half-remembered radio: a granular cloud of dusty piano grains (GRAIN LOFI CLOUD, its tone filtered) holding open triads (root, fifth, the tenth on top), so every chord is a slow swell; a mellow phase-distortion bass (CZ BASS, the DCW closed) with a swung push into the third beat and an octave pop; the player's glassy electric piano on the Smart Keys (DX RHODES, the index lowered; major pentatonic, which the lydian fourth never touches); and the VINTAGE rhythm box, soft, with a conga ghost. The master is the static: DUST crackle and hiss, a triplet echo, a wide dark room, the chorus slow. Harmony (triads; the lydian II is the colour): A I II, two bars each; B I iii vi II; C vi II V I, round the fifths (the lift); D iii II, drifting. ENERGY adds the bass, then kick, snare and eighth hats, then the swung ghost hats, the conga, a shaker and fills; it never touches the swing, and the levels give a little back at the top. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "soft_static",
+  "name": "SOFT STATIC",
+  "category": "LO-FI",
+  "blurb": "Old radio, snow outside",
+  "tempo": {"bpm": 78, "min": 68, "max": 88},
+  "key": {"root": "Eb", "scale": "LYD"},
+  "swing": 48,
+  "tracks": [
+    {"name": "haze", "role": "pad", "register": "C3", "sound": {"engine": "GRAIN", "preset": "LOFI CLOUD",
+      "params": {"level": 92, "atk": 60, "rel": 70, "TONE": 70, "chor": 30, "dly": 10, "rev": 50, "pan": -6}}},
+    {"name": "bass", "role": "bass", "register": "C2", "sound": {"engine": "PHASE", "preset": "CZ BASS",
+      "params": {"level": 106, "DCW": 28, "glide": 20, "rev": 4}}},
+    {"name": "keys", "role": "lead", "register": "C4", "sound": {"engine": "DIGITAL", "preset": "DX RHODES",
+      "params": {"level": 104, "IDX": 60, "chor": 36, "dly": 24, "rev": 40, "pan": 8}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "VINTAGE", "params": {"level": 120, "rev": 20}}}
+  ],
+  "fx": {"dtime": "8T", "dfdbk": 42, "dcolor": 38, "dmix": 66, "rsize": 100, "rdamp": 76, "crate": 12, "cdepth": 60,
+         "dust": 30, "duck": 10},
+  "patterns": {
+    "h_bar": {"track": "haze", "div": "1/4", "steps": "[c1 c5 c3'] - - -"},
+    "h_long": {"track": "haze", "div": "1/4", "steps": "[c1 c5 c3'] - - - | - - - -"},
+    "b_static": {"track": "bass", "steps": "c1 - - - - - - c1 - - c5, - . . c1' ."},
+    "b_soft": {"track": "bass", "div": "1/4", "steps": "c1 - - ."},
+    "dr_static": {"track": "drums", "lanes": {
+      "kick":   "X.....x...x.....|X.......x..x....",
+      "snare":  "....X.......X...|....X.......X...",
+      "hat":    "x.x.xsx.x.x.xsx.|x.x.xsx.x.x.xsxs",
+      "conga":  "..........s.....|......s......s..",
+      "shaker": "..s...s...s...s.|..s...s...s.s.s."}},
+    "dr_soft": {"track": "drums", "lanes": {
+      "kick":   "x...............|x.......x.......",
+      "hat":    "..s...s...s...s.|..s...s...s...s.",
+      "conga":  "........s.......|..........s....."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.......x.......",
+      "snare":  "....x.......x.g.",
+      "hat":    "x.x.x.x.x.x.....",
+      "conga":  "..........s.s..s"}}
+  },
+  "progressions": {
+    "tuning": ["I:8", "II:8"],
+    "signal": ["I:4", "iii:4", "vi:4", "II:4"],
+    "broadcast": ["vi:4", "II:4", "V:4", "I:4"],
+    "snow": ["iii:8", "II:8"]
+  },
+  "scenes": {
+    "A": {"name": "TUNING IN", "role": "intro", "progression": "tuning", "energy": "e_soft",
+          "params": {"haze.level": 87, "haze.rev": 60}, "patterns": {"haze": "h_long", "bass": "b_soft", "drums": "dr_soft"}},
+    "B": {"name": "LOW SIGNAL", "role": "main", "progression": "signal", "energy": "e_main", "fill": "dr_fill",
+          "patterns": {"haze": "h_bar", "bass": "b_static", "drums": {"GROOVE": "dr_static", "BREAK": "dr_soft"}}},
+    "C": {"name": "BROADCAST", "role": "lift", "progression": "broadcast", "energy": "e_lift", "fill": "dr_fill",
+          "transition": 2, "params": {"haze.TONE": 82}, "patterns": {"haze": "h_bar", "bass": "b_static", "drums": "dr_static"}},
+    "D": {"name": "SNOWFALL", "role": "breakdown", "progression": "snow", "energy": "e_soft", "transition": 2,
+          "params": {"haze.level": 87, "haze.rev": 66, "keys.dly": 34}, "fx": {"dfdbk": 50},
+          "patterns": {"haze": "h_long", "bass": "b_soft", "drums": "dr_soft"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "SHIMMER": {"sounds": {"haze": "VIBE HAZE"}, "params": {"keys.dly": 32}, "fx": {"dust": 22, "dfdbk": 48},
+                "energy_bias": -0.04, "macros": {"SPACE": 0.62, "MOTION": 0.58}},
+    "CLEAR": {"params": {"keys.IDX": 72}, "fx": {"dust": 14, "dcolor": 52, "rdamp": 62},
+              "energy_bias": 0.04, "macros": {"COLOR": 0.62}},
+    "DIM": {"sounds": {"drums": "DEEP"}, "params": {"keys.IDX": 44, "drums.level": 30}, "fx": {"filt": -10, "dcolor": 28, "dust": 34},
+            "macros": {"COLOR": 0.38}},
+    "SPARSE": {"swap": {"b_static": "b_soft"}, "energy_bias": -0.08, "macros": {"MOTION": 0.42}}
+  },
+  "macros": {
+    "COLOR": [{"to": "haze.@BRIGHT", "min": -20, "max": 24},
+              {"to": "keys.@BRIGHT", "min": -18, "max": 16},
+              {"to": "g.dcolor", "min": -20, "max": 20},
+              {"to": "g.dust", "min": 8, "max": -10}],
+    "MOTION": [{"to": "haze.@MOVE", "min": -20, "max": 36, "smooth": "slow"},
+               {"to": "haze.@DETUNE", "min": -8, "max": 24, "smooth": "slow"},
+               {"to": "g.crate", "min": -8, "max": 14, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -30, "max": 22}],
+    "SPACE": [{"to": "haze+keys.rev", "min": -24, "max": 26, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 20},
+              {"to": "g.dfdbk", "min": -22, "max": 16},
+              {"to": "keys.dly", "min": -14, "max": 24},
+              {"to": "drums.rev", "min": -14, "max": 18}],
+    "ENERGY": [{"to": "haze.level", "min": 4, "max": -4},
+               {"to": "drums.level", "min": -10, "max": 6},
+               {"to": "bass.level", "min": -4, "max": 2},
+               {"to": "g.duck", "min": -8, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "haze.rev", "add": -12}, {"to": "g.drrev", "add": -14},
+                                                     {"to": "g.dfdbk", "add": -16}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "keys.@BRIGHT", "add": -8}, {"to": "g.dust", "add": -6}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "haze.@MOVE", "add": -20}, {"to": "g.cdepth", "add": -18}]}
+  ],
+  "energy": {
+    "e_soft": {"bands": [
+      {"from": 0.00, "layers": ["haze", "keys"]},
+      {"from": 0.36, "layers": ["haze", "bass", "keys"]},
+      {"from": 0.72, "layers": "all", "drums": ["kick", "hat", "conga"]}]},
+    "e_main": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["haze", "keys"]},
+      {"from": 0.20, "layers": ["haze", "bass", "keys"]},
+      {"from": 0.34, "layers": "all", "drums": ["kick", "snare", "hat"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.74, "layers": "all", "fills": true}]},
+    "e_lift": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["haze", "bass", "keys"]},
+      {"from": 0.20, "layers": "all", "drums": ["kick", "snare", "hat"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.34, "layers": "all", "fills": true}]}
+  },
+  "smart_keys": {"track": "keys", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord+9",
+                 "tonic": "Eb4", "range": ["F3", "Bb6"]},
+  "guard": {
+    "notes": {"keys": {"max_poly": 3, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["F1", "G3"]}},
+    "record": {"quantize": 0.55},
+    "sound": {"ranges": {"g.dust": [0, 40], "g.dfdbk": [0, 64], "g.duck": [0, 28]}, "max_level": 116, "max_dfdbk": 64,
+              "max_dust": 40},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4, "grain_dens": 84}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

@@ -1,0 +1,126 @@
+{
+  "notes": "Lo-fi, C minor, 74 BPM, heavily swung sixteenths (60.5 %). A dusty upright piano (DUSTY PNO) comping rootless ninth voicings (third, fifth, seventh, ninth) with a little answering figure of fifth and ninth, then the tenth, a deep sampled bass an octave down (DEEP BASS, written from C3 so it sounds from C2) on roots and low fifths, the player's breathy flute on the Smart Keys (LOFI FLUTE, minor pentatonic), and the GM kit through the DUST treatment (low-passed, eight-bit): a lazy boom-bap with swung ghost hats and, at the top of ENERGY, a sixteenth shaker like rain on the glass. The master carries the rain: DUST crackle, a dark damped room, a short echo. Harmony (every ninth diatonic, no v or ii, so the rootless voicings stay soft): A i7 VImaj7, two bars each; B i7 VImaj7 iv7 IIImaj7 VII7, the last two a bar shared; C the ii-V-I of the relative major (iv7 VII7 IIImaj7 VImaj7), the lift; D iv7 VImaj7, floating, never home. ENERGY adds the bass, then kick, snare and eighth hats, then the swung ghosts, the shaker and fills (DOWNPOUR's bias brings that rain in at the World's defaults); it never changes the swing, and the levels give a little back at the top. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "rainy_study",
+  "name": "RAINY STUDY",
+  "category": "LO-FI",
+  "blurb": "Rain on glass, late tea",
+  "tempo": {"bpm": 74, "min": 66, "max": 82},
+  "key": {"root": "C", "scale": "MIN"},
+  "swing": 42,
+  "tracks": [
+    {"name": "piano", "role": "keys", "register": "C3", "sound": {"engine": "SAMPLE", "preset": "DUSTY PNO",
+      "params": {"level": 83, "CUT": 92, "chor": 14, "dly": 12, "rev": 34, "pan": -8}}},
+    {"name": "bass", "role": "bass", "register": "C3", "sound": {"engine": "SAMPLE", "preset": "DEEP BASS",
+      "params": {"level": 91, "DRV": 16, "rev": 4}}},
+    {"name": "flute", "role": "lead", "register": "C4", "sound": {"engine": "SAMPLE", "preset": "LOFI FLUTE",
+      "params": {"level": 86, "dly": 30, "rev": 44, "pan": 10}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "DUST", "params": {"level": 44, "rev": 18}}}
+  ],
+  "fx": {"dtime": "1/8", "dfdbk": 40, "dcolor": 36, "dmix": 66, "rsize": 90, "rdamp": 80, "crate": 14, "cdepth": 44,
+         "dust": 28, "duck": 8},
+  "patterns": {
+    "p_main": {"track": "piano", "steps": "[c3 c5 c7 c9] - - - - - . [c3 c5 c7 c9]_ - - - - - - . . | [c3 c5 c7 c9]_ - - - - - - - . . [c5 c9]_ - - - [c3']_ ."},
+    "p_drip": {"track": "piano", "steps": "[c3 c5 c7 c9]_ - - - - - - - - - - - - - - - | . . . . . . [c5 c9]_ - - - - - . . . ."},
+    "b_main": {"track": "bass", "steps": "c1 - - - - - - . . . c1_ - . . c5,_ -"},
+    "b_soft": {"track": "bass", "div": "1/4", "steps": "c1 - - ."},
+    "dr_main": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....|x......s..x.....",
+      "snare":  "....X.......X...|....X.......X...",
+      "hat":    "x.xgx.x.x.xgx.x.|x.x.x.xgx.x.x.xg",
+      "open":   "................|..............s.",
+      "shaker": "gsgsgsgsgsgsgsgs|gsgsgsgsgsgsgsgs"}},
+    "dr_soft": {"track": "drums", "lanes": {
+      "kick":   "x...............|........x.......",
+      "rim":    "....s.......s...|....s.......s...",
+      "hat":    "..g...g...g...g.|..g...g...g...gg"}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.........x.....",
+      "snare":  "....X.......X.g.",
+      "hat":    "x.x.x.x.x.x.....",
+      "tomlo":  ".............s.s"}}
+  },
+  "progressions": {
+    "drizzle": ["i7:8", "VImaj7:8"],
+    "study": ["i7:4", "VImaj7:4", "iv7:4", "IIImaj7:2", "VII7:2"],
+    "window": ["iv7:4", "VII7:4", "IIImaj7:4", "VImaj7:4"],
+    "puddles": ["iv7:8", "VImaj7:8"]
+  },
+  "scenes": {
+    "A": {"name": "DRIZZLE", "role": "intro", "progression": "drizzle", "energy": "e_drizzle",
+          "params": {"piano.rev": 42}, "patterns": {"piano": "p_drip", "bass": "b_soft", "drums": "dr_soft"}},
+    "B": {"name": "STUDY", "role": "main", "progression": "study", "energy": "e_study", "fill": "dr_fill",
+          "patterns": {"piano": "p_main", "bass": "b_main", "drums": {"GROOVE": "dr_main", "BREAK": "dr_soft"}}},
+    "C": {"name": "WINDOW", "role": "lift", "progression": "window", "energy": "e_window", "fill": "dr_fill",
+          "transition": 2, "params": {"piano.CUT": 100}, "patterns": {"piano": "p_main", "bass": "b_main", "drums": "dr_main"}},
+    "D": {"name": "PUDDLES", "role": "breakdown", "progression": "puddles", "energy": "e_puddles", "transition": 2,
+          "params": {"piano.rev": 46, "flute.dly": 40}, "fx": {"dfdbk": 48},
+          "patterns": {"piano": "p_drip", "bass": "b_soft", "drums": "dr_soft"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "DOWNPOUR": {"params": {"piano.rev": 40, "drums.rev": 26}, "fx": {"dust": 34, "rsize": 100, "cdepth": 56},
+                 "energy_bias": 0.2, "macros": {"SPACE": 0.6}},
+    "DREAMY": {"sounds": {"piano": "LOFI KEYS"}, "params": {"piano.dly": 24, "flute.dly": 42},
+               "fx": {"dfdbk": 50}, "energy_bias": -0.04, "macros": {"SPACE": 0.66, "MOTION": 0.6}},
+    "MIDNIGHT": {"sounds": {"drums": "DEEP"}, "params": {"piano.CUT": 76, "flute.CUT": 84}, "fx": {"filt": -8, "dcolor": 28},
+                 "macros": {"COLOR": 0.4}},
+    "SPARSE": {"swap": {"p_main": "p_drip"}, "energy_bias": -0.08, "macros": {"MOTION": 0.4}}
+  },
+  "macros": {
+    "COLOR": [{"to": "piano.@BRIGHT", "min": -24, "max": 16},
+              {"to": "flute.@BRIGHT", "min": -24, "max": 14},
+              {"to": "g.dcolor", "min": -20, "max": 20},
+              {"to": "g.dust", "min": 8, "max": -8}],
+    "MOTION": [{"to": "piano.ld_pit", "min": 0, "max": 1, "curve": "late", "smooth": "slow"},
+               {"to": "flute.ld_pit", "min": -1, "max": 1, "smooth": "slow"},
+               {"to": "g.crate", "min": -8, "max": 12, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -28, "max": 24}],
+    "SPACE": [{"to": "piano+flute.rev", "min": -24, "max": 30, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 24},
+              {"to": "g.dfdbk", "min": -24, "max": 22},
+              {"to": "piano+flute.dly", "min": -12, "max": 24},
+              {"to": "drums.rev", "min": -14, "max": 18}],
+    "ENERGY": [{"to": "piano.level", "min": 4, "max": -4},
+               {"to": "drums.level", "min": -10, "max": 6},
+               {"to": "bass.level", "min": -4, "max": 2},
+               {"to": "g.duck", "min": -8, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -4}, {"to": "g.drrev", "add": -14},
+                                                     {"to": "g.dfdbk", "add": -18}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "piano.@BRIGHT", "add": -8}, {"to": "g.dust", "add": -6}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "flute.ld_pit", "add": -1}, {"to": "g.cdepth", "add": -18}]}
+  ],
+  "energy": {
+    "e_drizzle": {"bands": [
+      {"from": 0.00, "layers": ["piano", "flute"]},
+      {"from": 0.36, "layers": ["piano", "bass", "flute"]},
+      {"from": 0.62, "layers": "all", "drums": ["kick", "rim", "hat"]}]},
+    "e_study": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["piano", "flute"]},
+      {"from": 0.20, "layers": ["piano", "bass", "flute"]},
+      {"from": 0.34, "layers": "all", "drums": ["kick", "snare", "hat", "open"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.62, "layers": "all", "fills": true}]},
+    "e_window": {"density_lanes": ["hat", "shaker"], "bands": [
+      {"from": 0.00, "layers": ["piano", "bass", "flute"]},
+      {"from": 0.22, "layers": "all", "drums": ["kick", "snare", "hat"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.34, "layers": "all", "density": "x.x.x.x.x.x.x.x.", "fills": true},
+      {"from": 0.62, "layers": "all", "fills": true}]},
+    "e_puddles": {"bands": [
+      {"from": 0.00, "layers": ["piano", "flute"]},
+      {"from": 0.34, "layers": ["piano", "bass", "flute"]},
+      {"from": 0.80, "layers": "all", "drums": ["kick", "rim"]}]}
+  },
+  "smart_keys": {"track": "flute", "mode": "melody", "melody_scale": "MPEN", "white": "scale", "black": "chord+9",
+                 "tonic": "C4", "range": ["Eb3", "G6"]},
+  "guard": {
+    "notes": {"flute": {"max_poly": 3, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["D2", "C4"]}},
+    "record": {"quantize": 0.55},
+    "sound": {"ranges": {"g.dust": [0, 40], "g.dfdbk": [0, 76], "g.duck": [0, 28]}, "max_level": 116, "max_dfdbk": 76,
+              "max_dust": 40},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

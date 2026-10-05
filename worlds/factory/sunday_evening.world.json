@@ -1,0 +1,118 @@
+{
+  "notes": "Lo-fi, B-flat major, 68 BPM, a deep triplet shuffle (swing 60: the off sixteenths at 65 %). A jazz organ (WHEEL JAZZ ORGAN, its slow rotor and third-harmonic percussion) breathing three-note shells (third, seventh, ninth) on beats one and three; an upright bass (UP BASS) in a two-feel from B-flat 1, root and fifth, the second bar walking up through the third; the player's Rhodes on the Smart Keys (RHODES, its tremolo; major pentatonic from B-flat 3); and the JAZZ kit: feathered kick, brushes on two and four, a ride with a swung skip, the hi-hat foot. The master is warm and almost clean: a triplet echo that locks to the shuffle, a big soft room, a touch of DUST. Harmony (no iii or vii, so every ninth is major): A Imaj7 vi7, two bars each; B Imaj7 IVmaj7, vi7 and ii7 a bar shared, V7; C IVmaj7 V7 vi7 Imaj7, climbing; D IV6 Imaj7, the amen. MOTION stops the organ's slow rotor at the bottom and, from home up, deepens the Rhodes tremolo and the chorus (the rotor never reaches fast). ENERGY adds the bass, then kick, brushes and the ride in eighths, then the ride's skip, the hi-hat foot and fills; it never touches the swing, and the levels give a little back at the top. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "sunday_evening",
+  "name": "SUNDAY EVENING",
+  "category": "LO-FI",
+  "blurb": "Organ, brushes, porch",
+  "tempo": {"bpm": 68, "min": 60, "max": 78},
+  "key": {"root": "Bb", "scale": "MAJ"},
+  "swing": 60,
+  "tracks": [
+    {"name": "organ", "role": "chords", "register": "F2", "sound": {"engine": "WHEEL", "preset": "JAZZ ORGAN",
+      "params": {"level": 88, "CLICK": 30, "DRV": 4, "ROTR": "SLOW", "rev": 34, "pan": -8}}},
+    {"name": "bass", "role": "bass", "register": "A#1", "sound": {"engine": "SAMPLE", "preset": "UP BASS",
+      "params": {"level": 92, "rev": 8}}},
+    {"name": "rhodes", "role": "lead", "register": "C4", "sound": {"engine": "DIGITAL", "preset": "RHODES",
+      "params": {"level": 106, "chor": 30, "dly": 22, "rev": 36, "pan": 8}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "JAZZ", "params": {"level": 120, "rev": 26}}}
+  ],
+  "fx": {"dtime": "8T", "dfdbk": 38, "dcolor": 40, "dmix": 60, "rsize": 96, "rdamp": 72, "crate": 20, "cdepth": 30,
+         "dust": 12, "duck": 6},
+  "patterns": {
+    "o_main": {"track": "organ", "steps": "[c3 c7 c9] - - - - - - . [c3 c7 c9]_ - - - - - - ."},
+    "o_hold": {"track": "organ", "div": "1/4", "steps": "[c3 c7 c9]_ - - -"},
+    "b_two": {"track": "bass", "div": "1/8", "steps": "c1 - - - c5 - - - | c1 - - - c3 - c5 -"},
+    "dr_sun": {"track": "drums", "lanes": {
+      "kick":   "X.........x.....|X.......x.......",
+      "snare":  "....X.......X...|....X.......X..g",
+      "pedal":  "....x.......x...|....x.......x...",
+      "ride":   "X.x.X.xsX.x.X.xs|X.x.X.xsX.x.X.xs"}},
+    "dr_brush": {"track": "drums", "lanes": {
+      "kick":   "x...............|x...............",
+      "snare":  "....g.......g...|....g.......g.g.",
+      "ride":   "s...s...s...s...|s...s...s...s..."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.......x.......",
+      "snare":  "....x.....g.x.g.",
+      "ride":   "x.s.x.s.x.s.....",
+      "tomlo":  ".............s.s"}}
+  },
+  "progressions": {
+    "sunset": ["Imaj7:8", "vi7:8"],
+    "porch": ["Imaj7:4", "IVmaj7:4", "vi7:2", "ii7:2", "V7:4"],
+    "dance": ["IVmaj7:4", "V7:4", "vi7:4", "Imaj7:4"],
+    "amen": ["IV6:8", "Imaj7:8"]
+  },
+  "scenes": {
+    "A": {"name": "SUNSET", "role": "intro", "progression": "sunset", "energy": "e_soft",
+          "params": {"organ.rev": 42}, "patterns": {"organ": "o_hold", "bass": "b_two", "drums": "dr_brush"}},
+    "B": {"name": "PORCH", "role": "main", "progression": "porch", "energy": "e_porch", "fill": "dr_fill",
+          "patterns": {"organ": "o_main", "bass": "b_two", "drums": {"GROOVE": "dr_sun", "BREAK": "dr_brush"}}},
+    "C": {"name": "SLOW DANCE", "role": "lift", "progression": "dance", "energy": "e_dance", "fill": "dr_fill",
+          "transition": 2, "params": {"organ.TOP": 2}, "patterns": {"organ": "o_main", "bass": "b_two", "drums": "dr_sun"}},
+    "D": {"name": "GOODNIGHT", "role": "breakdown", "progression": "amen", "energy": "e_soft", "transition": 2,
+          "params": {"organ.rev": 48, "rhodes.dly": 32}, "fx": {"dfdbk": 46},
+          "patterns": {"organ": "o_hold", "bass": "b_two", "drums": "dr_brush"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "GOSPEL": {"sounds": {"organ": "GOSPEL"}, "params": {"organ.rev": 44}, "fx": {"rsize": 104},
+               "energy_bias": 0.04, "macros": {"SPACE": 0.6}},
+    "MELLOW": {"sounds": {"drums": "DEEP"}, "params": {"rhodes.IDX": 18, "drums.level": 52}, "fx": {"filt": -8, "dcolor": 30, "dust": 18},
+               "macros": {"COLOR": 0.4}},
+    "LATE": {"swap": {"o_main": "o_hold"}, "params": {"rhodes.dly": 30}, "energy_bias": -0.08,
+             "macros": {"SPACE": 0.62, "MOTION": 0.4}}
+  },
+  "macros": {
+    "COLOR": [{"to": "organ.@BRIGHT", "min": -4, "max": 3},
+              {"to": "rhodes.@BRIGHT", "min": -14, "max": 16},
+              {"to": "g.dcolor", "min": -18, "max": 18},
+              {"to": "g.rdamp", "min": 12, "max": -14}],
+    "MOTION": [{"to": "organ.@MOVE", "min": -1, "max": 0},
+               {"to": "rhodes.ld_amp", "min": -16, "max": 18, "smooth": "slow"},
+               {"to": "g.crate", "min": -10, "max": 12, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -20, "max": 20}],
+    "SPACE": [{"to": "organ+rhodes.rev", "min": -22, "max": 28, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 20},
+              {"to": "g.dfdbk", "min": -22, "max": 16},
+              {"to": "rhodes.dly", "min": -14, "max": 22},
+              {"to": "drums.rev", "min": -14, "max": 16}],
+    "ENERGY": [{"to": "organ.level", "min": 4, "max": -4},
+               {"to": "drums.level", "min": -10, "max": 6},
+               {"to": "bass.level", "min": -4, "max": 2},
+               {"to": "g.duck", "min": -6, "max": 8}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -6}, {"to": "g.drrev", "add": -14},
+                                                     {"to": "g.dfdbk", "add": -16}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "rhodes.@BRIGHT", "add": -8}, {"to": "organ.@DRIVE", "add": -4}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "rhodes.ld_amp", "add": -12}, {"to": "g.cdepth", "add": -16}]}
+  ],
+  "energy": {
+    "e_soft": {"bands": [
+      {"from": 0.00, "layers": ["organ", "rhodes"]},
+      {"from": 0.36, "layers": ["organ", "bass", "rhodes"]},
+      {"from": 0.70, "layers": "all", "drums": ["kick", "snare", "ride"]}]},
+    "e_porch": {"density_lanes": ["ride"], "bands": [
+      {"from": 0.00, "layers": ["organ", "rhodes"]},
+      {"from": 0.20, "layers": ["organ", "bass", "rhodes"]},
+      {"from": 0.34, "layers": "all", "drums": ["kick", "snare", "ride"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.74, "layers": "all", "fills": true}]},
+    "e_dance": {"density_lanes": ["ride"], "bands": [
+      {"from": 0.00, "layers": ["organ", "bass", "rhodes"]},
+      {"from": 0.20, "layers": "all", "drums": ["kick", "snare", "ride"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.34, "layers": "all", "fills": true}]}
+  },
+  "smart_keys": {"track": "rhodes", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord+9",
+                 "tonic": "Bb3", "range": ["C3", "G6"]},
+  "guard": {
+    "notes": {"rhodes": {"max_poly": 3, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["F1", "C3"]}},
+    "record": {"quantize": 0.5},
+    "sound": {"ranges": {"g.dust": [0, 30], "g.dfdbk": [0, 64], "g.duck": [0, 24]}, "max_level": 116, "max_dfdbk": 64,
+              "max_dust": 30},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

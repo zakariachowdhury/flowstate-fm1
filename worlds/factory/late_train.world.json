@@ -1,0 +1,121 @@
+{
+  "notes": "Lo-fi, E dorian, 90 BPM, almost straight (swing 12: 53 %). A night train: a plucked, guitar-like phase-distortion voice (PHASE RESO PLUCK, the DCW closed a little, a long decay and no sustain, each note ringing into the next) fingerpicking every chord in a rolling dotted-eighth figure, root, fifth, ninth, fifth, tenth, seventh (three against four: the rhythm of the rails), and strumming open chords in A and D; a round sine bass (SUB BASS) on every beat, one and three accented, a fifth below to lead into the bar; the player's Wurlitzer on the Smart Keys (WURLI) over a dorian pentatonic (1 2 b3 5 6: the bright sixth, no avoid notes); and the BOOMBAP kit at a low level, its hats and shaker in a rolling chug. The master is a small carriage: a short sixteenth slapback, a little room, a touch of DUST and ducking. Harmony (no ii or vi, so every ninth in the picking is major): A i7 v7, two bars each; B i7 VIImaj7 IIImaj7 IV7; C IIImaj7 IV7 v7 VIImaj7, climbing and never home (the lift); D IV7 i7, the dorian sigh. At the lowest ENERGY the guitar picks only its eighth-note strings; ENERGY then lets the whole figure through and adds the bass, then kick, snare and eighth hats with the shaker, then the sixteenth chug and fills; it never touches the swing, and the levels give a little back at the top. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "late_train",
+  "name": "LATE TRAIN",
+  "category": "LO-FI",
+  "blurb": "Last carriage, city glow",
+  "tempo": {"bpm": 90, "min": 80, "max": 100},
+  "key": {"root": "E", "scale": "DOR"},
+  "swing": 12,
+  "tracks": [
+    {"name": "guitar", "role": "chords", "register": "C3", "sound": {"engine": "PHASE", "preset": "RESO PLUCK",
+      "params": {"level": 104, "DCW": 54, "dec": 84, "sus": 0, "rel": 50, "chor": 22, "dly": 18, "rev": 26, "pan": -10}}},
+    {"name": "bass", "role": "bass", "register": "C2", "sound": {"engine": "ANALOG", "preset": "SUB BASS",
+      "params": {"level": 74, "rev": 0}}},
+    {"name": "wurli", "role": "lead", "register": "C4", "sound": {"engine": "DIGITAL", "preset": "WURLI",
+      "params": {"level": 112, "chor": 24, "dly": 22, "rev": 34, "pan": 10}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "BOOMBAP", "params": {"level": 58, "rev": 14}}}
+  ],
+  "fx": {"dtime": "1/16", "dfdbk": 28, "dcolor": 48, "dmix": 52, "rsize": 72, "rdamp": 70, "crate": 30, "cdepth": 30,
+         "dust": 16, "duck": 14},
+  "patterns": {
+    "g_pick": {"track": "guitar", "steps": "c1 - - c5 - - c9 - - c5 - - c3' - c7 -"},
+    "g_slow": {"track": "guitar", "div": "1/8", "steps": "[c1 c5 c3'] - - - - - [c7 c9]_ -"},
+    "b_rail": {"track": "bass", "steps": "c1! - - . c1 - . . c1! - - . c1 - c5, ."},
+    "b_hold": {"track": "bass", "div": "1/4", "steps": "c1 - c1_ -"},
+    "dr_rail": {"track": "drums", "lanes": {
+      "kick":   "x......x..x.....|x.........x.....",
+      "snare":  "....X.......X...|....X.......X...",
+      "hat":    "xsxsxsxsxsxsxsxs|xsxsxsxsxsxsxsxs",
+      "open":   "................|..............s.",
+      "shaker": "..s...s...s...s.|..s...s...s...s."}},
+    "dr_lite": {"track": "drums", "lanes": {
+      "kick":   "x.......x.......|x.......x.......",
+      "rim":    "....s.......s...|....s.......s...",
+      "hat":    "s.s.s.s.s.s.s.s.|s.s.s.s.s.s.s.s."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.......x.......",
+      "snare":  "....X.......X.gg",
+      "hat":    "x.x.x.x.x.x.....",
+      "tomhi":  "..........g.....",
+      "tomlo":  "...........s...."}}
+  },
+  "progressions": {
+    "platform": ["i7:8", "v7:8"],
+    "line": ["i7:4", "VIImaj7:4", "IIImaj7:4", "IV7:4"],
+    "lights": ["IIImaj7:4", "IV7:4", "v7:4", "VIImaj7:4"],
+    "stop": ["IV7:8", "i7:8"]
+  },
+  "scenes": {
+    "A": {"name": "PLATFORM", "role": "intro", "progression": "platform", "energy": "e_soft",
+          "params": {"guitar.level": 104, "guitar.atk": 6, "guitar.rev": 34}, "patterns": {"guitar": "g_slow", "bass": "b_hold", "drums": "dr_lite"}},
+    "B": {"name": "NIGHT LINE", "role": "main", "progression": "line", "energy": "e_line", "fill": "dr_fill",
+          "patterns": {"guitar": "g_pick", "bass": "b_rail", "drums": {"GROOVE": "dr_rail", "BREAK": "dr_lite"}}},
+    "C": {"name": "CITY LIGHT", "role": "lift", "progression": "lights", "energy": "e_lift", "fill": "dr_fill",
+          "transition": 2, "params": {"guitar.ed_flt": 10}, "patterns": {"guitar": "g_pick", "bass": "b_rail", "drums": "dr_rail"}},
+    "D": {"name": "LAST STOP", "role": "breakdown", "progression": "stop", "energy": "e_soft", "transition": 2,
+          "params": {"guitar.level": 104, "guitar.atk": 6, "guitar.rev": 40, "wurli.dly": 32}, "fx": {"dfdbk": 40},
+          "patterns": {"guitar": "g_slow", "bass": "b_hold", "drums": "dr_lite"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "EXPRESS": {"params": {"guitar.dec": 72, "drums.level": 66}, "fx": {"duck": 24}, "energy_bias": 0.08,
+                "macros": {"MOTION": 0.6}},
+    "NIGHT": {"sounds": {"drums": "DUST"}, "params": {"guitar.DCW": 34, "wurli.IDX": 44, "drums.level": 40},
+              "fx": {"filt": -10, "dcolor": 34, "dust": 24}, "macros": {"COLOR": 0.38}},
+    "SLEEPER": {"params": {"guitar.chor": 40, "guitar.rev": 36, "wurli.dly": 34}, "fx": {"rsize": 88, "crate": 18}, "energy_bias": -0.06,
+                "macros": {"SPACE": 0.64, "MOTION": 0.58}}
+  },
+  "macros": {
+    "COLOR": [{"to": "guitar.@BRIGHT", "min": -18, "max": 18},
+              {"to": "wurli.@BRIGHT", "min": -24, "max": 20},
+              {"to": "bass.@BRIGHT", "min": -20, "max": 0},
+              {"to": "g.dcolor", "min": -20, "max": 20}],
+    "MOTION": [{"to": "guitar.chor", "min": -16, "max": 30},
+               {"to": "wurli.ld_amp", "min": -12, "max": 20, "smooth": "slow"},
+               {"to": "g.crate", "min": -14, "max": 14, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -20, "max": 26}],
+    "SPACE": [{"to": "guitar+wurli.rev", "min": -20, "max": 30, "curve": "s"},
+              {"to": "g.rsize", "min": -26, "max": 30},
+              {"to": "g.dfdbk", "min": -20, "max": 22},
+              {"to": "guitar+wurli.dly", "min": -12, "max": 24},
+              {"to": "drums.rev", "min": -10, "max": 18}],
+    "ENERGY": [{"to": "guitar.level", "min": 4, "max": -4},
+               {"to": "drums.level", "min": -10, "max": 6},
+               {"to": "bass.level", "min": -4, "max": 2},
+               {"to": "g.duck", "min": -10, "max": 8}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "guitar.dly", "add": -10}, {"to": "g.drrev", "add": -12},
+                                                     {"to": "g.dfdbk", "add": -16}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "guitar.@BRIGHT", "add": -8}, {"to": "wurli.@BRIGHT", "add": -6}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "guitar.chor", "add": -16}, {"to": "g.cdepth", "add": -18}]}
+  ],
+  "energy": {
+    "e_soft": {"bands": [
+      {"from": 0.00, "layers": ["guitar", "wurli"]},
+      {"from": 0.36, "layers": ["guitar", "bass", "wurli"]},
+      {"from": 0.72, "layers": "all", "drums": ["kick", "rim", "hat"]}]},
+    "e_line": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["guitar", "wurli"], "guitar": "x.x.x.x.x.x.x.x."},
+      {"from": 0.20, "layers": ["guitar", "bass", "wurli"]},
+      {"from": 0.34, "layers": "all", "drums": ["kick", "snare", "hat", "shaker"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.74, "layers": "all", "fills": true}]},
+    "e_lift": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["guitar", "bass", "wurli"]},
+      {"from": 0.20, "layers": "all", "drums": ["kick", "snare", "hat", "shaker"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.34, "layers": "all", "fills": true}]}
+  },
+  "smart_keys": {"track": "wurli", "mode": "melody", "melody_scale": [0, 2, 3, 7, 9], "white": "scale", "black": "chord+9",
+                 "tonic": "E4", "range": ["F#3", "B6"]},
+  "guard": {
+    "notes": {"wurli": {"max_poly": 3, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["E1", "B2"]}},
+    "record": {"quantize": 0.6},
+    "sound": {"ranges": {"g.dust": [0, 32], "g.dfdbk": [0, 64], "g.duck": [0, 32]}, "max_level": 116, "max_dfdbk": 64,
+              "max_dust": 32},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}

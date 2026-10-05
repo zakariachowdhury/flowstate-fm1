@@ -1,0 +1,121 @@
+{
+  "notes": "Lo-fi, D major, 86 BPM, lightly swung sixteenths (56 %). A worn cassette: CZ-style electric piano (PHASE SOFT KEYS) with a slow pitch wow, playing open drop voicings (root, fifth, seventh and the tenth on top, no ninths) on the downbeat, struck softly again on the second eighth of beat two and on the swung last sixteenth of beat three, so the top voice walks down B A G F# in B and climbs G A B in C; a soft FM bass (FM BASS, the index lowered): root, the fifth below, root, the third, and a swung last-sixteenth fifth that slides into each new bar; the player's vibraphone on the Smart Keys (major pentatonic); and the GM kit through the DEEP treatment (pitched down and rounded, like a tape played slow). The master carries the tape: a slow, deep chorus as the wobble, a quarter-note echo, a little DUST and ducking. Harmony: A vi7 IVmaj7, two bars each; B IVmaj7 iii7 ii7 Imaj7, a stepwise fall; C ii7 iii7 IVmaj7 V7, the same steps climbing (the lift); D ii7 Imaj7, slow. At low ENERGY the keys only strike each bar's downbeat; ENERGY then lets their offbeats through, adds the bass, then kick, snare and eighth hats, then the soft sixteenth hats, a shaker and fills; the swing never changes and the levels give a little back at the top. All material is original.",
+  "format": "flowstate-world/1",
+  "id": "tape_memory",
+  "name": "TAPE MEMORY",
+  "category": "LO-FI",
+  "blurb": "Warped keys, old summers",
+  "tempo": {"bpm": 86, "min": 76, "max": 96},
+  "key": {"root": "D", "scale": "MAJ"},
+  "swing": 24,
+  "tracks": [
+    {"name": "keys", "role": "keys", "register": "C3", "sound": {"engine": "PHASE", "preset": "SOFT KEYS",
+      "params": {"level": 82, "ld_pit": 1, "lrate": 24, "chor": 44, "dly": 10, "rev": 30, "pan": -6}}},
+    {"name": "bass", "role": "bass", "register": "C2", "sound": {"engine": "DIGITAL", "preset": "FM BASS",
+      "params": {"level": 98, "IDX": 22, "glide": 22, "rev": 4}}},
+    {"name": "vibes", "role": "lead", "register": "C4", "sound": {"engine": "SAMPLE", "preset": "VIBES",
+      "params": {"level": 90, "CUT": 108, "dly": 24, "rev": 40, "pan": 8}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "DEEP", "params": {"level": 42, "rev": 16}}}
+  ],
+  "fx": {"dtime": "1/4", "dfdbk": 34, "dcolor": 44, "dmix": 62, "rsize": 84, "rdamp": 66, "crate": 8, "cdepth": 84,
+         "dust": 18, "duck": 10},
+  "patterns": {
+    "k_tape": {"track": "keys", "steps": "[c1 c5 c7 c3'] - - - - . [c1 c5 c7 c3']_ - . . . [c1 c5 c7 c3']_ - - - ."},
+    "k_hold": {"track": "keys", "div": "1/4", "steps": "[c1 c5 c7 c3']_ - - - | . . [c7 c3']_ -"},
+    "b_tape": {"track": "bass", "steps": "c1 - - . . . c5, - c1 - . . c3 - . c5~"},
+    "b_hold": {"track": "bass", "div": "1/8", "steps": "c1 - - - c5, - - ."},
+    "dr_tape": {"track": "drums", "lanes": {
+      "kick":   "x.....x...x.....|x.........x..s..",
+      "snare":  "....X.......X...|....X.......X...",
+      "hat":    "x.xsx.x.x.xsx.x.|x.xsx.x.x.xsx.xs",
+      "rim":    "................|.......g........",
+      "shaker": "..g...g...g...gg|..g...g...g...g."}},
+    "dr_lite": {"track": "drums", "lanes": {
+      "kick":   "x.......x.......|x.......x.......",
+      "rim":    "....g.......g...|....g.......g...",
+      "hat":    "..s...s...s...s.|..s...s...s...s."}},
+    "dr_fill": {"track": "drums", "lanes": {
+      "kick":   "x.....x...x.....",
+      "snare":  "....X.......X.gg",
+      "hat":    "x.x.x.x.x.x.....",
+      "tomhi":  "..........g....."}}
+  },
+  "progressions": {
+    "rewind": ["vi7:8", "IVmaj7:8"],
+    "playback": ["IVmaj7:4", "iii7:4", "ii7:4", "Imaj7:4"],
+    "summer": ["ii7:4", "iii7:4", "IVmaj7:4", "V7:4"],
+    "fade": ["ii7:8", "Imaj7:8"]
+  },
+  "scenes": {
+    "A": {"name": "REWIND", "role": "intro", "progression": "rewind", "energy": "e_soft",
+          "params": {"keys.rev": 38}, "patterns": {"keys": "k_hold", "bass": "b_hold", "drums": "dr_lite"}},
+    "B": {"name": "PLAYBACK", "role": "main", "progression": "playback", "energy": "e_play", "fill": "dr_fill",
+          "patterns": {"keys": "k_tape", "bass": "b_tape", "drums": {"GROOVE": "dr_tape", "BREAK": "dr_lite"}}},
+    "C": {"name": "SUMMER", "role": "lift", "progression": "summer", "energy": "e_lift", "fill": "dr_fill",
+          "transition": 2, "params": {"keys.ed_flt": 12}, "patterns": {"keys": "k_tape", "bass": "b_tape", "drums": "dr_tape"}},
+    "D": {"name": "FADING", "role": "breakdown", "progression": "fade", "energy": "e_soft", "transition": 2,
+          "params": {"keys.rev": 44, "vibes.dly": 34}, "fx": {"dfdbk": 42},
+          "patterns": {"keys": "k_hold", "bass": "b_hold", "drums": "dr_lite"}}
+  },
+  "variations": {
+    "ORIGINAL": {},
+    "WARBLY": {"params": {"keys.ld_pit": 2, "keys.lrate": 18, "vibes.ld_pit": 1}, "fx": {"crate": 6, "cdepth": 100, "dust": 24},
+               "macros": {"MOTION": 0.62}},
+    "SUNNY": {"params": {"keys.DCW": 26, "vibes.CUT": 112}, "fx": {"dust": 12, "dcolor": 56},
+              "energy_bias": 0.04, "macros": {"COLOR": 0.6}},
+    "WORN": {"sounds": {"drums": "DUST"}, "params": {"keys.DCW": 48, "vibes.CUT": 82, "drums.level": 46},
+             "fx": {"filt": -10, "dust": 28, "dcolor": 32}, "macros": {"COLOR": 0.38}},
+    "SPARSE": {"swap": {"k_tape": "k_hold"}, "energy_bias": -0.08, "macros": {"SPACE": 0.58}}
+  },
+  "macros": {
+    "COLOR": [{"to": "keys.@BRIGHT", "min": 22, "max": -20},
+              {"to": "vibes.@BRIGHT", "min": -30, "max": 14},
+              {"to": "bass.@BRIGHT", "min": -8, "max": 8},
+              {"to": "g.dcolor", "min": -20, "max": 20}],
+    "MOTION": [{"to": "keys.ld_pit", "min": -1, "max": 1, "smooth": "slow"},
+               {"to": "keys.lrate", "min": -12, "max": 12, "smooth": "slow"},
+               {"to": "g.crate", "min": -6, "max": 10, "smooth": "slow"},
+               {"to": "g.cdepth", "min": -40, "max": 20}],
+    "SPACE": [{"to": "keys+vibes.rev", "min": -22, "max": 30, "curve": "s"},
+              {"to": "g.rsize", "min": -30, "max": 26},
+              {"to": "g.dfdbk", "min": -22, "max": 18},
+              {"to": "keys+vibes.dly", "min": -10, "max": 22},
+              {"to": "drums.rev", "min": -12, "max": 18}],
+    "ENERGY": [{"to": "keys.level", "min": 4, "max": -4},
+               {"to": "drums.level", "min": -10, "max": 6},
+               {"to": "bass.level", "min": -4, "max": 2},
+               {"to": "g.duck", "min": -8, "max": 10}]
+  },
+  "rules": [
+    {"if": {"SPACE": 0.75, "ENERGY": 0.75}, "then": [{"to": "bass.rev", "add": -4}, {"to": "g.drrev", "add": -12},
+                                                     {"to": "g.dfdbk", "add": -16}, {"to": "*.level", "add": -4}]},
+    {"if": {"COLOR": 0.75, "ENERGY": 0.75}, "then": [{"to": "vibes.@BRIGHT", "add": -8}, {"to": "g.dust", "add": -6}]},
+    {"if": {"MOTION": 0.75, "ENERGY": 0.75}, "then": [{"to": "keys.ld_pit", "add": -1}, {"to": "g.cdepth", "add": -20}]}
+  ],
+  "energy": {
+    "e_soft": {"bands": [
+      {"from": 0.00, "layers": ["keys", "vibes"]},
+      {"from": 0.36, "layers": ["keys", "bass", "vibes"]},
+      {"from": 0.72, "layers": "all", "drums": ["kick", "rim", "hat"]}]},
+    "e_play": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["keys", "vibes"], "keys": "x..............."},
+      {"from": 0.20, "layers": ["keys", "bass", "vibes"]},
+      {"from": 0.34, "layers": "all", "drums": ["kick", "snare", "hat", "rim"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.74, "layers": "all", "fills": true}]},
+    "e_lift": {"density_lanes": ["hat"], "bands": [
+      {"from": 0.00, "layers": ["keys", "bass", "vibes"]},
+      {"from": 0.20, "layers": "all", "drums": ["kick", "snare", "hat"], "density": "x.x.x.x.x.x.x.x."},
+      {"from": 0.34, "layers": "all", "fills": true}]}
+  },
+  "smart_keys": {"track": "vibes", "mode": "melody", "melody_scale": "PEN", "white": "scale", "black": "chord+9",
+                 "tonic": "D4", "range": ["E3", "E7"]},
+  "guard": {
+    "notes": {"vibes": {"max_poly": 3, "loop_follow": "snap", "avoid": "classic"}, "bass": {"range": ["E1", "D3"]}},
+    "record": {"quantize": 0.6},
+    "sound": {"ranges": {"g.dust": [0, 36], "g.dfdbk": [0, 60], "g.duck": [0, 30]}, "max_level": 116, "max_dfdbk": 60,
+              "max_dust": 36},
+    "arrangement": {"mute_change": "bar", "density_change": "beat", "fills_every": 4, "min_band_bars": 1},
+    "cpu": {"max_unison": 4}
+  },
+  "defaults": {"scene": "B", "variation": "ORIGINAL", "macros": [0.5, 0.5, 0.5, 0.5], "pulse": "OFF", "beat": "GROOVE"}
+}
