@@ -1146,3 +1146,192 @@ MIDI device was touched. Running the session is the owner's step.
 - Free flash first: the large font drawn as the small one doubled, pixel-identical, about 24 KB; then possibly
   compressed factory blobs.
 - Then 26 new Worlds across CINEMATIC, AMBIENT, SYNTHWAVE, LO-FI and GROOVE.
+
+## Phase 18: The factory library (2026-10-05)
+
+**Done.** The firmware carries 30 factory Worlds in five categories, every one validating clean, and the test suite
+plays them. Three steps: flash freed first (A), 26 Worlds composed (B), the library integrated (C).
+
+### Step A: room for the library
+
+- **FONT_L drawn as FONT_S doubled** (`gfx.c`, `gen_font.py`): FONT_L was FONT_S's glyphs upscaled 2× nearest-neighbour,
+  so its bitmap went and FONT_L became a descriptor over FONT_S's arrays with `scale = 2`. **−24,736 B.** Pixel-identical
+  by construction and checked: all 51 UI test screenshots byte-identical, every glyph 1–255 drawn both ways (6,258
+  drawings) hashing the same; faster on the target's −Os (2.49 against 6.84 µs a string).
+- **SLOOP's unreachable HOME screen removed** (`ui.c`, `ui_draw.c`, `ui_input.c`, `audio.c`): `ui.home` was only set
+  under `FELUCCA_ARRANGER=0`, which no build uses; its knobs, the oscilloscope and the audio interrupt's scope tap were
+  dead. **−904 B, −2 KB RAM.** `engine_t.macro[4]` stays (unused), so the engines are untouched.
+- **The factory set's budget** (`validate_world.py`): the app-slot room the code leaves, less an 8 KB code reserve
+  (design §11.1), each World counted as its blob rounded to 4 B plus its 8-byte index entry; it replaces Phase 16's
+  50 % share. With the four Worlds the image was 535,656 B, 45,908 B of the slot free, a budget of 43,680 B: about
+  1,400 B a World for a library of 30. Compressing the blobs (LZ4, 21–25 %) was measured and left out.
+
+**Commits:** `6a8ef32`, `2228c06`, `ea115e4`.
+
+### Step B: 26 new Worlds
+
+Composed in parallel by five agents from the guide ([worlds.md](worlds.md)), each checked with `tools/validate-world`
+and `world_render` as it was written. All material is original; each file's `notes` describe it scene by scene.
+
+- **AMBIENT.**
+  - DEEP SPACE (C♯ phrygian, 52 BPM): a sine sub, granular strings breathing open fifths, a distant choir on the
+    keys, a tribal heartbeat far away.
+  - FLOATING GLASS (A mixolydian, 72, all in triplets): an FM glass pad, triangle crystals floating into an 8T echo, a
+    glass-harmonica pluck on the keys.
+  - LOST SIGNAL (B dorian, 84, half time): flickering "ooh" ghosts, a chip beacon pinging into a dark echo, a Wurlitzer
+    on the keys, GLITCH ticks.
+  - MORNING HAZE (G lydian, 76): phase-distortion strings re-bowing at each chord, breathy flute grains, a marimba on
+    the keys, brushes.
+  - SLOW ORBIT (F minor, 60): an organ on its slow rotor, a felt piano circling a 7/8 figure against the bar, string
+    stabs on the keys.
+- **CINEMATIC.**
+  - DISTANT TOWERS (C phrygian, 58, half time): analog strings swelling in, a REESE drone breathing like machinery, a
+    mono CZ brass lead, INDUSTR hits.
+  - MEMORY ARCHIVE (E♭ lydian, 80, a triplet lilt): a phase-distortion electric piano loop with tape wow, a dusty
+    granular cloud, a breathy flute lead.
+  - NIGHT SIGNAL (E dorian, 120, half time): an FM bell beacon's three-pulse call with quarter-note echoes, a
+    galloping phase-distortion bass, a sine theremin on the keys.
+  - OFF-WORLD (B harmonic minor, 86): a high granular flute whistle, an FM bass in 3+3+3+3+2+2, a talkbox voice,
+    TRIBAL drums.
+  - SYNTHETIC DAWN (A mixolydian, 94): a Berlin-school sequencer on an A pedal, a synthetic choir, a sync lead, a
+    LinnDrum kit that arrives late.
+- **GROOVE.**
+  - CIRCUIT FUNK (E dorian electro-funk, 108): CZ brass shells around the kick, a square funk bass, a talkbox lead.
+  - LATE SHIFT (B♭ major nu-disco, 116): string stabs on the off-beats, an octave-jumping synth bass, a sync lead,
+    DISCO.
+  - MAGNETIC (G minor UK garage, 126, swing 32): organ ninth shells on a two-step, a reese bass, an FM bell with
+    triplet echoes, 909.
+  - METRO BEAT (A phrygian techno, 128): one-finger minor stabs with a dub echo, a rolling CZ bass pedal, a resonant
+    pluck lead.
+  - NIGHT PULSE (F minor deep house, 122): DX Rhodes ninths on the off-beats, a sampled deep bass, a soft "ooh" lead,
+    HOUSE.
+  - SOFT MACHINE (D lydian downtempo, 96): a CZ string pad, a round FM bass, a marimba lead over a broken AFRO beat.
+- **LO-FI.**
+  - LATE TRAIN (E dorian, 90): a fingerpicked resonant-pluck guitar, a sub bass, Wurlitzer keys, BOOMBAP.
+  - RAINY STUDY (C minor, 74, heavy swing): a dusty upright's ninth voicings, a deep sampled bass, a flute lead, DUST.
+  - SOFT STATIC (E♭ lydian, 78): a granular piano cloud, a mellow CZ bass, DX Rhodes keys, VINTAGE.
+  - SUNDAY EVENING (B♭ major, 68, a triplet shuffle): a jazz organ, an upright bass in two, Rhodes keys, JAZZ brushes.
+  - TAPE MEMORY (D major, 86): a worn CZ electric piano with wow, an FM bass, vibes on the keys, DEEP.
+- **SYNTHWAVE.**
+  - ARCADE '89 (G dorian chiptune, 128): a chip arpeggio with octave warble, a GB triangle bass, a 12.5 % pulse lead,
+    CHIP.
+  - CASSETTE DREAM (B♭ major chillwave, 82): a vocal pad pumped by the kick, a sine bass, a gliding lead.
+  - NEON HIGHWAY (F♯ minor outrun, 116): a saw-pluck arpeggio, a galloping CZ bass, a sync lead, 909.
+  - SPACE STATION (C lydian cosmic electro, 106): FM bells through a long echo, an FM bass, a talkbox robot.
+  - VHS SUNSET (D major, 92): DX Rhodes sevenths, a funk bass with octave pops, a CZ brass lead, 80S.
+
+The table of all 30 (key, tempo, Smart Keys, blob size): [worlds.md §19](worlds.md#19-factory-worlds).
+
+### Step C: integration
+
+The suite had only ever played the four demo Worlds. Run over all 30 it found what the authors' own checks could not.
+
+**World data** (the source files; every change re-validated):
+- **Smart Keys ranges** (19 Worlds). The 27 keys must sit inside `range` at OCT 0 (design 4.1, Phase 6; `smartkeys_test`
+  checks it), else the firmware folds the outer ones back and the keyboard stops climbing (the authors' "OCT does not
+  move the lowest key up"). The black keys climb one chord tone a key, to about two octaves and a 7th above the tonic.
+  The ranges were widened to hold the keys (CASSETTE DREAM, CIRCUIT FUNK, DISTANT TOWERS, LOST SIGNAL, MAGNETIC, MEMORY
+  ARCHIVE, MORNING HAZE, NEON HIGHWAY, NIGHT PULSE, OFF-WORLD, SLOW ORBIT, SOFT MACHINE, SPACE STATION, VHS SUNSET,
+  ARCADE '89); four Worlds whose keys would have climbed past C7 moved their tonic down an octave instead, keeping the
+  top of their range (DEEP SPACE C♯4 → C♯3, FLOATING GLASS A4 → A3, NIGHT SIGNAL E4 → E3, SYNTHETIC DAWN A4 → A3).
+  ARCADE '89 kept G4 (an octave down its pulse lead swung at full scale and the sweep flagged it) with its range up
+  to G7.
+- **COLOR** (6 Worlds) must go dark to bright audibly. PHASE's DCW is no filter: SOFT KEYS darkens as DCW rises, CZ
+  STRING is darkest at its preset 50, the resonant CZ BASS and RESO PLUCK hardly change their spectrum (centroids
+  measured over the knob), and WHEEL ignores `~bright`. MEMORY ARCHIVE and TAPE MEMORY now turn SOFT KEYS' DCW down as
+  COLOR (and ENERGY) rise, their COLOR+ENERGY rules cut another part, and TAPE MEMORY's SUNNY and WORN variations set
+  DCW the other way (26 and 48, were 54 and 32: SUNNY was the darker); SOFT MACHINE, NIGHT SIGNAL, NEON HIGHWAY and
+  SYNTHETIC DAWN drop the PHASE part from COLOR (the other parts carry it); MAGNETIC maps the organ's `@BRIGHT` (TOP)
+  instead of `~bright`.
+
+**Tools.**
+- `worldc`: a factory World is refused when its Smart Keys range folds one of the 27 keys at OCT 0, when a LOFI track
+  plays the chip's own arpeggio (`ARP` MAJ / MIN, the 8BIT ARP preset's: a triad on every note, out of key where no
+  in-key check hears it; no factory World does), and when it says `"saturate": true` (the blob carries no flag, and
+  `world_render --macros` and `macro_test` hold the factory data short of every maximum; user Worlds keep it). A user
+  World gets the first two as warnings. `validate-world` reports them under Smart Keys, presets and macro ranges.
+- `world_render --macros` lets a user blob's maximum through (it may say `saturate`); `run_tests.sh` checks both sides.
+- `guard_sweep` takes up to 64 Worlds (8 before: `WORLDS=all` stopped at the usage line), and its volume-jump pass
+  looks at each World's own points only.
+- The simulator's Studio lists 64 entries (32 before: with 30 factory Worlds the SLOOP project GROOVE fell off).
+
+**Tests.**
+- **The choice of Worlds** (`tests/world_sample.py`, `tests/world_pick.h`). Every factory World is compiled, checked,
+  budgeted and built into the firmware on every run; the per-World groups (world_render, the mashing, the extremes, the
+  model against the C engine, the guard sweeps, scenes, LIVE FX, validate-world, the simulator's renders, and the C
+  tests that read the firmware's built-in Worlds) play the four demo Worlds and two more drawn from a hash of the
+  library, so successive libraries rotate through it. `WORLDS=all` plays all 30 in every group; `WORLDS="id ..."` the
+  demo four and those. The choice is printed at the top of the run.
+- `run_tests.sh` prints each group's time, and `FAILED` beside a group that fails (before, only the last line said
+  so).
+- 4-World assumptions removed: `ui_play_test` (CHOOSE WORLD navigates by the Worlds' indexes, the list's end and the
+  next row's category), `author_test` (the list against the files), `validate_test` (the run's choice), `scene_test`
+  and `livefx_test` (the run's choice; the switch scenario walks every World played to the next), the table sizes of
+  `smartkeys_test`, `macro_test`, `guard_test` (32, so the test Worlds fell off with 30 factory ones) and `livefx_test`
+  (8).
+- `macro_test`'s ~bright check takes the first part COLOR moves either way, and holds a PHASE part at its own sustain
+  (its ENV bends DCW by the amplitude envelope; at the test's full sustain DCW sat at the top, where nothing moves).
+- `scene_test`: 600 s of blocks (a 52 BPM tour ran past 200 s); a one-shot sample that ran out under a held key still
+  counts as held (SLOW ORBIT's string stabs); the click ratio in the full mix is 1.5 (`CLICK_MIX`: a commit lands on
+  the new scene's downbeat, where an FM or phase-distortion bass, a bell and the kick start together over the old
+  scene's tails; the new Worlds reach 1.36, the demo four stay under their old 1.0 and 1.25; the transition's own
+  clicks are measured on a lone note, as before); the wet bus may drop 6 dB in the 12 ms after a commit, or 3 dB more
+  than at the render's
+  own bar lines, at most 9 (NIGHT SIGNAL's lone echoed ping swings 4 dB with nothing changing); the random requests
+  are seeded by the World, not its place in the list.
+- `worldc_test`: the new refusals and warnings, and every factory World's 27 keys inside its range.
+
+**Docs.** [worlds.md](worlds.md): the chord root from a fourth below to a tritone above (not a fifth below); `c3` on
+a sus chord; `~bright` per engine; `saturate` for user Worlds only; the 27 keys inside the range; guard ranges fold
+only the player's notes, and the registers `world_render` holds patterns to; the byte cost of soft, ghost and hard
+steps; §18's new gotchas (swing per division, release and SPACE in the tail, phrase transitions at slow tempos,
+sounds' loudness, the limiter at −5.2 dBFS, gated loudness and sparse layers, PHASE's DCW, WHEEL, VOICE, GRAIN,
+LOFI's arpeggio, SAMPLE's TUNE and VIBES, mashing); §19 the table of 30. [validation.md](validation.md),
+[guardrails.md](guardrails.md) and [simulator.md](simulator.md) follow.
+
+**Verified.**
+- `./tools/validate-world worlds/factory/*.world.json` (quick): 30 Worlds, **17 of 17 each**. The flash line:
+  `factory set 39,564 B of 42,296 B` (the 50,488 B the code leaves in the app slot, less its 8,192 B reserve).
+- `./build.sh`: the image is **570,640 B** (535,656 B with the four Worlds after step A; 561,296 B at Phase 17), and
+  **10,924 B** of the 581,564 B app slot are free. RAM `.data` + `.bss` 77,396 B of 98,304 B.
+- `./tests/run_tests.sh`: all 43 groups pass; both regression builds match the 83 goldens, 0 changed. **339 s** on
+  this Mac (Phase 17's suite with the four Worlds: 286 s); the six Worlds' groups take guard sweeps 42 s,
+  validate-world 29 s, LIVE FX 28 s, scenes 24 s, world_render 19 s, Smart Keys and macros 17 s each.
+- `./tests/run_tests.sh --host-only` passes (321 s). `WORLDS=all ./tests/run_tests.sh` passes every group in
+  **707 s**: guard sweeps 129 s (11,160 points, all clean), validate-world 96 s, LIVE FX 95 s, world_render 73 s (the
+  30 at their defaults −17.3 to −16.3 LUFS), scenes 71 s, Smart Keys 48 s, macros 35 s; the model and the C engine
+  agree on 60,060 slot tables.
+- `smartkeys_test` on the 30: 124.6 M checks; every factory World holds its 27 keys in range.
+
+**Left for later.**
+- Listening. Every World was checked by measurement (loudness, peaks, registers, keys, voices, tails, extremes); none
+  has been heard on the FM-1, and the four retuned tonics change where a player's phrase sits.
+- The flash: 10,924 B free, 2,732 B under the factory set's budget (about two more Worlds). A larger library needs
+  the PERC one-shots replaced (74,424 B of the sample data, also a licensing item) or compressed blobs.
+- The click and tail checks of the full mix are statistical; the lone-note checks remain the precise ones.
+
+**Commits:** step A `6a8ef32`, `2228c06`, `ea115e4`; steps B and C after `ea115e4`.
+
+## Project status after Phase 18
+
+**Built and verified on the host** (Phases 0–16, 18): the audit (0); the Mac toolchain and Docker build (1); the host
+renderer, the real-time simulator and its Studio (2–4); Musical Worlds as JSON compiled to FWD1 blobs (5); Smart Keys
+with pitch reference counting (6); the four performance macros and ENERGY as arrangement (7); the Musical Guardrail
+Engine (8); PLAY MODE's UI (9); REC and overdub (10); scene transitions and seamless World switches (11); variations
+(12); LIVE FX, SOUND SHAPE and MOVEMENT (13); Advanced Mode edits and user Worlds (14); the authoring tool (15);
+`validate-world` (16); the factory library of 30 (18). SLOOP mode is unchanged: the 83 golden renders match in both
+builds.
+
+**Waiting for the owner.**
+- **Phase 17, the hardware session** ([hardware-test-plan.md](hardware-test-plan.md)): T1–T17 on the FM-1, the CPU
+  guard's constants fitted from the device (`tools/fm1_monitor.py --fit`; 2,700 / 2,300 are placeholders), the update
+  loader and rescue checked to leave `0xE5000–0xFBFFF` alone, display timings, key-to-sound latency, and the
+  five-minute beginner test with someone new. Nothing has run on hardware yet.
+- **Before any public release** ([architecture-audit.md §15](architecture-audit.md#15-licensing)):
+  - Hügelton's "all rights reserved" assets in the image: the PERC drum one-shots (the sampled kits and GM KIT) and the
+    86 icons (`assets/icons.png`): replace them or obtain written terms;
+  - the names and identifiers: "Felucca" (Hügelton's, in the USB product string, the editor and installers' port
+    matching, the splash and screens) and "SLOOP" (the forker's brand); the USB VID/PID `1209:0001` (pid.codes' test
+    ID); the package identity `FM-1_9xx`: the product needs its own;
+  - the Apache-2.0 licence and NOTICE of the JieLi SDK files inside every `.fwsc`, the OFL for the Terminus font,
+    and the CC BY 3.0 E.PIANO in `assets/hiphop-pack` missing from LICENSING.md.
