@@ -726,8 +726,8 @@ static void sc_persist(void)
         boot(1, img);
         check(wrt.mode == WM_PLAY && wrt.id == wid("DUSTY CAFE") && wrt.scene == 2 && wrt.var == 2 && !song.playing,
               "reboot: PLAY MODE, DUSTY CAFE, scene C, variation 3, stopped");
-        check(macro_pos(0) == 470 && macro_pos(3) == 520 && macro_pos(6) == 40 && pl_pulse() == 1 && wrt.beat == 3,
-              "reboot: the controls, PULSE, BEAT as they were");
+        check(macro_pos(0) == 550 && macro_pos(3) == 520 && macro_pos(6) == 40 && pl_pulse() == 1 && wrt.beat == 3,
+              "reboot: the controls (COLOR: AIRY's default 0.58, then 3 detents down), PULSE, BEAT as they were");
         check(song.octave == 1 && song.g[G_BPM] == 84 && pl.scr == PS_HOME && pl.played,
               "reboot: octave, tempo; HOME (not FIRST: PLAY was pressed)");
         redraw();

@@ -5,6 +5,8 @@
   - the schema's enums are world_fmt.h's and sloop-params.json's;
   - compile -> decompile -> compile gives the same bytes (the test Worlds);
   - a scene's transition: 1, 2, 4 bars, "bar" or "phrase" (0 in the blob), its round trip and errors;
+  - a variation's macro defaults (their round trip and errors) and its identity guarantees: no tempo, key, scale,
+    harmony, swing, Smart Keys or scene patterns; a swap keeps the length class; a warning past two groove tracks;
   - the notation: degrees, accidentals, octave marks, chord tokens per progression, unrolling, suffixes, drums;
   - bad sources fail with a message that names the place (JSON path) and the problem;
   - the size limits (warning above 2048 B, error above 3072 B), the pool limit;
@@ -126,6 +128,61 @@ def test_transitions():
     for bad in (0, 3, "phrases", True):
         src["scenes"]["D"]["transition"] = bad
         expect_error(src, "transition", what=f"transition {json.dumps(bad)}")
+
+
+def test_variations():
+    """a variation's macro defaults (Phase 12) and its identity guarantees"""
+    src = load("full")
+    src["variations"]["AIRY"]["macros"] = {"SPACE": 0.7, "COLOR": 0.6}
+    src["variations"]["DARK"]["macros"] = {"COLOR": 0.3, "ENERGY": 1}
+    blob, d = compile_(src)
+    check(blob is not None and not any("macros" in x for x in d.warnings), f"macro defaults compile: {d.errors}")
+    if blob is None:
+        return
+    vs = worldc.decode(blob)["vars"]
+    ctl = {v["name"]: {i: x & 255 for sc, i, x in v["pairs"] if sc == worldc.F["WF_SCOPE_CTL"]} for v in vs}
+    check(ctl["AIRY"] == {2: 175, 0: 150} and ctl["DARK"] == {0: 75, 3: 250} and not ctl["ORIGINAL"],
+          "macro defaults in the blob: {WF_SCOPE_CTL, ctl, u8 position}")
+    dec = worldc.decompile(blob)
+    check(dec["variations"]["DARK"].get("macros") == {"COLOR": 0.3, "ENERGY": 1.0}, "decompiled: \"macros\"")
+    blob2, _ = compile_(json.loads(json.dumps(dec)))
+    check(blob2 == blob, "macro defaults: compile -> decompile -> compile gives the same bytes")
+    for bad, needle in (({"WOBBLE": 0.5}, "COLOR, MOTION, SPACE, ENERGY"), ({"SPACE": 1.5}, "above 1"),
+                        ({"SPACE": True}, "expected number")):
+        w = load("full")
+        w["variations"]["AIRY"]["macros"] = bad
+        expect_error(w, "$.variations.AIRY.macros", needle, what=f"macros {json.dumps(bad)}")
+    w = load("full")
+    w["variations"]["ORIGINAL"] = {"macros": {"SPACE": 0.6}}
+    expect_error(w, "ORIGINAL", "empty", what="ORIGINAL with macro defaults")
+    for key, what in (("tempo", "the tempo"), ("key", "the key"), ("scale", "the scale"),
+                      ("progression", "the harmony"), ("swing", "the groove"), ("smart_keys", "the Smart Keys"),
+                      ("patterns", "swap")):
+        w = load("full")
+        w["variations"]["DARK"][key] = 1
+        expect_error(w, f"$.variations.DARK.{key}", "identity", what, what=f"a variation setting {key}")
+    w = load("full")
+    w["variations"]["DARK"]["colour"] = 1
+    expect_error(w, "unknown key", "macros", what="an unknown variation field")
+    for k, v in (("params", {"pad.root": "D"}), ("params", {"*.scale": "MAJ"}), ("fx", {"swing": 30}),
+                 ("params", {"g.bpm": 120}), ("params", {"keys.voice": "MONO"})):
+        w = load("full")
+        w["variations"]["DARK"][k] = v
+        expect_error(w, "$.variations.DARK", what=f"a variation's {k} {json.dumps(v)}")
+    w = load("full")                     # a swap to a pattern of another length class (3 beats against 16)
+    w["patterns"]["bass_odd"] = {"track": "bass", "div": "1/4", "steps": "1 5 1"}
+    w["variations"]["PULSING"]["swap"] = {"bass_main": "bass_odd"}
+    expect_error(w, "PULSING.swap.bass_main", "length class", what="a swap to another length class")
+    w = load("full")                     # the groove: the bass and the drum kit: fine; the pad too: a warning
+    w["variations"]["HEAVY"]["swap"] = {"bass_main": "bass_drive"}
+    blob, d = compile_(w)
+    check(blob is not None and not any("groove" in x for x in d.warnings),
+          f"the bass and the drum kit changed: no warning ({d.errors} {d.warnings})")
+    w["patterns"]["pad_alt"] = {"track": "pad", "steps": "[c1 c3 c5] - - - - - - - [c1 c3 c5] - - - - - - -"}
+    w["variations"]["HEAVY"]["swap"]["pad_main"] = "pad_alt"
+    blob, d = compile_(w)
+    check(blob is not None and any("3 tracks of the groove" in x for x in d.warnings),
+          f"the pad, the bass and the drum kit changed at once: a warning ({d.errors} {d.warnings})")
 
 
 def pattern_steps(src, scene="B", track=1):
@@ -429,8 +486,8 @@ def test_model():
 
 
 def main():
-    for t in (test_params_fresh, test_schema_enums, test_roundtrip, test_transitions, test_notation, test_errors,
-              test_limits, test_decoder, test_gen_worlds, test_guard, test_model):
+    for t in (test_params_fresh, test_schema_enums, test_roundtrip, test_transitions, test_variations, test_notation,
+              test_errors, test_limits, test_decoder, test_gen_worlds, test_guard, test_model):
         n = len(FAILS)
         t()
         print(f"{t.__name__[5:]:<14} {'ok' if len(FAILS) == n else 'FAIL'}")

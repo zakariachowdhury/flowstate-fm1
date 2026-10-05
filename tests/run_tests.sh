@@ -233,7 +233,8 @@ run "regression with FELUCCA_WORLD=1 (world.c built in, no World loaded): the sa
 # leaves no voice and no echo above -60 dBFS after STOP, stays in the voice budget with no held note stolen, keeps
 # its notes in the scale and their registers; also with no ENERGY arrangement (--raw: every pattern plays) and with
 # a player's phrase on the Smart Keys; ENERGY bands only add notes and hits; no macro mapping leaves its range or
-# saturates at 100 %; the Worlds sit within 3 LU of each other at their defaults
+# saturates at 100 %; the Worlds sit within 3 LU of each other at their defaults; every variation (at its own macro
+# defaults) within 3 LU of ORIGINAL in each scene
 factory_worlds_test() {
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/world_render" tests/world_render.c -lm || return 1
     : > "$OUT/worlds-loudness.txt"
@@ -251,7 +252,8 @@ factory_worlds_test() {
         done
         lufs=$(sed -n 's/.*at the defaults \(-*[0-9.]*\) LUFS.*/\1/p' "$OUT/$id.txt" | head -1)
         echo "$id $lufs" >> "$OUT/worlds-loudness.txt"
-        echo "$id: $n B; $(grep -c '^  [A-D] .* ok' "$OUT/$id.txt") renders clean; at the defaults $lufs LUFS"
+        echo "$id: $n B; $(grep -c '^  [A-D] .* ok' "$OUT/$id.txt") renders clean; at the defaults $lufs LUFS;" \
+             "variations at most $(sed -n 's/^variations: .*(the furthest \(.*\) LU).*/\1/p' "$OUT/$id.txt" | head -1) LU from ORIGINAL"
     done
     awk '{ if (NR == 1 || $2 < lo) lo = $2; if (NR == 1 || $2 > hi) hi = $2 }
          END { printf "loudness at the defaults: %.2f .. %.2f LUFS (%.2f LU apart)\n", lo, hi, hi - lo; exit (hi - lo > 3) }' \
@@ -444,8 +446,12 @@ run "PLAY REC: the take, gentle quantise and micro-timing, record guard, layers,
 # old voices released, no silence gap, the tails going on, the macros ramping in from neutral, one replaced on its
 # way); BEAT masks on the bar; ADVANCED's immediate commits; a "phrase" transition and the SCENES footer; the commit
 # glides; the click detector against unsmoothed jumps on a lone note (level, pan, delay mix; a delay time) and
-# smoothed ones. The renders for the owner: build/renders/worlds/<id>-scenes.wav (A, B, C, D on their lines while
-# playing, a key held across two of them, then a World switch, STOP and a tail), each commit analysed
+# smoothed ones. Variations (Phase 12): every variation of every factory World against ORIGINAL while playing, A / B / A /
+# B on the bars: the same tempo and progression, every sequencer note in the scale, the controls at the variation's
+# macro defaults gliding in (one the player turned left alone), back to ORIGINAL's parameters, patterns and controls
+# exactly, no click, nothing left after STOP. The renders for the owner: build/renders/worlds/<id>-scenes.wav (A, B, C,
+# D on their lines while playing, a key held across two of them, then a World switch, STOP and a tail), each commit
+# analysed
 scene_test() {
     $CC -g -w -fsanitize=address,undefined -fno-sanitize=shift-base -fno-sanitize-recover=undefined -Ihost -Ibuild/host-obj \
         -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/scene_test" tests/scene_test.c -lm || return 1
@@ -455,7 +461,7 @@ scene_test() {
     grep -a '^render: ' "$OUT/scene.txt" | grep -v '^render:   '
     echo "scenes: $(grep -ac ' ok$' "$OUT/scene.txt") checks passed; the renders in build/renders/worlds/*-scenes.wav"
 }
-run "scenes: transitions on their lines, fills, World switches without a stop, BEAT, ADVANCED, glides, clicks, tails" \
+run "scenes: transitions on their lines, fills, World switches without a stop, BEAT, ADVANCED, glides, clicks, tails, variations" \
     scene_test
 
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }

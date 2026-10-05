@@ -913,6 +913,7 @@ static int ctl_parse(const char *arg)
 
 /* --extremes: the default scene and variation at each macro's ends, ENERGY 0 / 0.5 / 1, all at 0, all at 1 */
 #define BAND_LU 1.5                              /* --bands: the most a band may be quieter than the one below */
+#define VAR_LU 3.0                               /* --var all: each variation within this of ORIGINAL in its scene */
 #define EXT_LU_HALF 4.0                          /* ENERGY 1 at most this much louder than 0.5 (design 5.6, 12.3) */
 #define EXT_LU_SPAN 6.0                          /* .. and than 0: denser, not just louder */
 #define EXT_LU_FLOOR 12.0                        /* no extreme more than this under the defaults */
@@ -1006,7 +1007,7 @@ int main(int argc, char **argv)
     const char *scene = 0, *var = 0, *wav = 0, *seq = 0, *path = 0;
     int check = 0, bands = 0, macros = 0, ext = 0, i, fails = 0, rc;
     uint32_t s0, s1, v0, v1, s, v, nv;
-    double lufs_def = 0;
+    double lufs_def = 0, lufs0[WF_NSCENE] = {0}, var_worst = 0;
     for (i = 1; i < argc; i++) {
         const char *a = argv[i];
         if (!strcmp(a, "--scene") && i + 1 < argc)
@@ -1129,9 +1130,18 @@ int main(int argc, char **argv)
             result_t r = render_one(s, v, energy_set, 0);
             line(s, v, &r);
             fails += r.fails != 0;
+            if (!v)
+                lufs0[s] = r.lufs;
+            else if (!v0 && fabs(r.lufs - lufs0[s]) > fabs(var_worst))   /* (Phase 12: a variation is not louder) */
+                var_worst = r.lufs - lufs0[s];
             if (s == defaults()[0] && v == defaults()[1])
                 lufs_def = r.lufs;
         }
+    if (!v0 && v1 > 1u && energy_emul) {
+        printf("variations: each within %.1f LU of ORIGINAL in its scene, at its own macro defaults (the furthest "
+               "%+.2f LU)%s\n", VAR_LU, var_worst, fabs(var_worst) > VAR_LU ? ": FAIL" : "");
+        fails += fabs(var_worst) > VAR_LU;
+    }
     printf("renders: %u, %d failed%s", (s1 - s0) * (v1 - v0), fails, fails ? "\n" : "");
     if (!fails && s0 <= defaults()[0] && defaults()[0] < s1 && v0 <= defaults()[1] && defaults()[1] < v1)
         printf("; at the defaults %.2f LUFS\n", lufs_def);

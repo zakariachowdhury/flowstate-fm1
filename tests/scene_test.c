@@ -892,6 +892,163 @@ static void sc_smooth(void)
     check(all_quiet(), "smooth: after STOP nothing left");
 }
 
+/* ============================================================== variations === */
+/* Phase 12: every variation of the World against ORIGINAL while playing (the default scene): on the next bar line, the
+ * clock running on; the same tempo, the same progression (harmony.c's table), every sequencer note in the World's
+ * scale; its macro defaults taken by the controls the player has not turned, gliding (the overlay ramps, no click);
+ * ORIGINAL / variation / ORIGINAL / ... on the bars returns exactly to ORIGINAL's parameters, patterns and controls;
+ * a control the player turned stays where it is; nothing left after STOP */
+typedef struct {
+    int16_t p[NTRK][P_COUNT], g[G_COUNT];
+    step_t st[NPART][NSTEP];
+    dstep_t ds[NSTEP];
+    uint16_t pos[4];
+    hprog_t h;
+} vsnap_t;
+static void vsnap(vsnap_t *v)
+{
+    uint32_t t;
+    for (t = 0; t < NTRK; t++)
+        memcpy(v->p[t], trk[t].p, sizeof v->p[t]);
+    memcpy(v->g, song.g, sizeof v->g);
+    for (t = 0; t < NPART; t++)
+        memcpy(v->st[t], trk[t].step, sizeof v->st[t]);
+    memcpy(v->ds, TDRUM->dstep, sizeof v->ds);
+    memcpy(v->pos, mac.pos, sizeof v->pos);
+    v->h = hprog[hcur];
+}
+static uint32_t notes_seen, notes_out;
+static uint32_t vage_seen;
+static void vblk(void)                           /* a block; each new sequencer voice's note in the World's scale */
+{
+    uint32_t t, i, top = vage_seen;
+    blk();
+    for (t = 0; t < NPART; t++)
+        for (i = 0; i < NVOICE; i++)
+            if (trk[t].v[i].age > vage_seen && t != wrt.keys_trk) {
+                notes_seen++;
+                notes_out += !(hprog[hcur].scale >> (trk[t].v[i].note % 12u) & 1u);
+                top = trk[t].v[i].age > top ? trk[t].v[i].age : top;
+            }
+    vage_seen = top;
+}
+static void vbars(double n)
+{
+    uint32_t k = (uint32_t)(n * 4.0 * BEAT_U / (uint32_t)song.g[G_BPM] / CTL);
+    while (k--)
+        vblk();
+}
+static int settled(void)                         /* the glides done, the overlay at its targets, the table taken */
+{
+    uint32_t i;
+    if (wgl_n || ov_pub != ov_seen || mac.dirty || wst.st != WST_FREE)
+        return 0;
+    for (i = 0; i < ovb[ov_live].n; i++)
+        if (ov_cur[ov_live][i] != ovb[ov_live].s[i].tgt)
+            return 0;
+    return 1;
+}
+static void var_defaults(uint32_t v, uint32_t *want)   /* variation v's macro positions, from the blob */
+{
+    const uint8_t *def = wctx.b + wctx.off[WF_S_DEFAULTS], *vr = wctx.b + wctx.var[v] + WF_LABEL_LEN + 1u, *q;
+    uint32_t k, n;
+    for (k = 0; k < 4u; k++)                     /* (the World's DEFAULTS, then the variation's "macros") */
+        want[k] = def[2u + k] * 4u;
+    q = vr + 2u + 2u * vr[0];
+    q += 2u * q[-1];
+    for (n = *q++; n; n--, q += WF_SPAIR)
+        if (q[0] == WF_SCOPE_CTL)
+            want[q[1]] = q[2] * 4u;
+}
+static void sc_variations(void)
+{
+    static const char *const W[] = {"NEON RAIN", "MIDNIGHT DRIVE", "FROZEN LAKE", "DUSTY CAFE"};
+    static vsnap_t orig, now;
+    uint32_t v, k, n, nv, bpm, bad_tempo = 0, bad_prog = 0, bad_pos = 0, bad_back = 0, ramps = 0, snaps = 0, rounds = 0;
+    double rest, worst = 0;
+    char m[200];
+    boot_world(W[world_i]);
+    nv = world_nvar();
+    keys_loop();
+    host_play();
+    for (n = 0; n < 4000u && !settled(); n++)
+        vblk();
+    vbars(1.2);
+    for (n = 0; n < 4000u && !settled(); n++)
+        vblk();
+    vsnap(&orig);
+    bpm = (uint32_t)song.g[G_BPM];
+    nb0 = nb;
+    for (v = 1; v < nv; v++) {
+        uint32_t want[4], ol;
+        var_defaults(v, want);
+        for (k = 0; k < 2u; k++, rounds++) {     /* ORIGINAL -> v -> ORIGINAL, twice: A / B / A / B */
+            ol = ov_pub;
+            go(wrt.scene, v);
+            for (n = 0; n < 60u && ov_pub == ol; n++)   /* (the main loop: the defaults, the new table) */
+                vblk();
+            snaps += ovb[ov_live ^ (ov_pub != ov_seen)].snap;
+            for (n = 0; n < 30u; n++) {          /* the overlay ramps toward them (each slot at its class) */
+                uint32_t i;
+                vblk();
+                for (i = 0; i < ovb[ov_live].n; i++)
+                    ramps += n == 2u && ov_cur[ov_live][i] != ovb[ov_live].s[i].tgt;
+            }
+            for (n = 0; n < 4u; n++)
+                bad_pos += mac.pos[n] != want[n];
+            bad_tempo += (uint32_t)song.g[G_BPM] != bpm;
+            bad_prog += memcmp(&hprog[hcur], &orig.h, sizeof orig.h) != 0;
+            vbars(2.2);                          /* (a 2-bar drum pattern's downbeat again, outside the windows) */
+            go(wrt.scene, 0);
+            for (n = 0; n < 4000u && !settled(); n++)
+                vblk();
+            vsnap(&now);
+            bad_back += memcmp(now.p, orig.p, sizeof now.p) != 0 || memcmp(now.g, orig.g, sizeof now.g) != 0 ||
+                        memcmp(now.st, orig.st, sizeof now.st) != 0 || memcmp(now.ds, orig.ds, sizeof now.ds) != 0 ||
+                        memcmp(now.pos, orig.pos, sizeof now.pos) != 0 || memcmp(&now.h, &orig.h, sizeof now.h) != 0;
+            bad_tempo += (uint32_t)song.g[G_BPM] != bpm;
+            vbars(0.6);
+        }
+    }
+    check(lands == 2u * rounds && !bad_line && !bad_step && !bad_last, (snprintf(m, sizeof m, "%s: %u variation "
+          "changes (ORIGINAL / each / ORIGINAL / each): each on the next bar line, the clock running on", wname(),
+          lands), m));
+    check(!bad_tempo && !bad_prog, (snprintf(m, sizeof m, "%s: the same tempo and progression in every variation",
+          wname()), m));
+    check(notes_seen > 30u && !notes_out, (snprintf(m, sizeof m, "%s: %u sequencer notes, every one in the World's "
+          "scale (%u out)", wname(), notes_seen, notes_out), m));
+    check(!bad_pos, (snprintf(m, sizeof m, "%s: the controls at each variation's macro defaults (else the World's)",
+          wname()), m));
+    check(!snaps, (snprintf(m, sizeof m, "%s: the macro defaults glide: the overlay ramps (%u slots still moving 2 "
+          "blocks after a table), none snaps", wname(), ramps), m));
+    check(!bad_back, (snprintf(m, sizeof m, "%s: back to ORIGINAL %u times: its parameters, patterns, controls and "
+          "progression exactly", wname(), rounds), m));
+    rest = rest_max(nb0, nb);
+    for (k = 0; k < ncm; k++)
+        worst = click_ratio(k, rest) > worst ? click_ratio(k, rest) : worst;
+    /* (1.25: a variation that brings a drum kit and darkens, DUSTY CAFE's DARK, plays the kit's first downbeat through
+     * the old filter and COLOR while the new ones glide in: a brighter hit than its later ones, not a click; a kit
+     * changed straight in at a line shows no excess, and the lone-note test (smooth) finds the clicks) */
+    check(worst <= 1.25, (snprintf(m, sizeof m, "%s: no click at a variation change (the largest sample step %.2f x the "
+          "largest elsewhere)", wname(), worst), m));
+    /* the player turns SPACE: a variation leaves it there and moves the others to its defaults */
+    {
+        uint32_t want[4];
+        v = nv - 1u;
+        var_defaults(v, want);
+        macro_set(2, 130);
+        go(wrt.scene, v);
+        for (n = 0; n < 60u; n++)
+            vblk();
+        check(mac.pos[2] == 130 && mac.pos[0] == want[0] && mac.pos[1] == want[1] && mac.pos[3] == want[3],
+              (snprintf(m, sizeof m, "%s: a control the player turned stays where it is, the others go to the "
+                        "variation's defaults", wname()), m));
+    }
+    host_stop();
+    blocks(8);
+    check(all_quiet(), (snprintf(m, sizeof m, "%s: variations: after STOP nothing left", wname()), m));
+}
+
 /* ================================================================== render === */
 static void sc_render(void)
 {
@@ -981,6 +1138,7 @@ int main(int argc, char **argv)
         uint32_t per_world;
     } SC[] = {{"tour", sc_tour, 4}, {"fills", sc_fills, 1}, {"switch", sc_switch, 1}, {"beat", sc_beat, 1},
               {"advanced", sc_advanced, 1}, {"phrase", sc_phrase, 1}, {"smooth", sc_smooth, 1},
+              {"variations", sc_variations, 4},
               {"render", sc_render, 4}};
     const char *only = argc > 2 ? argv[2] : "";
     int bad = 0;
