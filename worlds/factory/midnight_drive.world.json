@@ -65,9 +65,9 @@
   "variations": {
     "ORIGINAL": {},
     "DRIVING": {"swap": {"bs_8": "bs_16"}, "fx": {"duck": 28}, "energy_bias": 0.12},
-    "DREAMY": {"sounds": {"chords": "WARM PAD"}, "params": {"chords.CUT": 64, "chords.sgate": 96, "chords.chor": 96, "chords.rev": 70,
+    "DREAMY": {"sounds": {"chords": "WARM PAD"}, "params": {"chords.level": 100, "chords.CUT": 72, "chords.sgate": 96, "chords.chor": 96, "chords.rev": 70,
                "lead.dly": 70}, "fx": {"rsize": 112, "dfdbk": 62, "dmix": 96}, "energy_bias": -0.04},
-    "DARK": {"sounds": {"chords": "DARK STR"}, "params": {"chords.level": 92, "chords.CUT": 48, "bass.CUT": 48, "lead.TONE": 76},
+    "DARK": {"sounds": {"chords": "DARK STR"}, "params": {"chords.level": 100, "chords.CUT": 62, "bass.CUT": 48, "lead.TONE": 76},
              "fx": {"dcolor": 40, "rdamp": 76}},
     "HEAVY": {"params": {"bass.dist": 34, "bass.CUT": 66, "chords.DRV": 30}, "energy_bias": 0.12}
   },

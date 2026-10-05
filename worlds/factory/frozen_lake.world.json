@@ -61,8 +61,8 @@
              "fx": {"rsize": 122, "rdamp": 50}, "energy_bias": -0.05},
     "FLOATING": {"params": {"pad.ld_pit": 2, "pad.lrate": 10, "texture.SPRD": 56, "texture.RAND": 30, "pad.rel": 104,
                  "bell.dly": 62}, "fx": {"dfdbk": 62, "crate": 12, "cdepth": 96}},
-    "DARK": {"sounds": {"pad": "DARK STR", "texture": "LOFI CLOUD"}, "params": {"pad.level": 86, "texture.level": 88, "pad.CUT": 44, "texture.TONE": 60,
-             "bell.IDX": 30}, "fx": {"dcolor": 34, "rdamp": 84}},
+    "DARK": {"sounds": {"pad": "DARK STR", "texture": "LOFI CLOUD"}, "params": {"pad.level": 86, "texture.level": 88, "pad.CUT": 58, "texture.TONE": 60,
+             "bell.IDX": 30}, "fx": {"dfdbk": 56, "dcolor": 34, "rdamp": 84}},
     "SPARSE": {"params": {"drums.level": 64, "texture.level": 74}, "energy_bias": -0.2}
   },
   "macros": {
@@ -77,7 +77,7 @@
                {"to": "g.cdepth", "min": -30, "max": 20}],
     "SPACE": [{"to": "*.rev", "min": -40, "max": 14, "curve": "s"},
               {"to": "g.rsize", "min": -40, "max": 4},
-              {"to": "g.dfdbk", "min": -36, "max": 6},
+              {"to": "g.dfdbk", "min": -36, "max": 2},
               {"to": "bell.dly", "min": -40, "max": 14},
               {"to": "pad.rel", "min": -24, "max": 6, "smooth": "slow"},
               {"to": "drums.rev", "min": -40, "max": 16}],

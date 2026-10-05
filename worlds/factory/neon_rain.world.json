@@ -68,10 +68,10 @@
     "ORIGINAL": {},
     "DREAMY": {"sounds": {"pad": "ATMOS PAD"}, "params": {"pad.level": 71, "pad.chor": 80, "pad.rev": 98, "lead.rev": 84, "lead.dly": 60},
                "fx": {"rsize": 120, "dfdbk": 58}, "energy_bias": -0.05},
-    "DARK": {"sounds": {"pad": "DARK STR", "drums": "TRAP"}, "params": {"pad.CUT": 40, "lead.CUT": 80, "drums.level": 92},
+    "DARK": {"sounds": {"pad": "DARK STR", "drums": "TRAP"}, "params": {"pad.CUT": 60, "lead.CUT": 92, "drums.level": 92},
              "fx": {"dcolor": 30, "rdamp": 80}},
     "PULSING": {"swap": {"pad_main": "pad_pulse", "bass_pedal": "bass_pulse"}, "energy_bias": 0.08},
-    "HEAVY": {"sounds": {"bass": "REESE", "drums": "TRAP"}, "params": {"bass.CUT": 44, "bass.level": 82, "pad.CUT": 50, "drums.level": 92},
+    "HEAVY": {"sounds": {"bass": "REESE", "drums": "TRAP"}, "params": {"bass.CUT": 44, "bass.level": 82, "pad.CUT": 62, "drums.level": 92},
               "energy_bias": 0.12}
   },
   "macros": {
