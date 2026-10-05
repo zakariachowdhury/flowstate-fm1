@@ -53,7 +53,7 @@ static uint8_t sync_reload;                  /* engine / preset / project / user
 #define H_FOOT 38
 
 static struct {
-    uint8_t home;
+    uint8_t home;                /* always 0: SLOOP's old HOME screen went in Phase 18 (FELUCCA_ARRANGER is 1) */
     uint8_t page;                /* index into PAGES */
     uint8_t fam_last[FAM_COUNT]; /* last page used per family */
     uint8_t bank;                /* SEQ: 16-step bank (follows the cursor) */
@@ -207,14 +207,10 @@ static void open_family(uint32_t fam)
     page_entered();
 }
 
-static void go_home(void)
+static void go_home(void)       /* (TRACKS: SLOOP's old HOME screen is gone, Phase 18) */
 {
-#if FELUCCA_ARRANGER
     ui.home = 0;
     ui.page = (uint8_t)page_first(FAM_TRK);
-#else
-    ui.home = 1;
-#endif
     ui.entry_open = 0;
     ui.hot_t = 0;
     song.seq_mode = 0;
@@ -326,26 +322,6 @@ static void preset_go(uint32_t n)                    /* load list index n into t
         select_engine(e);
     apply_preset(k);
     ui.force = 1;
-}
-
-/* HOME: what KNOB k edits: the engine's four main parameters; on the drum track
- * LEVEL and REV (GLO > DRUMS), PAN and LEN */
-static const param_desc_t *home_param(uint32_t k, int16_t **vp)
-{
-    static const uint8_t DRUM_HOME[4][2] = {{1, G_DRLVL}, {1, G_DRREV}, {0, P_PAN}, {0, P_SLEN}};
-    uint32_t id;
-    if (is_drum(TSEL)) {
-        id = DRUM_HOME[k & 3u][1];
-        if (DRUM_HOME[k & 3u][0]) {
-            *vp = &song.g[id];
-            return &GP[id];
-        }
-        *vp = &TSEL->p[id];
-        return &TP[id];
-    }
-    id = ENGINES[TSEL->eng_req % NENGINES]->macro[k & 3u];
-    *vp = &TSEL->p[id];
-    return track_desc(TSEL, id);
 }
 
 /* select track i (KNOB 1 on TRACKS, the editor): its sound, pages and pattern from now on */

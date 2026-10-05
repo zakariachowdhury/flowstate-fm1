@@ -18,17 +18,12 @@ struct felucca_dbg {
     uint32_t prev_stage, prev_page, prev_home, prev_rst, prev_frames;   /* as found at boot */
 } felucca_dbg __attribute__((section(".noinit")));
 static volatile uint32_t audio_halves, audio_max_us;
-#define SCOPE_N 512u
-static int16_t scope_buf[SCOPE_N];
-static uint32_t scope_w;
 
 static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 -> 24 bit */
 {
     uint32_t i;
     mix_block(out, n);
-    for (i = 0; i < n; i++) {
-        if (i & 1u)
-            scope_buf[scope_w++ & (SCOPE_N - 1u)] = (int16_t)out[2u * i];
+    for (i = 0; i < n; i++) {                           /* (no scope tap: SLOOP's old HOME scope went in Phase 18) */
         out[2u * i] <<= OUT_SHIFT;
         out[2u * i + 1u] <<= OUT_SHIFT;
     }

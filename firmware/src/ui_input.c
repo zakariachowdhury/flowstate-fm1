@@ -28,7 +28,7 @@ static void led_put(uint8_t *nl, uint32_t id, int on)
 static const uint8_t FAM_BTN[FAM_COUNT] = {B_HOME, B_ENV, B_LFO, B_FX, B_SCL, B_EDIT, B_GLO, B_SAVE,
                                            B_ARP, B_SEQ, B_HOME};   /* button of each page family (TRACKS: HOME) */
 
-static uint32_t cur_fam(void) { return ui.home ? FAM_HOME : cur_page()->fam; }
+static uint32_t cur_fam(void) { return cur_page()->fam; }
 static uint32_t cur_btn(void)                      /* the button of the screen shown */
 {
     if (!ui.home && cur_page()->scope == SC_SONG)
@@ -710,8 +710,8 @@ static void ui_input(void)
     if (song.seq_mode && cur_page()->scope == SC_STEP)
         seq_entry(notes);
 
-    if ((s = panel_enc(EN_PRESET)) != 0 && (ui.home || cur_page()->graph == GR_BROWSE || cur_fam() == FAM_TRK)) {
-        /* PRESETS browses the selected part's presets (all engines, then user presets) on HOME, the PRESETS
+    if ((s = panel_enc(EN_PRESET)) != 0 && (cur_page()->graph == GR_BROWSE || cur_fam() == FAM_TRK)) {
+        /* PRESETS browses the selected part's presets (all engines, then user presets) on the PRESETS
          * page and TRACKS only (the drum track: its kits); elsewhere a stray turn would throw away the sound
          * being edited. Every detent counts */
         uint32_t total, cur = preset_pos(&total);
@@ -731,18 +731,12 @@ static void ui_input(void)
         int16_t *hv;
         if ((s = panel_enc(EN_K1 + k)) == 0)
             continue;
-        if (ui.home || pg->scope == SC_STEP || pg->scope == SC_TRK || page_desc(pg, k, &hv) ||
+        if (pg->scope == SC_STEP || pg->scope == SC_TRK || page_desc(pg, k, &hv) ||
             (pg->graph == GR_USER && k == 0u)) {     /* (not an empty column, nor "DRUM TRACK") */
             ui.hot_col = (uint8_t)k;
             ui.hot_t = 40;
         }
-        if (ui.home) {
-            int16_t *vp;
-            const param_desc_t *d = home_param(k, &vp);
-            *vp = (int16_t)clamp(*vp + accel(EN_K1 + k, s, d->max - d->min), d->min, d->max);
-        } else {
-            edit_param(k, s);
-        }
+        edit_param(k, s);
     }
 }
 
