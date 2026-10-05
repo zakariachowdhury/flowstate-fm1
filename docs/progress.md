@@ -439,3 +439,74 @@ unchanged.
 
 **Next.** Phase 9: the PLAY MODE UI on the device: home, World browser, scenes, variations, macro overlay, record and
 live FX screens; key LEDs; long-hold EDIT for Advanced Mode; first boot into NEON RAIN.
+
+## Phase 9: PLAY MODE UI (2026-10-05)
+
+**Done.** The device now boots into **PLAY MODE**. First boot opens NEON RAIN on the FIRST screen.
+
+**Screens.** `firmware/src/ui_play.c` implements every UI spec screen with its texts:
+
+| Screen | What it shows |
+| --- | --- |
+| FIRST | FLOWSTATE READY, PRESS PLAY |
+| HOME | FLOWSTATE, World, category and scene, activity bars, KEYS: SMART MELODY, the four macros |
+| Macro overlay | DARK–BRIGHT etc. bar |
+| CHOOSE WORLD | list; PLAY confirms, on the next bar while playing |
+| SCENES | CHANGES NEXT BAR |
+| VARIATION | SAME WORLD · NEW FEEL |
+| RECORDING, LOOP | the record states |
+| PULSE, BEAT | lists |
+| LIVE FX, SOUND SHAPE, MOVEMENT | four-knob pages |
+| ADVANCED | ADVANCED MODE dialog |
+
+Screenshots: `images/play-*.png`. Glyphs the fonts lack (▶ ■ ● ━ ✦ ⌁ › and the waveform) are drawn by hand.
+Redraws are limited to changed bands: a knob detent costs about 4 ms of SPI, and HOME at rest costs 0.
+
+**Controls.**
+- PRESETS = World; SELECT = scene (GLO + SELECT = tempo within the World's range); ALGORITHM = variation.
+- K1–K4 = the macros.
+- ARP = PULSE (drives the keys track's arp); SEQ = BEAT.
+- FX / ENV / LFO held = their pages.
+- EDIT held 2 s untouched = the ADVANCED dialog.
+
+**LEDs:** the beat, the REC states, pressed keys, and the current chord's tones dim.
+
+**Modes.** PLAY, ADVANCED (the SLOOP UI over the World) and SLOOP. Entering PLAY parks the SLOOP project, and
+LEAVE WORLD restores it **bit-identically** (tested).
+
+**Persistence.** `world_store.c` saves the session (World, scene, variation, controls, PULSE/BEAT, octave, tempo,
+mode) in the newly writable flash region `0xE5000–0xFBFFF`. Nothing is written past offset 0xF00 of a sector, which
+the update loader scans for update records. SLOOP's autosave stays fenced while a World is active.
+
+**Verified.**
+- `./tests/run_tests.sh` passes all 36 groups. New: `ui_play_test`, 119 checks under ASan/UBSan, covering:
+  - every screen and its texts;
+  - the control map;
+  - World, scene and variation on the bar;
+  - timeouts;
+  - the ADVANCED round trip;
+  - LEAVE WORLD restoring bit-identically;
+  - the session across a reboot;
+  - LEDs;
+  - a 20,000-frame random-input fuzz.
+- Both regression builds match the 83 goldens, and the SLOOP UI tests pass.
+- The fuzz found and fixed an out-of-bounds read in SLOOP's STEP page on the drum track.
+
+**Sizes. Watch this.**
+- The image is 548,764 B (+27.4 KB). About 8.2 KB of that is Phase 5–8 World code that is called for the first time
+  now (before, the compiler dropped it as unused).
+- About **32.8 KB** of the app slot is left.
+- RAM `.data` + `.bss` 67,872 B of 98,304 B.
+- Phase 18's 30-World library will need flash reclaimed: replacing the Hügelton drum one-shots (74 KB, required for
+  licensing anyway) is the plan.
+
+**Deviations** (design §8.6):
+- Overlays use the whole middle of the screen.
+- REC is a stand-in until Phase 10.
+- BEAT swaps the drum pattern on the next bar, but the factory Worlds have no per-BEAT patterns yet.
+- SAVE AS USER WORLD waits for Phase 14.
+- The session is a plain 48-byte record rather than an FWD1 blob.
+
+**Commits:** `6d22a20` to `6eeeddc`.
+
+**Next.** Phase 10: simple record and overdub.
