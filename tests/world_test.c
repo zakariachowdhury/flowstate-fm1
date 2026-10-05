@@ -424,19 +424,44 @@ static void test_minimal(const uint8_t *blob, uint32_t n)
     printf("minimal World: load, stage, commit\n");
 }
 
+/* worlds/test/guard.world.json: its GUARD carries 4 sound combinations after the ranges (Phase 8) */
+static void test_combos(const uint8_t *orig, uint32_t n)
+{
+    uint8_t *b = malloc(WF_MAX_LEN + 64);
+    wb_ctx_t c;
+    uint32_t g, cb;
+    CHECK(wb_check(orig, n, &c) == WE_OK, "guard: accepted");
+    g = c.off[WF_S_GUARD];
+    cb = g + WF_GUARD_FIX + WF_GRANGE_LEN * c.cnt[WF_S_GUARD];   /* the first combination */
+#define FRESH() memcpy(b, orig, n)
+    CHECK(orig[g + WF_G_COMBOS] == 4 && c.slen[WF_S_GUARD] == cb - g + 4u * WF_COMBO_LEN, "guard: 4 combinations");
+    FRESH(); b[g + WF_G_COMBOS] = 3; expect(b, n, WE_LENGTH, "a combination count short of the records");
+    FRESH(); b[g + WF_G_COMBOS] = 9; expect(b, n, WE_LENGTH, "9 combinations");
+    FRESH(); b[g + WF_G_COMBOS] = WF_NONE; expect(b, n, WE_LENGTH, "records but no count");
+    FRESH(); b[cb] = WF_K_BRIGHT << 5 | 1; expect(b, n, WE_GUARD, "a combination on ~bright");
+    FRESH(); b[cb] = WF_K_GLOBAL << 5; b[cb + 1] = G_BPM; expect(b, n, WE_GUARD, "a combination on the tempo");
+    cb += WF_COMBO_LEN;                                  /* the second: pad's @DRIVE caps its @RESO */
+    FRESH(); b[cb] = WF_K_ROLE << 5 | 8; expect(b, n, WE_GUARD, "a role on the drum track");
+    FRESH(); b[cb + 1u] = WF_NEROLES; expect(b, n, WE_GUARD, "role 8");
+#undef FRESH
+    free(b);
+}
+
 int main(int argc, char **argv)
 {
-    uint32_t nm, nf;
-    uint8_t *mini, *full;
+    uint32_t nm, nf, ng;
+    uint8_t *mini, *full, *guard = 0;
     const uint8_t *fb;
     uint32_t fn;
     wb_ctx_t c;
-    if (argc != 3) {
-        printf("usage: world_test MINIMAL.wblob FULL.wblob\n");
+    if (argc != 3 && argc != 4) {
+        printf("usage: world_test MINIMAL.wblob FULL.wblob [GUARD.wblob]\n");
         return 2;
     }
     mini = read_file(argv[1], &nm);
     full = read_file(argv[2], &nf);
+    if (argc == 4)
+        guard = read_file(argv[3], &ng);
     CHECK(wb_check(mini, nm, &c) == WE_OK && wb_check(full, nf, &c) == WE_OK, "both blobs pass wb_check");
     CHECK(wb_check(0, 0, &c) == WE_SIZE && wb_check(full, 10, &c) == WE_SIZE, "no blob, a short one");
     CHECK(world_factory(WORLD_NFACTORY, &fb, &fn) == WE_STATE, "factory index bound");
@@ -449,6 +474,10 @@ int main(int argc, char **argv)
     test_targeted(full, nf);
     test_corruption(mini, nm, "minimal");
     test_corruption(full, nf, "full");
+    if (guard) {
+        test_combos(guard, ng);
+        test_corruption(guard, ng, "guard");
+    }
     printf(fails ? "WORLD TEST FAILED (%d)\n" : "world test: all checks passed\n", fails);
     return fails != 0;
 }

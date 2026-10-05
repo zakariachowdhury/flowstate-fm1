@@ -462,12 +462,16 @@ static int wb_check(const uint8_t *b, uint32_t n, wb_ctx_t *c)
         WB_NEED(o == end, WE_LENGTH);
     }
 
-    /* GUARD: 32 fixed bytes (WF_NONE = unset), then {target, id, i8 lo, i8 hi} */
+    /* GUARD: 32 fixed bytes (WF_NONE = unset), then {target, id, i8 lo, i8 hi} x count, then the combinations
+     * {target, id, i8 over} x 3 (the last: the capped target, its cap) x fixed byte WF_G_COMBOS (WF_NONE: none) */
     if (c->have >> WF_S_GUARD & 1u) {
+        uint32_t nc;
         k = c->cnt[WF_S_GUARD];
         p = b + c->off[WF_S_GUARD];
         WB_NEED(k <= WF_MAX_GRANGES, WE_COUNT);
-        WB_NEED(c->slen[WF_S_GUARD] == WF_GUARD_FIX + WF_GRANGE_LEN * k, WE_LENGTH);
+        WB_NEED(c->slen[WF_S_GUARD] >= WF_GUARD_FIX, WE_LENGTH);
+        nc = p[WF_G_COMBOS] == WF_NONE ? 0u : p[WF_G_COMBOS];   /* (0..8: checked with the fixed fields below) */
+        WB_NEED(c->slen[WF_S_GUARD] == WF_GUARD_FIX + WF_GRANGE_LEN * k + WF_COMBO_LEN * nc, WE_LENGTH);
         for (t = 0; t < NPART; t++)
             WB_NEED((p[2u * t] == WF_NONE && p[2u * t + 1u] == WF_NONE) || (p[2u * t] <= p[2u * t + 1u] && p[2u * t + 1u] <= 127u),
                     WE_GUARD);
@@ -477,6 +481,9 @@ static int wb_check(const uint8_t *b, uint32_t n, wb_ctx_t *c)
             WB_NEED(p[i] == WF_NONE, WE_GUARD);
         for (p += WF_GUARD_FIX, i = 0; i < k; i++, p += WF_GRANGE_LEN)
             WB_NEED(wb_target(c, p[0], p[1]) && (int8_t)p[2] <= (int8_t)p[3], WE_GUARD);
+        for (i = 0; i < 3u * nc; i++, p += 3)            /* (a combination's targets: parameters, roles, globals) */
+            WB_NEED(wb_target(c, p[0], p[1]) && (p[0] >> 5 == WF_K_PARAM || p[0] >> 5 == WF_K_ROLE ||
+                                                p[0] >> 5 == WF_K_GLOBAL), WE_GUARD);
     }
 
     /* DEFAULTS: scene var ctl[4] pulse beat shape[4] move[4] */
@@ -556,10 +563,12 @@ static void wb_pattern(const uint8_t *r, wpat_t *w)
     }
 }
 
-/* the loaded World's MAPS, CURVES, RULES and DEFAULTS to the macros (keep: the player's positions stay) */
+/* the loaded World's MAPS, CURVES, RULES and DEFAULTS to the macros (keep: the player's positions stay), its
+ * GUARD to the guardrails (guard.c) */
 static void wb_macros(int keep)
 {
 #define WB_SEC(t) (wctx.have >> (t) & 1u ? wctx.b + wctx.off[t] : 0), (wctx.have >> (t) & 1u ? wctx.cnt[t] : 0u)
+    guard_load(WB_SEC(WF_S_GUARD));
     macro_load(WB_SEC(WF_S_MAPS), WB_SEC(WF_S_CURVES), WB_SEC(WF_S_RULES), wctx.b + wctx.off[WF_S_DEFAULTS], keep);
 #undef WB_SEC
 }
@@ -807,8 +816,10 @@ static int world_apply(uint32_t scene, uint32_t var)
     if (rc)
         return rc;
     fm1_irq_off();
-    if (wst.sw || !wrt.active)
+    if (wst.sw || !wrt.active) {
         ov_reset();                                       /* another World: the old one's overlay goes (macro.c) */
+        guard_reset();                                    /* .. and no CPU hold of the old one (guard.c) */
+    }
     world_commit();
     if (!wrt.active) {                                    /* SLOOP -> a World: the pitch counts (H2) and Smart Keys */
         memset(vref, 0, sizeof vref);
@@ -839,6 +850,7 @@ static void world_unload(void)                         /* back to SLOOP's paths 
     wrt.keys_on = 0;
     wrt.mute = 0;                                         /* (H1: no track left out by an ENERGY band) */
     ov_reset();                                           /* (no macro overlay, no vmod offset: SLOOP's sound) */
+    guard_reset();
     fm1_irq_on();
 }
 
@@ -1021,8 +1033,10 @@ static int world_switch(const uint8_t *b, uint32_t n)
 static int world_service(void)         /* main loop: a switch's result (WE_*), or -1 when there was none */
 {
     int rc = -1;
-    if (wst.st == WST_APPLIED)
+    if (wst.st == WST_APPLIED) {
         wst.st = WST_FREE;
+        mac.dirty = 1;                 /* new bases: the guard's combinations and distorted tracks judged again */
+    }
     if (wreq.sw == 2u && !song.playing && !transport_req) {
         wreq.sw = 0;
         rc = world_start(wreq.sw_b, wreq.sw_n);

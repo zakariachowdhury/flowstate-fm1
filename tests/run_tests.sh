@@ -211,11 +211,12 @@ run "worlds: worldc (sloop-params.json fresh, schema enums, round trip, notation
     python3 tests/worldc_test.py
 world_test() {
     python3 tools/worldc.py compile worlds/test/minimal.world.json -o "$OUT/world-minimal.wblob" >/dev/null 2>&1 &&
-        python3 tools/worldc.py compile worlds/test/full.world.json -o "$OUT/world-full.wblob" >/dev/null 2>&1 ||
+        python3 tools/worldc.py compile worlds/test/full.world.json -o "$OUT/world-full.wblob" >/dev/null 2>&1 &&
+        python3 tools/worldc.py compile worlds/test/guard.world.json -o "$OUT/world-guard.wblob" >/dev/null 2>&1 ||
         { echo "worldc cannot compile worlds/test"; return 1; }
     $CC -g -w -fsanitize=address,undefined -fno-sanitize-recover=undefined -Ibuild/gen -Ifirmware/src \
         -o "$OUT/world_test" tests/world_test.c -lm || return 1
-    "$OUT/world_test" "$OUT/world-minimal.wblob" "$OUT/world-full.wblob"
+    "$OUT/world_test" "$OUT/world-minimal.wblob" "$OUT/world-full.wblob" "$OUT/world-guard.wblob"
 }
 run "worlds: FWD1 check, load, stage, commit; truncations, flips, 20000 corruptions (ASan/UBSan); proj_slot untouched" \
     world_test
@@ -335,5 +336,51 @@ macros_test() {
 }
 run "macros: model, limits, restore, rules, smoothing, ENERGY bands (ASan/UBSan); cost; extremes per World; --ctl" \
     macros_test
+
+# The Musical Guardrail Engine (Phase 8: firmware/src/guard.c, the read-site clamps H6 in fx.c and voice.c, loop
+# follow H12 in seq.c; docs/guardrails.md): tests/guard_test.c under ASan/UBSan (inert with no World; H6 a no-op in
+# range and the clamped sound out of it; ranges, folds, polyphony, loop follow over every chord, the record guard;
+# the World's soft caps and ranges; the sound combinations; the distorted tracks; random writers; the CPU guard;
+# scene commits on the bar). Then tools/worldc.py's model of the macros and the guard against the C engine: the
+# same slot tables (ranges, targets, effective values) for every scene x variation at 105 macro positions, on the
+# factory Worlds and the test Worlds guard, full and extreme; `worldc check` on the factory Worlds. Then the sweeps
+# (tests/guard_sweep.c): each detector against a signal made to fail it, and the factory Worlds over the macro space
+# (quick: every scene on the 3^4 grid and 8 random points; SWEEP=full: every scene x variation, with and without a
+# player, the edges and 300 random points per World, then the injected bugs of tests/guard_mutants.py)
+guard_tests() {
+    for w in minimal full extreme guard; do
+        python3 tools/worldc.py compile worlds/test/$w.world.json -o "$OUT/gt-$w.wblob" >/dev/null 2>&1 ||
+            { echo "worldc cannot compile worlds/test/$w.world.json"; return 1; }
+    done
+    $CC -g -w -fsanitize=address,undefined -fno-sanitize=shift-base -fno-sanitize-recover=undefined -Ibuild/gen \
+        -Ifirmware/src -o "$OUT/guard_test" tests/guard_test.c -lm || return 1
+    "$OUT/guard_test" "$OUT/gt-minimal.wblob" "$OUT/gt-full.wblob" "$OUT/gt-extreme.wblob" "$OUT/gt-guard.wblob" ||
+        return 1
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/guard_sweep" tests/guard_sweep.c -lm || return 1
+    for f in worlds/factory/*.world.json; do
+        [ -f "$f" ] || continue
+        id=$(basename "$f" .world.json)
+        python3 tools/worldc.py compile "$f" -o "$OUT/gt-$id.wblob" >/dev/null 2>&1 || return 1
+    done
+    n=0
+    for b in "$OUT"/gt-*.wblob; do
+        [ "$b" = "$OUT/gt-minimal.wblob" ] && continue
+        "$OUT/guard_sweep" --dump-slots "$b" > "$OUT/slots-c.txt" || return 1
+        python3 tools/worldc.py model "$b" > "$OUT/slots-py.txt" || return 1
+        cmp -s "$OUT/slots-c.txt" "$OUT/slots-py.txt" ||
+            { echo "$b: tools/worldc.py model differs from the C engine:"; diff "$OUT/slots-c.txt" "$OUT/slots-py.txt" | head; return 1; }
+        n=$((n + $(grep -c '^@' "$OUT/slots-c.txt")))
+    done
+    echo "model: tools/worldc.py and the C engine give the same $n slot tables (every scene x variation, 105 positions)"
+    python3 tools/worldc.py check worlds/factory/*.world.json || return 1
+    "$OUT/guard_sweep" --selftest || return 1
+    # shellcheck disable=SC2046
+    "$OUT/guard_sweep" $(ls "$OUT"/gt-*.wblob | grep -v -e gt-minimal -e gt-full -e gt-extreme -e gt-guard) || return 1
+    if [ "${SWEEP:-}" = full ]; then
+        python3 tests/guard_mutants.py || return 1
+    fi
+}
+run "guardrails: rules, H6, notes, CPU (ASan/UBSan); the worldc model = the C engine; sweeps over the macro space${SWEEP:+ ($SWEEP)}" \
+    guard_tests
 
 [ $fail -eq 0 ] && echo "ALL HOST TESTS PASSED" || { echo "HOST TESTS FAILED"; exit 1; }

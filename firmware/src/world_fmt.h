@@ -69,6 +69,7 @@
 #define WF_MAX_ENERGY 4
 #define WF_MAX_BANDS 4
 #define WF_MAX_GRANGES 32            /* GUARD: target range records */
+#define WF_MAX_COMBOS 8              /* GUARD: sound combination records */
 #define WF_MAX_PAIRS 64              /* parameter pairs of one track, scene or variation */
 
 /* fixed sizes (bytes) */
@@ -90,8 +91,9 @@
 #define WF_ACT_LEN 4
 #define WF_ENERGY_HDR 3              /* u16 density_lanes, nbands + 12 per band */
 #define WF_BAND_LEN 12
-#define WF_GUARD_FIX 32              /* + 4 per range record */
+#define WF_GUARD_FIX 32              /* + 4 per range record + 9 per combination record */
 #define WF_GRANGE_LEN 4
+#define WF_COMBO_LEN 9
 #define WF_KEYS_LEN 8
 #define WF_DEFAULTS_LEN 16
 
@@ -228,6 +230,8 @@
 #define WF_CTL_HOME {500, 500, 500, 500, 0, 0, 0, 0, 0, 0, 0, 500, 500, 0, 0, 0}
 #define WF_EROLE_NAMES "BRIGHT RESO DRIVE SHAPE DETUNE AIR MOVE BODY"
 #define WF_NEROLES 8
+#define WF_EROLE_RESO 1
+#define WF_EROLE_DRIVE 2
 /* engine roles: per engine (ENGINES[] order) the EDIT slot (0..7 = P_E0..P_E7) of each role, WF_NONE = none */
 #define WF_ENG_ROLE {{4, 5, 6, 2, 1, 3, WF_NONE, WF_NONE},              /* ANALOG  CUT RES DRV MIX DTN NOIS */ \
                      {4, WF_NONE, 6, 5, WF_NONE, WF_NONE, WF_NONE, WF_NONE},   /* DIGITAL IDX FB MDEC */ \
@@ -280,15 +284,35 @@
 #define WF_G_GRAINDENS 22            /* GRAIN DENS cap 0..127 */
 #define WF_G_DISTTRK 23              /* tracks with DIST > 0, 0..3 */
 #define WF_G_CPU 24                  /* cpu_q8 ceiling 1..255 */
-#define WF_G_RESERVED 25             /* 25..31: 255 */
+#define WF_G_COMBOS 25               /* combination records after the ranges, 0..8 (255: WF_COMBO_DEFAULT) */
+#define WF_G_RESERVED 26             /* 26..31: 255 */
 #define WF_FOLLOW_NAMES "off snap"
 #define WF_AVOID_NAMES "classic none strict"
 #define WF_DENSCHG_NAMES "beat bar"
-/* fields 6..24 (WF_G_POLY .. WF_G_CPU): the valid range of a set field, and the firmware default of an unset one
- * (design 6.1; fills 0 = the progression's length) */
-#define WF_GUARD_MIN {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1}
-#define WF_GUARD_MAX {4, 1, 2, 250, 4, 127, 127, 120, 127, 127, 127, 2, 1, 32, 16, 8, 127, 3, 254}
-#define WF_GUARD_DEFAULT {4, 1, 0, 188, 4, 116, 110, 96, 120, 100, 100, 1, 0, 0, 1, 4, 90, 2, 217}
+/* fields 6..25 (WF_G_POLY .. WF_G_COMBOS): the valid range of a set field, and the firmware default of an unset one
+ * (design 6.1; fills 0 = the progression's length; combos WF_NONE = WF_COMBO_DEFAULT) */
+#define WF_GUARD_MIN {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0}
+#define WF_GUARD_MAX {4, 1, 2, 250, 4, 127, 127, 120, 127, 127, 127, 2, 1, 32, 16, 8, 127, 3, 254, 8}
+#define WF_GUARD_DEFAULT {4, 1, 0, 188, 4, 116, 110, 96, 120, 100, 100, 1, 0, 0, 1, 4, 90, 2, 217, 255}
+/* a sound combination (guard.c, design 6.1): {target a, id a, i8 over a, target b, id b, i8 over b, target c, id c,
+ * i8 cap}: while a's value is above "over a" and b's above "over b", c stays at or under cap (a one-condition
+ * combination repeats a as b). Targets as MAPS (kind PARAM, ROLE or GLOBAL); a per-track c is judged per track,
+ * with a and b on that track when they name it (else their highest). The cap comes in as the conditions rise
+ * through WF_COMBO_RAMP steps past their thresholds (a condition on c itself: as soon as c is above it). The
+ * firmware's own, for a World whose GUARD sets none: */
+#define WF_COMBO_RAMP 16
+#define WF_COMBO_DEFAULT { \
+    WF_K_GLOBAL << 5, G_RSIZE, 112, WF_K_GLOBAL << 5, G_DFDBK, 80, WF_K_GLOBAL << 5, G_DFDBK, 80, \
+    WF_K_ROLE << 5 | 7, WF_EROLE_DRIVE, 64, WF_K_ROLE << 5 | 7, WF_EROLE_RESO, 90, WF_K_ROLE << 5 | 7, WF_EROLE_RESO, 90, \
+    WF_K_PARAM << 5 | 7, P_DIST, 80, WF_K_GLOBAL << 5, G_DUST, 64, WF_K_GLOBAL << 5, G_DUST, 64, \
+    WF_K_GLOBAL << 5, G_RSIZE, 116, WF_K_PARAM << 5 | 7, P_REV, 110, WF_K_PARAM << 5 | 7, P_REV, 110, \
+    WF_K_GLOBAL << 5, G_RSIZE, 116, WF_K_GLOBAL << 5, G_DRREV, 100, WF_K_GLOBAL << 5, G_DRREV, 100, \
+    WF_K_GLOBAL << 5, G_DFDBK, 90, WF_K_PARAM << 5 | 7, P_DLY, 100, WF_K_PARAM << 5 | 7, P_DLY, 100}
+/*  a big room and a long echo: the echo shortens           drive into resonance: the resonance stays under 90
+ *  a distorted part through DUST: DUST stays moderate      a huge room: no part's reverb send above 110
+ *  a huge room: the drums' reverb at most 100              a long echo: no part's echo send above 100 */
+#define WF_ENG_GRAIN 8               /* the CPU guard: GRAIN's DENS (EDIT slot 3) under GUARD grain_dens */
+#define WF_GRAIN_DENS 3
 
 /* -------------------------------------------------------------------- KEYS --- */
 /* trk, mode, u16 melody_mask (12 bits, relative to the key, bit 0 set, inside the World scale), white, black,

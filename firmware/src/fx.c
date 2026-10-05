@@ -2,6 +2,7 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Effects: per-track DIST insert, then sends into three
  * shared buses (chorus, tempo delay, reverb). Mono buses, stereo dry mix. */
+#include "guard_limits.h"        /* H6: the stability limits, clamped where they are read (in SLOOP too) */
 #define DLY_LEN 65536u           /* 1.49 s: 1/4 at 40 BPM fits */
 #define CHO_LEN 2048u
 static int16_t dly_buf[DLY_LEN] __attribute__((section(".pool")));
@@ -22,7 +23,7 @@ static struct {
  * make-up gain. State per part (track_t dist_*). */
 static void track_dist(track_t *t, int32_t *b, uint32_t n)
 {
-    int32_t d = t->p[P_DIST], i, g, k, mk, bias = 2400, b0;
+    int32_t d = clamp(t->p[P_DIST], 0, TP[P_DIST].max), i, g, k, mk, bias = 2400, b0;   /* (H6) */
     if (!d) {
         t->dist_on = 0;
         return;
@@ -124,15 +125,20 @@ static uint32_t delay_samples(void)
     return s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
 }
 
+/* a bus parameter as the buses read it: inside its descriptor (H6, design 6.3: whatever wrote g[], a corrupt
+ * project, an editor, a macro, the feedback and comb gains stay under 1 and the one-pole coefficients too; for every
+ * value the descriptor allows a no-op, so SLOOP sounds the same) */
+static int32_t gbus(uint32_t i) { return clamp(song.g[i], GP[i].min, GP[i].max); }
+
 /* process the three buses for one block; sends in, wet stereo-equal out */
 static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet,
                      uint32_t n)
 {
     uint32_t i, k, dl = delay_samples();
-    int32_t fb = song.g[G_DFDBK] * 230, col = 2000 + song.g[G_DCOLOR] * 240;
-    int32_t dmix = song.g[G_DMIX] * 258;
-    int32_t size = 25000 + song.g[G_RSIZE] * 50, damp = 32767 - song.g[G_RDAMP] * 200;
-    int32_t cdepth = song.g[G_CDEPTH] * 6;
+    int32_t fb = clamp(song.g[G_DFDBK], 0, GL_DFDBK_MAX) * 230, col = 2000 + gbus(G_DCOLOR) * 240;
+    int32_t dmix = gbus(G_DMIX) * 258;
+    int32_t size = 25000 + clamp(song.g[G_RSIZE], 0, GL_RSIZE_MAX) * 50, damp = 32767 - gbus(G_RDAMP) * 200;
+    int32_t cdepth = gbus(G_CDEPTH) * 6;
     uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL;
     for (i = 0; i < n; i++) {
         int32_t y = 0, x, r, a;
@@ -292,7 +298,7 @@ static int32_t crush_bits(int32_t v, int32_t shift)    /* fewer bits, rounded to
 
 static void dust_process(int32_t *l, int32_t *r, uint32_t n)
 {
-    int32_t d = song.g[G_DUST], hold, shift, a, drive, hiss, i, bed0, bed1;
+    int32_t d = gbus(G_DUST), hold, shift, a, drive, hiss, i, bed0, bed1;   /* (H6: the one-pole stays stable) */
     uint32_t pc;
     if (!d) {
         dust.bed = 0;

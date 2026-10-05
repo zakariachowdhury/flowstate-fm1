@@ -404,7 +404,7 @@ static void maps_world(const tworld_t *w, const char *variant)
     }
     ref_world();
     np = wctx.cnt[WF_S_PROGS];
-    CHECK(skm[skcur].tonic == wr.tonic && skm[skcur].lo == wr.lo && skm[skcur].hi == wr.hi && skm[skcur].poly == wr.poly,
+    CHECK(skm[skcur].tonic == wr.tonic && skm[skcur].g.lo == wr.lo && skm[skcur].g.hi == wr.hi && skm[skcur].g.poly == wr.poly,
           "%s %s: tonic / range / poly", w->name, variant);
     for (p = 0; p < np; p++) {
         const uint8_t *pr = ref_prog(p);
@@ -830,14 +830,19 @@ static void same_two_keys(int refcount, uint32_t voice)
 
 static void same_key_and_seq(int refcount)
 {
-    uint32_t kt, n, k = 9, i, cut = 0, seq_on = 0;
+    uint32_t kt, n, k, i, cut = 0, seq_on = 0, ci, safe = 0xFFF;
     track_t *t;
     t_start(t_find("MIDNIGHT DRIVE"));
     kt = wrt.keys_trk;
     t = &trk[kt];
     wrt.refcount = (uint8_t)refcount;
     t_mute_others(1);
-    n = sk_note(k);
+    for (ci = 0; ci < hprog[hcur].n; ci++)       /* a note safe over every chord: the loop plays it as written (an */
+        safe &= hprog[hcur].safe[ci];            /* avoid note would follow the chord, guard.c H12) */
+    for (k = 9; k < 27u && !(safe >> (sk_note(k) % 12u) & 1u); k++)
+        ;
+    CHECK(k < 27u, "a key safe over every chord");
+    n = sk_note(k % 27u);
     for (i = 0; i < NSTEP; i++) {                /* the keys loop: that note on every 4th step, a short gate */
         memset(&t->step[i], 0, sizeof t->step[i]);
         t->step[i].time = i % 4u ? ST_REST : ST_NOTE;
@@ -918,7 +923,7 @@ static void same_seq_paths(void)                 /* slides, ratchets with a live
             if (t->arp_note) {
                 uint32_t a = t->arp_note;
                 seen |= 1u << (a - held < 32u ? a - held : 31u);
-                bad += a != held && (!(harm.ct >> (a % 12u) & 1u) || a < held || a > skm[skcur].hi);
+                bad += a != held && (!(harm.ct >> (a % 12u) & 1u) || a < held || a > skm[skcur].g.hi);
             }
         }
         CHECK(t->nheld == 1 && held == kb_nt[11][0], "PULSE: one key held");
@@ -1291,7 +1296,7 @@ static void test_fuzz(void)
                     uint32_t rel = (n + 12u - skm[skcur].tonic % 12u) % 12u;
                     int ok = t_black(k) ? skm[skcur].bs[ci] >> (n % 12u) & 1u : skm[skcur].wm[ci] >> rel & 1u;
                     presses++;
-                    bad += !ok || n < skm[skcur].lo || n > skm[skcur].hi;
+                    bad += !ok || n < skm[skcur].g.lo || n > skm[skcur].g.hi;
                 }
             if (trk[kt].arp_note) {              /* PULSE: the held notes and the chord's tones */
                 uint32_t a = trk[kt].arp_note % 12u, allowed = hprog[hcur].scale | harm.ct, c;

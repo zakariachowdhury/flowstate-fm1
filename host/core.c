@@ -39,6 +39,7 @@
 #include "seq.c"
 #if FELUCCA_WORLD                    /* the harmony and Smart Keys runtime, as felucca.c */
 #include "harmony.c"
+#include "guard.c"
 #include "smartkeys.c"
 #include "macro.c"
 #include "arrange.c"

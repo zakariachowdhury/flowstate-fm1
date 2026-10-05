@@ -51,7 +51,15 @@ static void track_lfo_tick(track_t *t)
 static uint32_t trk_nvoice(const track_t *t)
 {
     uint32_t c = ENGINES[t->engine]->poly;
-    return c && c < NPOLY ? c : NPOLY;
+    c = c && c < NPOLY ? c : NPOLY;
+#if FELUCCA_WORLD
+    if (wrt.active && t->p[P_VOICE] == V_UNISON) {      /* the CPU guard (guard.c): GUARD max_unison voices, */
+        uint32_t u = wg.hold ? 2u : wg.unison;           /* 2 while it holds */
+        if (u && c > u)
+            c = u;
+    }
+#endif
+    return c;
 }
 
 /* ------------------------------------------------- the shared voice budget --- */
@@ -545,8 +553,8 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     /* TUNE in cents: whole 1/16 semitones in the pitch, the rest as a fine factor (no dead zone) */
     int32_t tune = song.g[G_TUNE] >= 0 ? song.g[G_TUNE] * 16 / 100 : -((-song.g[G_TUNE] * 16 + 99) / 100);
     int32_t tune_fine = (song.g[G_TUNE] * 16 - tune * 100) * 2367 / 16000;   /* rest, in 1/4096 (1 ct = 2.367) */
-    uint32_t nr = 0, fade = t->xf_on && t->xf;
-    int16_t pe_new[8];
+    uint32_t nr = 0, fade = t->xf_on && t->xf, pfix = 0;
+    int16_t pe_new[8], pe_keep[8];
     for (i = 0; i < n; i++)
         out[i] = 0;
     if (fade)                                           /* engine switch: the old engine, its own values */
@@ -554,6 +562,15 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             pe_new[i] = t->p[P_E0 + i];
             t->p[P_E0 + i] = t->pe_old[i];
         }
+    for (i = 0; i < 8u; i++) {     /* H6: each EDIT value inside its descriptor where the engines read it (resonance,
+                                    * feedback, drive...: a no-op for every value the descriptor allows; back below) */
+        int32_t x = t->p[P_E0 + i], lo = e->edit[i].min, hi = e->edit[i].max;
+        if (x < lo || x > hi) {
+            pe_keep[i] = (int16_t)x;
+            t->p[P_E0 + i] = (int16_t)(x < lo ? lo : hi);
+            pfix |= 1u << i;
+        }
+    }
     track_lfo_tick(t);
     if (e->block)                                       /* the engine's per-part work (DRAWBAR: bars, rotor) */
         e->block(t);
@@ -610,6 +627,9 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         e->render(t, v, out, n, &m);
         nr++;
     }
+    for (i = 0; pfix; i++, pfix >>= 1)                  /* (H6: what was there, back) */
+        if (pfix & 1u)
+            t->p[P_E0 + i] = pe_keep[i];
     if (fade) {
         for (i = 0; i < 8u; i++)
             t->p[P_E0 + i] = pe_new[i];

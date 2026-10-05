@@ -13,7 +13,8 @@
  *               safe tones, for Worlds with a 7-note melody scale).
  *   every note  + 12 x OCT (song.octave), then folded by octaves into the keys track's range (GUARD range,
  *               smart_keys.range; default C3..C6; a range under an octave is widened upward to one, so that every
- *               pitch class has a place in it and no key ever leaves the key).
+ *               pitch class has a place in it and no key ever leaves the key). The note guard is guard.c's
+ *               (gnote_t: guard_note_stage, guard_fold, guard_admit).
  *
  * A key pressed while a note is held never moves that note: seq.c key_down keeps what each key sounded
  * (kb_nt / kb_n / kb_trk) and key_up releases exactly that, whatever the chord, scene or octave is by then.
@@ -29,7 +30,7 @@
  *   sk_on, sk_active(t)        a World plays, Smart Keys are on (PLAY; ADV_WORLD clears wrt.keys_on: kb_map)
  *   sk_note(k)                 ISR (H7): key k's note now (the chord a key gets: harm.ci_key)
  *   sk_voicing(k, n, nt)       ISR (H7): the notes the key plays (MELODY: n alone; the extension point of the modes)
- *   sk_admit()                 ISR (H9): the keys track's polyphony cap (GUARD max_poly)
+ *   sk_admit()                 ISR (H9): the keys track's polyphony cap (GUARD max_poly, guard.c guard_admit)
  *   sk_midi_map(t, &v, on)     ISR (H8): MIDI in on the keys track
  *   sk_pulse(t, list)          ISR (H11): PULSE with one key held
  *   sk_chord_keys()            main: the key LEDs (design 8.4)
@@ -40,16 +41,12 @@
 #define SK_NKEY 27u                      /* the keys: F3 (53) .. G5 (79) */
 #define SK_LO 53u
 #define SK_BLACK 0x54Au                  /* black pitch classes: C# D# F# G# A# */
-#define SK_RANGE_LO 48u                  /* the range when GUARD sets none: C3..C6 (design 6.1) */
-#define SK_RANGE_HI 84u
-#define SK_POLY 4u                       /* max_poly when GUARD sets none */
 enum { SK_MELODY, SK_CHORDS, SK_BASS, SK_DRUMS };   /* KEYS mode (WF_KMODE_NAMES order) */
 
 typedef struct {
     uint8_t n;                           /* chords (as harmony's progression), 0 = no map */
     uint8_t tonic;                       /* the note of the C4 key: KEYS tonic (the World root at or below it) */
-    uint8_t lo, hi;                      /* the range */
-    uint8_t poly;                        /* max_poly */
+    gnote_t g;                           /* the note guard: range, max_poly (guard.c) */
     uint8_t mode;                        /* KEYS mode */
     uint16_t wm[WF_MAX_CHORDS];          /* per chord: the white keys' pitch classes, relative to the tonic */
     uint16_t bs[WF_MAX_CHORDS];          /* per chord: the black keys' pitch classes (absolute) */
@@ -77,15 +74,7 @@ static uint32_t sk_ci(const skmap_t *m)  /* the chord a key pressed now plays ov
     return harm.ci_key < m->n ? harm.ci_key : 0u;
 }
 
-/* n folded by octaves into the range (sk_stage made it an octave at least) */
-static uint32_t sk_fold(const skmap_t *m, int32_t n)
-{
-    while (n > (int32_t)m->hi)
-        n -= 12;
-    while (n < (int32_t)m->lo)
-        n += 12;
-    return (uint32_t)clamp(n, 0, 127);
-}
+static uint32_t sk_fold(const skmap_t *m, int32_t n) { return guard_fold(&m->g, n); }   /* into the range */
 
 /* the white key d white keys from C4 (any sign) over melody mask wm (relative to the tonic, not empty) */
 static int32_t sk_white(uint32_t tonic, uint32_t wm, int32_t d)
@@ -131,13 +120,7 @@ static void sk_stage(const uint8_t *keys, const uint8_t *guard)
         tonic += 12u;
     m->tonic = (uint8_t)tonic;
     m->mode = (uint8_t)(keys[1] < 4u ? keys[1] : SK_MELODY);
-    m->lo = (uint8_t)(guard && guard[2u * kt] != WF_NONE ? guard[2u * kt] : SK_RANGE_LO);
-    m->hi = (uint8_t)(guard && guard[2u * kt] != WF_NONE ? guard[2u * kt + 1u] : SK_RANGE_HI);
-    if (m->hi < m->lo + 11u)                       /* (under an octave it cannot hold every pitch class: widened */
-        m->hi = (uint8_t)(m->lo + 11u > 127u ? 127u : m->lo + 11u);   /* upward to one, the keys stay in key) */
-    if (m->lo > m->hi - 11u)
-        m->lo = (uint8_t)(m->hi - 11u);
-    m->poly = (uint8_t)(guard && guard[WF_G_POLY] != WF_NONE ? guard[WF_G_POLY] : SK_POLY);
+    guard_note_stage(&m->g, guard, kt);            /* range (an octave at least: the keys stay in key), max_poly */
     if (!(mel & 1u))
         mel |= 1u;
     for (ci = 0; ci < h->n; ci++) {
@@ -193,11 +176,9 @@ static uint32_t sk_voicing(uint32_t k, uint32_t n, uint8_t *nt)
 static int sk_admit(void)
 {
     uint32_t k, n = 0;
-    for (k = 0; k < SK_NKEY; k++)
-        n += kb_kind[k] == KS_NOTE && kb_n[k] && kb_trk[k] == wrt.keys_trk;
     for (k = 0; k < 128u; k++)
         n += sk_midi[k] != 0;
-    return n < skm[skcur].poly;
+    return guard_admit(skm[skcur].g.poly, n);
 }
 
 static uint32_t sk_vnote(uint32_t v)     /* MIDI note v as a virtual key (C4 = 60 is the C4 key) */
@@ -247,7 +228,7 @@ static uint32_t sk_pulse(const track_t *t, uint32_t *list)
         return 1;
     while (n < 4u) {
         p = sk_above(ct, p);
-        if (p > (int32_t)m->hi || p > 127)
+        if (p > (int32_t)m->g.hi || p > 127)
             break;
         list[n++] = (uint32_t)p;
     }

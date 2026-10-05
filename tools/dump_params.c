@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* SLOOP's name tables as JSON, for tools/worldc.py: the track and global parameter descriptors (TP, GP), the
- * engines (ENGINES[]: EDIT labels, ranges, value names, factory preset names, the engine roles of world_fmt.h),
+ * engines (ENGINES[]: EDIT labels, ranges, value names, factory preset names and the track parameters each preset
+ * starts a World's track from, the engine roles of world_fmt.h),
  * the drum kits and lanes, the scales and the step divisions. Built from the firmware's own sources (as
  * tests/hostsim.c includes them), so a World is compiled against exactly what the firmware has.
  *   cc -O1 -w -Ibuild/gen -Ifirmware/src -o build/host/dump_params tools/dump_params.c -lm
@@ -196,6 +197,22 @@ int main(void)
             if (k && k % 6u == 0)
                 printf("\n       ");
             str(e->presets[k].name);
+        }
+        /* each preset as a World's synth track starts from it (world.c world_stage): the track parameters at
+         * their defaults, the EDIT values at the engine's, then preset_fill (worldc's model of the macros) */
+        printf("],\n     \"preset_p\": [");
+        for (k = 0; k < e->npresets; k++) {
+            int16_t pp[P_COUNT];
+            uint32_t j;
+            for (j = 0; j < P_E0; j++)
+                pp[j] = TP[j].def;
+            for (j = 0; j < 8u; j++)
+                pp[P_E0 + j] = e->edit[j].def;
+            preset_fill(pp, e, k);
+            printf("%s\n       [", k ? "," : "");
+            for (j = 0; j < P_COUNT; j++)
+                printf("%s%d", j ? ", " : "", pp[j]);
+            printf("]");
         }
         printf("]}%s\n", i + 1u < NENGINES ? "," : "");
     }

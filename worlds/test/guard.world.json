@@ -1,0 +1,53 @@
+{
+  "notes": "Test World (tests/guard_test.c, the worldc model's cross-check in tests/run_tests.sh): every rule of the Musical Guardrail Engine engaged at once. The soft caps (max_level, max_reso, max_dfdbk, max_rsize, max_dist, max_dust, GRAIN DENS), target ranges on a global, an engine parameter and ~bright, one distorted track allowed of three a macro would distort, and its own sound combinations. The macros push far past every range on purpose: tools/worldc.py check refuses it. Never musical.",
+  "format": "flowstate-world/1",
+  "id": "test_guard",
+  "name": "GUARD",
+  "category": "TEST",
+  "tempo": {"bpm": 110},
+  "key": {"root": "A", "scale": "MIN"},
+  "tracks": [
+    {"name": "pad", "role": "pad", "sound": {"engine": "ANALOG", "preset": "WARM PAD", "params": {"dist": 0, "rev": 70}}},
+    {"name": "bass", "role": "bass", "sound": {"engine": "TRIO", "preset": "FAT BASS", "params": {"dist": 0, "rev": 40}}},
+    {"name": "keys", "role": "lead", "sound": {"engine": "GRAIN", "preset": "VIBE HAZE", "params": {"dist": 0, "DENS": 80}}},
+    {"name": "drums", "role": "drums", "sound": {"kit": "808"}}
+  ],
+  "fx": {"dfdbk": 60, "rsize": 96, "dust": 10, "drrev": 70},
+  "patterns": {
+    "pad1": {"track": "pad", "div": "1/4", "steps": "[c1 c3 c5] - - -"},
+    "bass1": {"track": "bass", "div": "1/8", "steps": "c1 c1 c1' c1 c5 c1 c1' c1"},
+    "beat": {"track": "drums", "lanes": {"kick": "x...x...x...x...", "hat": "..x...x...x...x."}}
+  },
+  "progressions": {"home": ["i:4", "VI:4", "III:4", "VII:4"]},
+  "scenes": {
+    "A": {"name": "INTRO", "role": "intro", "progression": "home", "patterns": {"pad": "pad1"}},
+    "B": {"name": "MAIN", "role": "main", "progression": "home",
+          "patterns": {"pad": "pad1", "bass": "bass1", "drums": "beat"}},
+    "C": {"name": "LIFT", "role": "lift", "progression": "home",
+          "patterns": {"pad": "pad1", "bass": "bass1", "drums": "beat"}, "fx": {"rsize": 110}},
+    "D": {"name": "BREAKDOWN", "role": "breakdown", "progression": "home", "patterns": {"pad": "pad1"},
+          "params": {"pad.dist": 20}}
+  },
+  "macros": {
+    "COLOR": [{"to": "pad.@RESO", "min": -20, "max": 100}, {"to": "pad.@DRIVE", "min": -20, "max": 90},
+              {"to": "bass.@RESO", "min": -20, "max": 90}, {"to": "keys.~bright", "min": -60, "max": 60}],
+    "MOTION": [{"to": "keys.DENS", "min": -40, "max": 60}, {"to": "g.dust", "min": 0, "max": 120}],
+    "SPACE": [{"to": "g.rsize", "min": -40, "max": 60}, {"to": "g.dfdbk", "min": -40, "max": 70},
+              {"to": "*.rev", "min": -40, "max": 60}, {"to": "g.drrev", "min": -40, "max": 60}],
+    "ENERGY": [{"to": "pad.dist", "min": 0, "max": 90}, {"to": "bass.dist", "min": 0, "max": 90},
+               {"to": "keys.dist", "min": 0, "max": 90}, {"to": "*.level", "min": -10, "max": 30}]
+  },
+  "rules": [{"if": {"SPACE": 0.8, "ENERGY": 0.8}, "then": [{"to": "g.dfdbk", "add": 20}, {"to": "bass.rev", "add": 30}]}],
+  "guard": {
+    "notes": {"keys": {"max_poly": 3}},
+    "sound": {"max_level": 110, "max_reso": 100, "max_dfdbk": 96, "max_rsize": 118, "max_dist": 80, "max_dust": 60,
+              "ranges": {"g.dfdbk": [0, 100], "bass.RES": [10, 85], "keys.~bright": [-20, 30]},
+              "combos": [{"when": {"g.rsize": 100, "g.dfdbk": 70}, "cap": {"g.dfdbk": 70}},
+                         {"when": {"pad.@DRIVE": 40}, "cap": {"pad.@RESO": 60}},
+                         {"when": {"g.dust": 30, "*.dist": 20}, "cap": {"g.dust": 30}},
+                         {"when": {"g.rsize": 105}, "cap": {"*.rev": 90}}]},
+    "cpu": {"max_dist_tracks": 1, "grain_dens": 90}
+  },
+  "smart_keys": {"track": "keys"},
+  "defaults": {"scene": "B", "macros": [0.5, 0.5, 0.5, 0.5]}
+}

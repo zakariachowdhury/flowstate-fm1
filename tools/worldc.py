@@ -5,6 +5,7 @@
   tools/worldc.py compile WORLD.json -o OUT.wblob [--c-array] [--name SYM] [--user]
   tools/worldc.py decompile BLOB [-o OUT.json]
   tools/worldc.py check WORLD.json... [--user] [--json]
+  tools/worldc.py model WORLD.json|BLOB [--random N] [--seed S]
   tools/worldc.py names [ENGINE]
 
 names     what a World may name: engines (EDIT labels, value names, roles, presets), common parameters, the World
@@ -12,7 +13,11 @@ names     what a World may name: engines (EDIT labels, value names, roles, prese
 
 compile   writes the blob (or, with --c-array, a C array of it); fails on any error.
 decompile prints a lowered JSON (absolute notes, generated names) that compiles back to the same bytes.
-check     the static checks only (schema, names, ranges, notation, budgets); no audio.
+check     the static checks (schema, names, ranges, notation, budgets), then the reference model of the macros and
+          the guard (design 6.4) over every scene x variation and the 3^4 grid of the macros: no mapping out of its
+          parameter's range or past a hard limit, none at the maximum at 100 % unless "saturate", at most 48 slots,
+          a Smart Keys range of an octave at least; no audio.
+model     the model's slot tables at sampled macro positions (the format of tests/guard_sweep.c --dump-slots).
 
 Sources of truth (nothing is copied by hand):
   firmware/src/world_fmt.h         every format constant (read by a small parser below)
@@ -1423,6 +1428,7 @@ class Compiler:
 
     def macros(self):
         self.maps = []
+        self.map_src = []                # per mapping: its JSON path, "saturate" (the model's checks)
         for group, base in (("macros", 0), ("controls", 4)):
             for cn, lst in self.s.get(group, {}).items():
                 path = jp(f"$.{group}", cn)
@@ -1435,6 +1441,7 @@ class Compiler:
                     r = self.mapping(jp(path, i), ctl, m)
                     if r:
                         self.maps.append(r)
+                        self.map_src.append((jp(path, i), bool(isinstance(m, dict) and m.get("saturate"))))
         if len(self.maps) > F["WF_MAX_MAPS"]:
             self.e("$.macros", f"{len(self.maps)} mappings (with controls); at most {F['WF_MAX_MAPS']}")
 
@@ -1549,6 +1556,38 @@ class Compiler:
             ranges.append((tg[0], tg[1], tg[2], lh[0], lh[1]))
         if len(ranges) > F["WF_MAX_GRANGES"]:
             self.e("$.guard.sound.ranges", f"at most {F['WF_MAX_GRANGES']}")
+        combos = None
+        if "combos" in snd:
+            combos = []
+            src = snd["combos"]
+            if not isinstance(src, list) or len(src) > F["WF_MAX_COMBOS"]:
+                self.e("$.guard.sound.combos", f"a list of at most {F['WF_MAX_COMBOS']} combinations")
+                src = []
+            for i, cb in enumerate(src):
+                path = jp("$.guard.sound.combos", i)
+                when, cap = (cb.get("when"), cb.get("cap")) if isinstance(cb, dict) else (None, None)
+                if not isinstance(when, dict) or not 1 <= len(when) <= 2 or not isinstance(cap, dict) or len(cap) != 1:
+                    self.e(path, '{"when": {TARGET: over, ...} (one or two), "cap": {TARGET: value}}')
+                    continue
+                rec = []
+                for key, (to, v) in [("when", x) for x in when.items()] + [("cap", x) for x in cap.items()]:
+                    tp = jp(jp(path, key), to)
+                    tg = self.target(tp, to, "guard combination")
+                    if not isinstance(v, int) or isinstance(v, bool) or not -128 <= v <= 127:
+                        self.e(tp, f"{json.dumps(v)}: an integer -128..127")
+                        tg = None
+                    elif tg and tg[0] not in (F["WF_K_PARAM"], F["WF_K_ROLE"], F["WF_K_GLOBAL"]):
+                        self.e(tp, "a combination names parameters, @roles or globals")
+                        tg = None
+                    if not tg:
+                        break
+                    rec.append((tg[0], tg[1], tg[2], v))
+                else:
+                    if len(rec) == 2:
+                        rec.insert(1, rec[0])
+                    combos.append(tuple(rec))
+            fix[F["WF_G_COMBOS"]] = len(combos)
+            used = True
         arr = g.get("arrangement", {})
         if "mute_change" in arr:
             mc = {"bar": 1, "2bars": 2}.get(arr["mute_change"], arr["mute_change"])
@@ -1573,9 +1612,10 @@ class Compiler:
             if not isinstance(c, (int, float)) or isinstance(c, bool) or not 0 < c <= 1:
                 self.e("$.guard.cpu.ceiling", "a fraction 0..1 of the audio interrupt's time")
             else:
-                fix[F["WF_G_CPU"]] = max(F["WF_GUARD_MIN"][-1], min(F["WF_GUARD_MAX"][-1], int(round(c * 256))))
+                o = F["WF_G_CPU"] - F["WF_G_POLY"]
+                fix[F["WF_G_CPU"]] = max(F["WF_GUARD_MIN"][o], min(F["WF_GUARD_MAX"][o], int(round(c * 256))))
                 used = True
-        self.gd = {"fix": fix, "ranges": ranges} if used or ranges else None
+        self.gd = {"fix": fix, "ranges": ranges, "combos": combos or []} if used or ranges else None
 
     # ---- DEFAULTS
     def defaults(self):
@@ -1799,7 +1839,8 @@ def encode(ir):
         g = ir["guard"]
         secs.append((F["WF_S_GUARD"], len(g["ranges"]),
                      bytes(g["fix"]) + b"".join(bytes([k << 5 | msk, i]) + i8(lo) + i8(hi)
-                                                for k, msk, i, lo, hi in g["ranges"])))
+                                                for k, msk, i, lo, hi in g["ranges"]) +
+                     b"".join(bytes([k << 5 | msk, i]) + i8(v) for cb in g.get("combos", []) for k, msk, i, v in cb)))
     k = ir["keys"]
     secs.append((F["WF_S_KEYS"], 1, bytes([k["trk"], k["mode"]]) + struct.pack("<H", k["mask"]) +
                  bytes([k["white"], k["black"], k["tonic"], k["loop"]])))
@@ -1987,12 +2028,19 @@ def decode(b):
     ir["guard"] = None
     if F["WF_S_GUARD"] in secs:
         c, s = sec(F["WF_S_GUARD"])
-        need(len(s) == 32 + 4 * c, F["WE_LENGTH"], "GUARD")
+        need(len(s) >= 32, F["WE_LENGTH"], "GUARD")
+        nc = 0 if s[F["WF_G_COMBOS"]] == NONE else s[F["WF_G_COMBOS"]]
+        need(len(s) == 32 + 4 * c + F["WF_COMBO_LEN"] * nc, F["WE_LENGTH"], "GUARD")
         rg = []
         for k in range(c):
             tg, i, lo, hi = struct.unpack_from("<BBbb", s, 32 + 4 * k)
             rg.append((tg >> 5, tg & 31, i, lo, hi))
-        ir["guard"] = {"fix": list(s[:32]), "ranges": rg}
+        cbs, o = [], 32 + 4 * c
+        for k in range(nc):
+            cbs.append(tuple((s[o + 3 * j] >> 5, s[o + 3 * j] & 31, s[o + 3 * j + 1],
+                              struct.unpack_from("<b", s, o + 3 * j + 2)[0]) for j in range(3)))
+            o += F["WF_COMBO_LEN"]
+        ir["guard"] = {"fix": list(s[:32]), "ranges": rg, "combos": cbs}
     c, s = sec(F["WF_S_KEYS"])
     need(c == 1 and len(s) == 8, F["WE_LENGTH"], "KEYS")
     ir["keys"] = {"trk": s[0], "mode": s[1], "mask": struct.unpack_from("<H", s, 2)[0], "white": s[4],
@@ -2329,6 +2377,14 @@ def decompile(b):
                 snd[key] = fix[F[off]]
         if g["ranges"]:
             snd["ranges"] = {tgt(kd, msk, i): [lo, hi] for kd, msk, i, lo, hi in g["ranges"]}
+        if fix[F["WF_G_COMBOS"]] != NONE:
+            cl = []
+            for a, b_, c_ in g["combos"]:
+                when = {tgt(*a[:3]): a[3]}
+                if b_ != a:
+                    when[tgt(*b_[:3])] = b_[3]
+                cl.append({"when": when, "cap": {tgt(*c_[:3]): c_[3]}})
+            snd["combos"] = cl
         if snd:
             gd["sound"] = snd
         arr = {}
@@ -2396,6 +2452,501 @@ def roman(r, q, beats, dmask):
 
 
 # ================================================================== API ===
+# ============================================= the model of the macros and the guard ===
+# design 6.4: firmware/src/macro.c (macro_eval) and guard.c (guard_range, guard_sound) once more, integer for integer,
+# with guard_limits.h's limits and world.c's stage (world_stage: the bases a scene x variation gives each parameter).
+# `check` judges a World on a grid of macro positions with it, no firmware needed; `model` prints its slot tables in
+# the format of tests/guard_sweep.c --dump-slots, and tests/run_tests.sh compares the two: the same slots, ranges,
+# targets and effective values (docs/guardrails.md).
+GL_H = ROOT / "firmware" / "src" / "guard_limits.h"
+RT_H = ROOT / "firmware" / "src" / "world_rt.h"
+
+
+def parse_limits(path=GL_H):
+    """#define GL_NAME integer of guard_limits.h -> {GL_NAME: int}"""
+    return {m.group(1): int(m.group(2)) for m in
+            re.finditer(r"^[ \t]*#define[ \t]+(GL_\w+)[ \t]+(-?\d+)\b", _strip_c(Path(path).read_text()), re.M)}
+
+
+GL = parse_limits()
+OV_MAX = int(re.search(r"#define OV_MAX (\d+)", RT_H.read_text()).group(1))
+OV_P, OV_G, OV_VCUT, OV_VSHP = range(4)
+CTL_HOME = F["WF_CTL_HOME"]
+ENG_ROLE = F["WF_ENG_ROLE"]
+P_LEVEL, P_DIST, P_ROOT, P_SCALE = (PR.pid[x] for x in ("level", "dist", "root", "scale"))
+G_DFDBK, G_RSIZE, G_DUST = (PR.gid[x] for x in ("dfdbk", "rsize", "dust"))
+_cd = [PR.sym(x[0]) if isinstance(x, list) else x for x in F["WF_COMBO_DEFAULT"]]
+COMBO_DEF = [tuple((_cd[o + 3 * j] >> 5, _cd[o + 3 * j] & 31, _cd[o + 3 * j + 1],
+                    _cd[o + 3 * j + 2] - 256 if _cd[o + 3 * j + 2] > 127 else _cd[o + 3 * j + 2]) for j in range(3))
+             for o in range(0, len(_cd), F["WF_COMBO_LEN"])]
+
+
+def stage_bases(ir, scene, var):
+    """world.c world_stage: each track's parameters and the globals a scene x variation starts from, and the
+    engines (only what the macros read: the arpeggiator, step length and division of the keys track are left out)"""
+    meta, sc, vr = ir["meta"], ir["scenes"][scene], ir["vars"][var]
+    p0, pn = PR.P_E0, PR.lim["P_COUNT"]
+    ps, eng = [], []
+    for t in range(NTRK):
+        tr = ir["tracks"][t]
+        e = 0 if t == TRK_DRUM else tr["engine"]
+        pre = tr["preset"]
+        for vt, vp in vr["sounds"]:
+            if vt == t:
+                pre = vp
+        if t == TRK_DRUM:
+            q = [PR.P[i]["def"] for i in range(p0)] + [0] * (pn - p0)
+            q[p0] = pre
+        else:
+            q = list(PR.engines[e]["preset_p"][pre])
+            q[P_ROOT], q[P_SCALE] = meta["root"], meta["scale"]
+        for pid, v in tr["pairs"]:
+            q[pid] = v
+        for pairs in (vr["pairs"], sc["pairs"]):
+            for scope, pid, v in pairs:
+                if scope == t:
+                    q[pid] = v
+        for i in range(pn):
+            if t == TRK_DRUM:
+                d = (0, PR.lim["DRUM_KITS"] - 1) if i == p0 else None if i > p0 else (PR.P[i]["min"], PR.P[i]["max"])
+            else:
+                dd = PR.engines[e]["edit"][i - p0] if i >= p0 else PR.P[i]
+                d = (dd["min"], dd["max"])
+            if d:
+                q[i] = max(d[0], min(d[1], q[i]))
+        ps.append(q)
+        eng.append(e)
+    g = [x["def"] for x in PR.G]
+    g[G_SWING] = meta["swing"]
+    for gid, v in ir["globals"]:
+        g[gid] = v
+    for pairs in (vr["pairs"], sc["pairs"]):
+        for scope, gid, v in pairs:
+            if scope == F["WF_SCOPE_G"]:
+                g[gid] = v
+    for gid in G_WHITE:
+        g[gid] = max(PR.G[gid]["min"], min(PR.G[gid]["max"], g[gid]))
+    return ps, g, eng
+
+
+class Slot:
+    __slots__ = ("kind", "part", "pid", "tgt", "lo", "hi", "cls", "dmin", "dmax", "raw", "maps")
+
+    def __init__(self, kind, part, pid):
+        self.kind, self.part, self.pid = kind, part, pid
+        self.tgt, self.raw, self.cls, self.maps = 0, 0, NONE, []
+
+
+def ov_effective(s, b, c):
+    """guard.c ov_effective: base b with offset c (Q8) through slot s's range"""
+    v = b + ((c + 128) >> 8)
+    if v > s.hi and v > b:
+        v = b if b > s.hi else s.hi
+    elif v < s.lo and v < b:
+        v = b if b < s.lo else s.lo
+    return v
+
+
+class Model:
+    """a World's macros and guard as the firmware evaluates them (decode()'s IR)"""
+    NOVAL = -0x8000
+
+    def __init__(self, ir):
+        self.ir = ir
+        gd = ir["guard"]
+        self.fix = gd["fix"] if gd else None
+        self.ranges = gd["ranges"] if gd else []
+        nc = self.fix[F["WF_G_COMBOS"]] if self.fix else NONE
+        self.combos = COMBO_DEF if nc == NONE else gd["combos"]
+        d = ir["defaults"]
+        self.pos = list(CTL_HOME)
+        for i in range(4):
+            self.pos[i], self.pos[4 + i], self.pos[8 + i] = d["ctl"][i] * 4, d["shape"][i] * 4, d["move"][i] * 4
+        self.p = self.g = self.eng = None
+
+    def stage(self, scene, var):
+        self.p, self.g, self.eng = stage_bases(self.ir, scene, var)
+
+    def gbyte(self, off):
+        return self.fix[off] if self.fix and self.fix[off] != NONE else F["WF_GUARD_DEFAULT"][off - F["WF_G_POLY"]]
+
+    # ---- macro.c
+    def curve(self, c, u):
+        if c == 0:
+            return u
+        if c == 1:
+            return u * u >> 12
+        if c == 2:
+            return math.isqrt(u << 12)
+        if c == 3:
+            u2 = u * u >> 12
+            return 3 * u2 - 2 * (u2 * u >> 12)
+        if c == 4:
+            return 2 * (u - 2048) if u > 2048 else 0
+        k = c - F["WF_CURVE_CUSTOM"]
+        if 0 <= k < len(self.ir["curves"]):
+            lut, x = self.ir["curves"][k], 8 * u
+            i, f = x >> 12, x & 4095
+            return 4096 if i >= 8 else (lut[i] * 4096 + (lut[i + 1] - lut[i]) * f + 127) // 255
+        return u
+
+    def offset(self, m, pos):
+        ctl, cv, mn, mx = m[0] % F["WF_NCTL"], m[5], m[6], m[7]
+        x, h = pos[ctl], CTL_HOME[ctl]
+        if x < h:
+            return mn * self.curve(cv, (h - x) * 4096 // h) >> 4
+        if x > h:
+            return mx * self.curve(cv, (x - h) * 4096 // (1000 - h)) >> 4
+        return 0
+
+    @staticmethod
+    def strength(r, pos):
+        ta, tb = 4 * r["ta"], 4 * r["tb"]
+        if pos[r["a"]] <= ta or pos[r["b"]] <= tb:
+            return 0
+        return min((pos[r["a"]] - ta) * 4096 // (1000 - ta), (pos[r["b"]] - tb) * 4096 // (1000 - tb))
+
+    def desc(self, kind, t, pid):
+        if kind == OV_G:
+            return PR.G[pid]
+        e = self.eng[t] if t < NTRK - 1 else 0
+        return PR.P[pid] if t == TRK_DRUM or pid < PR.P_E0 else PR.engines[e]["edit"][pid - PR.P_E0]
+
+    def slot(self, kind, t, pid, make):
+        for s in self.tab:
+            if s.kind == kind and (s.pid == pid if kind == OV_G else s.part == t and s.pid == pid):
+                return s
+        if not make:
+            return None
+        if len(self.tab) >= OV_MAX:
+            self.over += 1
+            return None
+        s = Slot(kind, t, pid)
+        e = self.eng[t] if t < NTRK - 1 else 0
+        if kind >= OV_VCUT:
+            s.lo, s.hi = self.guard_range(kind, t, 0, e, -GL["GL_VMOD_MAX"], GL["GL_VMOD_MAX"])
+            s.dmin, s.dmax = -GL["GL_VMOD_MAX"], GL["GL_VMOD_MAX"]
+        else:
+            d = self.desc(kind, t, pid)
+            lo, hi = s.dmin, s.dmax = d["min"], d["max"]
+            if d["fmt"] == "ENUM":
+                s.cls = F["WF_CLASS_STEPPED"]
+            lim = None
+            if kind == OV_G and pid == G_DFDBK:
+                lim = GL["GL_DFDBK_MAX"]
+            elif kind == OV_G and pid == G_RSIZE:
+                lim = GL["GL_RSIZE_MAX"]
+            elif kind == OV_P and pid == P_LEVEL:
+                lim = GL["GL_LEVEL_MAX"]
+            elif kind == OV_P and t < NTRK - 1 and pid >= PR.P_E0 and ENG_ROLE[e][F["WF_EROLE_RESO"]] == pid - PR.P_E0:
+                lim = GL["GL_RESO_MAX"]
+            if lim is not None and hi > lim:
+                hi = lim
+            s.lo, s.hi = self.guard_range(kind, t, pid, e, lo, hi)
+        self.tab.append(s)
+        return s
+
+    def add(self, kind_, mask, tid, cls, off, mi=None):
+        make = off != 0 if cls is None else False
+        hits = []
+        if kind_ == F["WF_K_GLOBAL"]:
+            hits.append(self.slot(OV_G, NONE, tid, make))
+        else:
+            for t in range(NTRK):
+                if not mask >> t & 1:
+                    continue
+                if kind_ == F["WF_K_PARAM"]:
+                    hits.append(self.slot(OV_P, t, tid, make))
+                elif t >= NTRK - 1:
+                    continue
+                elif kind_ == F["WF_K_ROLE"]:
+                    e = self.eng[t]
+                    if e < len(ENG_ROLE) and tid < F["WF_NEROLES"] and ENG_ROLE[e][tid] != NONE:
+                        hits.append(self.slot(OV_P, t, PR.P_E0 + ENG_ROLE[e][tid], make))
+                else:
+                    hits.append(self.slot(OV_VCUT if kind_ == F["WF_K_BRIGHT"] else OV_VSHP, t, 0, make))
+        for s in hits:
+            if s is None:
+                continue
+            if cls is None:
+                s.tgt += off
+                if mi is not None and off:
+                    s.maps.append(mi)
+            elif s.cls != F["WF_CLASS_STEPPED"]:
+                s.cls = cls if s.cls == NONE or cls > s.cls else s.cls
+
+    def evaluate(self, pos):
+        """macro_eval at positions pos (the 16 controls), a fresh overlay: the slot table"""
+        self.tab, self.over = [], 0
+        for mi, m in enumerate(self.ir["maps"]):
+            self.add(m[1], m[2], m[3], None, self.offset(m, pos), mi)
+        for r in self.ir["rules"]:
+            st = self.strength(r, pos)
+            for kd, msk, i, a in r["acts"]:
+                self.add(kd, msk, i, None, a * st >> 4)
+        for m in self.ir["maps"]:
+            self.add(m[1], m[2], m[3], m[4], 0)
+        for s in self.tab:
+            span = GL["GL_VMOD_MAX"] if s.kind >= OV_VCUT else s.hi - s.lo
+            if s.cls == NONE:
+                s.cls = F["WF_CLASS_DEFAULT"]
+            s.raw = s.tgt
+            s.tgt = max(-(span << 8), min(span << 8, s.tgt))
+        self.guard_sound()
+        return self.tab
+
+    def base(self, s):
+        return self.g[s.pid] if s.kind == OV_G else self.p[s.part][s.pid]
+
+    def effective(self, s):
+        return s.tgt if s.kind >= OV_VCUT else ov_effective(s, self.base(s), s.tgt)
+
+    # ---- guard.c
+    def names(self, tg, kind, t, pid, e):
+        k, m, i = tg
+        if kind == OV_G:
+            return k == F["WF_K_GLOBAL"] and i == pid
+        if t >= NTRK or not m >> t & 1:
+            return False
+        if kind in (OV_VCUT, OV_VSHP):
+            return k == (F["WF_K_BRIGHT"] if kind == OV_VCUT else F["WF_K_SHAPE"])
+        if k == F["WF_K_PARAM"]:
+            return i == pid
+        return (k == F["WF_K_ROLE"] and t < NTRK - 1 and e < len(ENG_ROLE) and i < F["WF_NEROLES"] and
+                ENG_ROLE[e][i] != NONE and PR.P_E0 + ENG_ROLE[e][i] == pid)
+
+    def guard_range(self, kind, t, pid, e, lo, hi):
+        cap = 0x7FFF
+        if kind == OV_G:
+            cap = {G_DFDBK: "WF_G_MAXDFDBK", G_RSIZE: "WF_G_MAXRSIZE", G_DUST: "WF_G_MAXDUST"}.get(pid)
+            cap = self.gbyte(F[cap]) if cap else 0x7FFF
+        elif kind == OV_P and pid == P_LEVEL:
+            cap = self.gbyte(F["WF_G_MAXLEVEL"])
+        elif kind == OV_P and pid == P_DIST:
+            cap = self.gbyte(F["WF_G_MAXDIST"])
+        elif kind == OV_P and t < NTRK - 1 and pid >= PR.P_E0 and e < len(ENG_ROLE):
+            if ENG_ROLE[e][F["WF_EROLE_RESO"]] == pid - PR.P_E0:
+                cap = self.gbyte(F["WF_G_MAXRESO"])
+            elif e == F["WF_ENG_GRAIN"] and pid - PR.P_E0 == F["WF_GRAIN_DENS"]:
+                cap = self.gbyte(F["WF_G_GRAINDENS"])
+        hi = min(hi, cap)
+        for k, m, i, rlo, rhi in self.ranges:
+            if self.names((k, m, i), kind, t, pid, e):
+                lo, hi = max(lo, rlo), min(hi, rhi)
+        return lo, (lo if hi < lo else hi)
+
+    def resolve(self, tg, t):
+        k, m, i = tg
+        if k == F["WF_K_GLOBAL"]:
+            return (OV_G, i) if i < len(PR.G) else None
+        if t >= NTRK or not m >> t & 1:
+            return None
+        if k == F["WF_K_PARAM"]:
+            return (OV_P, i)
+        if k != F["WF_K_ROLE"] or t >= NTRK - 1 or i >= F["WF_NEROLES"]:
+            return None
+        r = ENG_ROLE[self.eng[t]][i]
+        return None if r == NONE else (OV_P, PR.P_E0 + r)
+
+    def find(self, kind, t, pid):
+        for s in self.tab:
+            if s.kind == kind and s.pid == pid and (kind == OV_G or s.part == t):
+                return s
+        return None
+
+    def value(self, tg, t):
+        k, m, i = tg
+        if k != F["WF_K_GLOBAL"] and (t >= NTRK or not m >> t & 1):
+            return max([self.value(tg, u) for u in range(NTRK) if m >> u & 1] + [self.NOVAL])
+        r = self.resolve(tg, t)
+        if r is None:
+            return self.NOVAL
+        b = self.g[r[1]] if r[0] == OV_G else self.p[t][r[1]]
+        s = self.find(r[0], t, r[1])
+        return ov_effective(s, b, s.tgt) if s else b
+
+    def strength_c(self, v, over, self_):
+        if v == self.NOVAL or v <= over:
+            return 0
+        if self_ or v - over >= F["WF_COMBO_RAMP"]:
+            return 4096
+        return (v - over) * 4096 // F["WF_COMBO_RAMP"]
+
+    def combo(self, c, t):
+        a, b, cc = c
+        r = self.resolve(cc[:3], t)
+        s = self.find(r[0], t, r[1]) if r else None
+        if s is None:
+            return
+        st = min(self.strength_c(self.value(a[:3], t), a[3], a[:3] == cc[:3]),
+                 self.strength_c(self.value(b[:3], t), b[3], b[:3] == cc[:3]))
+        hi, cap = s.hi, cc[3]
+        if not st or cap >= hi:
+            return
+        cap = hi - ((hi - cap) * st >> 12)
+        bs = self.base(s)
+        v = ov_effective(s, bs, s.tgt)
+        if v > cap and v > bs:
+            s.tgt = (max(bs, cap) - bs) * 256
+
+    def guard_sound(self):
+        n, mx = sum(self.p[t][P_DIST] > 0 for t in range(NTRK - 1)), self.gbyte(F["WF_G_DISTTRK"])
+        for s in self.tab:
+            if (s.kind == OV_P and s.part < NTRK - 1 and s.pid == P_DIST and self.p[s.part][P_DIST] <= 0 and
+                    ov_effective(s, self.p[s.part][P_DIST], s.tgt) > 0):
+                if n < mx:
+                    n += 1
+                else:
+                    s.hi = self.p[s.part][P_DIST]
+            if s.kind >= OV_VCUT:
+                s.tgt = max(s.lo * 256, min(s.hi * 256, s.tgt))
+        for c in self.combos:
+            if c[2][0] == F["WF_K_GLOBAL"]:
+                self.combo(c, NONE)
+            else:
+                for t in range(NTRK):
+                    if c[2][1] >> t & 1:
+                        self.combo(c, t)
+
+
+def model_positions(nrand=24, seed=1):
+    """the dump's sample of COLOR MOTION SPACE ENERGY: the 3^4 grid (0, 0.5, 1), then nrand seeded points (the LCG
+    of tests/guard_sweep.c)"""
+    out = [(a, b, c, d) for a in (0, 500, 1000) for b in (0, 500, 1000) for c in (0, 500, 1000) for d in (0, 500, 1000)]
+    x = seed
+    for _ in range(nrand):
+        q = []
+        for _ in range(4):
+            x = (x * 1664525 + 1013904223) & 0xFFFFFFFF
+            q.append((x >> 8) % 1001)
+        out.append(tuple(q))
+    return out
+
+
+def model_dump(blob, nrand=24, seed=1):
+    """`model`: every scene x variation at model_positions, the slot table as tests/guard_sweep.c --dump-slots prints"""
+    ir = decode(blob)
+    md = Model(ir)
+    out = []
+    for sc in range(F["WF_NSCENE"]):
+        for v in range(len(ir["vars"])):
+            md.stage(sc, v)
+            for q in model_positions(nrand, seed):
+                pos = list(md.pos)
+                pos[:4] = q
+                tab = md.evaluate(pos)
+                out.append(f"@ {sc} {v} {q[0]} {q[1]} {q[2]} {q[3]} {len(tab)} {md.over}")
+                for s in tab:
+                    out.append(f"{s.kind} {s.part} {s.pid} {s.lo} {s.hi} {s.cls} {s.tgt} {md.effective(s)}")
+    return "\n".join(out) + "\n"
+
+
+def model_check(blob, d, map_src=()):
+    """the static checks of design 6.4 and 12.3 on the model: every scene x variation, the 3^4 grid of the macros
+    (the other controls at the World's defaults). Errors: more than OV_MAX slots; a mapping that alone takes its
+    parameter out of the descriptor (the firmware would clamp it: its range is wrong) or past a hard limit of
+    guard_limits.h (feedback, reverb gain, level, resonance); a mapping whose parameter reaches the descriptor's
+    maximum at 100 % without "saturate": true; any effective value out of its descriptor (a model fault); the Smart
+    Keys range under an octave. Warnings: mappings and rules that only summed run past the top of a range or a hard
+    limit (the firmware holds them there; summed under a parameter's floor they only fall silent)"""
+    ir = decode(blob)
+    md = Model(ir)
+    kt = ir["keys"]["trk"]
+    if md.fix and md.fix[2 * kt] != NONE and md.fix[2 * kt + 1] - md.fix[2 * kt] < 11:
+        d.err("$.smart_keys.range", f"{note_name(md.fix[2 * kt])}..{note_name(md.fix[2 * kt + 1])}: under an octave "
+                                    "(the keys would fold some pitch classes out of the key)")
+    hard = {(OV_G, G_DFDBK): ("GL_DFDBK_MAX", "delay feedback"), (OV_G, G_RSIZE): ("GL_RSIZE_MAX", "reverb size")}
+    seen, worst = set(), {}
+    grid = [(a, b, c, e) for a in (0, 500, 1000) for b in (0, 500, 1000) for c in (0, 500, 1000) for e in (0, 500, 1000)]
+
+    def where(mi):
+        return map_src[mi][0] if mi < len(map_src) else f"$.maps[{mi}]"
+
+    def once(key, fn, path, msg):
+        if key not in seen:
+            seen.add(key)
+            fn(path, msg)
+
+    for sc in range(F["WF_NSCENE"]):
+        for v in range(len(ir["vars"])):
+            md.stage(sc, v)
+            at = f"scene {SCENE_KEYS[sc]} / {ir['vars'][v]['name']}"
+            # one mapping at a time, at its control's ends (design 6.4: the range and "100 % is never all-max")
+            for mi, m in enumerate(ir["maps"]):
+                ctl = m[0]
+                for end in (0, 1000):
+                    pos = list(md.pos)
+                    for k in range(F["WF_NCTL"]):
+                        pos[k] = CTL_HOME[k]
+                    pos[ctl] = end
+                    md.tab, md.over = [], 0
+                    md.add(m[1], m[2], m[3], None, md.offset(m, pos), mi)
+                    for s in md.tab:
+                        if s.kind >= OV_VCUT:
+                            continue
+                        b, want = md.base(s), md.base(s) + ((s.tgt + 128) >> 8)
+                        lab = f"{where(mi)}: {at}: {param_label(md, s)}"
+                        if want < s.dmin or want > s.dmax:
+                            once(("range", mi), d.err, lab, f"base {b} {want - b:+d} = {want}: outside "
+                                 f"{s.dmin}..{s.dmax} (the firmware clamps it; make the mapping smaller)")
+                        lim = hard_limit(md, s)
+                        if lim is not None and want > lim[0] >= b:
+                            once(("hard", mi), d.err, lab, f"base {b} {want - b:+d} = {want}: past the hard limit "
+                                 f"{lim[0]} ({lim[1]}, guard_limits.h)")
+                        sat = mi < len(map_src) and map_src[mi][1]
+                        if end == 1000 and m[7] > 0 and want >= s.dmax > b and not sat:
+                            once(("sat", mi), d.err, lab, f"{want} at 100 %: the parameter's maximum ({s.dmax}); "
+                                 "100 % is never all-max (\"saturate\": true if it is meant)")
+            # the four macros summed with the rules and the guard, on the grid
+            for q in grid:
+                pos = list(md.pos)
+                pos[:4] = q
+                tab = md.evaluate(pos)
+                if md.over:
+                    once(("over",), d.err, "$.macros", f"{len(tab) + md.over} targets moving at once ({at}, "
+                         f"macros {q}): at most {OV_MAX} (the rest would do nothing)")
+                for s in tab:
+                    eff = md.effective(s)
+                    if s.kind >= OV_VCUT:
+                        if abs(s.raw) > GL["GL_VMOD_MAX"] << 8:
+                            once(("vmod", s.kind, s.part), d.warn, "$.macros", f"{param_label(md, s)}: the offsets "
+                                 f"sum to {s.raw / 256:+.0f}, past +-{GL['GL_VMOD_MAX']} ({at})")
+                        continue
+                    b, want = md.base(s), md.base(s) + ((s.raw + 128) >> 8)
+                    if eff < s.dmin or eff > s.dmax:
+                        once(("eff", s.kind, s.part, s.pid), d.err, "$.macros", f"{param_label(md, s)}: effective "
+                             f"{eff} outside {s.dmin}..{s.dmax} ({at}, macros {q}): a fault of the model")
+                    lim = hard_limit(md, s)
+                    if (want > s.dmax or (lim and want > lim[0] >= b)) and want != eff:   # (a floor: harmless)
+                        once(("sum", s.kind, s.part, s.pid), d.warn, "$.macros", f"{param_label(md, s)}: the macros "
+                             f"and rules sum to {want} ({at}, macros {q}); the firmware holds it at {eff}")
+                    key = (s.kind, s.part, s.pid)
+                    if eff < want and eff >= b and want <= s.dmax:
+                        worst[key] = max(worst.get(key, 0), want - eff)
+    return worst
+
+
+def param_label(md, s):
+    if s.kind == OV_G:
+        return f"g.{PR.G[s.pid]['name']}"
+    if s.kind >= OV_VCUT:
+        return f"track {s.part + 1} {'~bright' if s.kind == OV_VCUT else '~shape'}"
+    return f"track {s.part + 1} {md.desc(s.kind, s.part, s.pid)['label']}"
+
+
+def hard_limit(md, s):
+    if s.kind == OV_G and s.pid == G_DFDBK:
+        return GL["GL_DFDBK_MAX"], "delay feedback under 1"
+    if s.kind == OV_G and s.pid == G_RSIZE:
+        return GL["GL_RSIZE_MAX"], "reverb comb gain under 1"
+    if s.kind == OV_P and s.pid == P_LEVEL:
+        return GL["GL_LEVEL_MAX"], "a track's level"
+    if (s.kind == OV_P and s.part < NTRK - 1 and s.pid >= PR.P_E0 and
+            ENG_ROLE[md.eng[s.part]][F["WF_EROLE_RESO"]] == s.pid - PR.P_E0):
+        return GL["GL_RESO_MAX"], "resonance"
+    return None
+
+
 def compile_world(src, user=False):
     """World JSON (dict) -> (blob or None, Diag)"""
     d = Diag()
@@ -2406,7 +2957,9 @@ def compile_world(src, user=False):
         d.errors.append(o)
     if d.errors:
         return None, d
-    ir = Compiler(src, d, user).run()
+    comp = Compiler(src, d, user)
+    ir = comp.run()
+    d.map_src = getattr(comp, "map_src", [])
     if ir is None:
         return None, d
     blob = encode(ir)
@@ -2489,10 +3042,14 @@ def main(argv=None):
     dc = sub.add_parser("decompile", help="FWD1 blob -> lowered World JSON")
     dc.add_argument("blob")
     dc.add_argument("-o", "--out")
-    ck = sub.add_parser("check", help="static checks of World sources")
+    ck = sub.add_parser("check", help="static checks of World sources, with the model of the macros and guard")
     ck.add_argument("worlds", nargs="+")
     ck.add_argument("--user", action="store_true")
     ck.add_argument("--json", action="store_true", help="a machine-readable report on stdout")
+    md = sub.add_parser("model", help="the model's slot tables (as tests/guard_sweep.c --dump-slots)")
+    md.add_argument("world", help="a World JSON or a compiled blob")
+    md.add_argument("--random", type=int, default=24, help="seeded positions after the 3^4 grid (default 24)")
+    md.add_argument("--seed", type=int, default=1)
     nm = sub.add_parser("names", help="engines, presets, parameters, kits, lanes a World may name")
     nm.add_argument("engine", nargs="?")
     a = ap.parse_args(argv)
@@ -2505,6 +3062,20 @@ def main(argv=None):
             return 1
         Path(a.out).write_text(c_array(blob, a.name)) if a.c_array else Path(a.out).write_bytes(blob)
         print(f"{a.world}: {len(blob)} B -> {a.out}")
+        return 0
+    if a.cmd == "model":
+        if a.world.endswith(".json"):
+            blob, d = compile_world(load_json(a.world))
+            report(a.world, d)
+            if blob is None:
+                return 1
+        else:
+            blob = Path(a.world).read_bytes()
+        try:
+            sys.stdout.write(model_dump(blob, a.random, a.seed))
+        except BlobError as e:
+            print(f"{a.world}: {e}", file=sys.stderr)
+            return 1
         return 0
     if a.cmd == "decompile":
         try:
@@ -2521,6 +3092,10 @@ def main(argv=None):
     rc, rep = 0, []
     for p in a.worlds:
         blob, d = compile_world(load_json(p), a.user)
+        if blob is not None:
+            model_check(blob, d, d.map_src)
+            if d.errors:
+                blob = None
         report(p, d, a.json)
         rep.append({"file": p, "ok": blob is not None, "bytes": len(blob) if blob else None,
                     "errors": d.errors, "warnings": d.warnings})

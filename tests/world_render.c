@@ -107,7 +107,7 @@ static const uint8_t *energy_rec(uint32_t i)     /* table i, or 0 */
         p += WF_ENERGY_HDR + WF_BAND_LEN * p[2];
     return p;
 }
-static uint32_t guard_byte(uint32_t off)         /* GUARD fixed byte, WF_NONE when unset */
+static uint32_t w_guard_byte(uint32_t off)         /* GUARD fixed byte, WF_NONE when unset */
 {
     return wctx.have >> WF_S_GUARD & 1u ? wctx.b[wctx.off[WF_S_GUARD] + off] : WF_NONE;
 }
@@ -426,7 +426,7 @@ static void mash_after(result_t *r)
         r->mash_black += black;
         r->mash_chord += harm.ct >> (n % 12u) & 1u;
         r->mash_offkey += !(sm >> ((n + 12u - w_root()) % 12u) & 1u);
-        r->mash_range += n < skm[skcur].lo || n > skm[skcur].hi;
+        r->mash_range += n < skm[skcur].g.lo || n > skm[skcur].g.hi;
         if (n < r->mash_lo)
             r->mash_lo = n;
         if (n > r->mash_hi)
@@ -690,7 +690,7 @@ static result_t render_one(uint32_t s, uint32_t v, double energy, const char *wa
 
 /* ------------------------------------------------------------ the mappings --- */
 /* --macros: the static check of design 6.4 on the real stage, one mapping at a time (macro.c sums them live, and
- * tests/macro_test.c checks the sums; Phase 8's validator owns this check): for every MAPS record, every scene x
+ * tests/macro_test.c checks the sums; tools/worldc.py check owns this check): for every MAPS record, every scene x
  * variation and every track it moves, base + the offset at 0 and at 1 (curves end at 0 and 1) inside the
  * descriptor, and not its maximum at 1 */
 static const uint8_t EROLE[NENGINES][WF_NEROLES] = WF_ENG_ROLE;
@@ -981,6 +981,7 @@ static void usage(void)
     exit(2);
 }
 
+#ifndef WORLD_RENDER_LIB                         /* (tests/guard_sweep.c builds on this file without its main) */
 int main(int argc, char **argv)
 {
     const char *scene = 0, *var = 0, *wav = 0, *seq = 0, *path = 0;
@@ -1119,3 +1120,4 @@ int main(int argc, char **argv)
         printf("\n");
     return check && fails;
 }
+#endif

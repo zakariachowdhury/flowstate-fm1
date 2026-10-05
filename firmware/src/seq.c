@@ -1437,11 +1437,20 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
     }
     {
         const step_t *s = &t->step[t->seq_idx % NSTEP];
+#if FELUCCA_WORLD
+        step_t lf;
+#endif
         if (s->time != ST_NOTE || !s->rat)
             return;
 #if FELUCCA_WORLD
         if (wrt.active && !arr_plays(trk_index(t), t->seq_idx % NSTEP))
             return;                                     /* H14: a NOTE the band rests */
+        if (guard_follows(t)) {                         /* H12: its further hits as its first (guard.c) */
+            lf = *s;
+            for (i = 0; i < lf.n; i++)
+                lf.note[i] = (uint8_t)guard_loop_note(lf.note[i]);
+            s = &lf;
+        }
 #endif
         for (i = 0; i < s->n; i++) {
             uint32_t hits = 1u + ((s->rat >> (2u * i)) & 3u), h;
@@ -1504,6 +1513,9 @@ static void seq_tick(track_t *t, uint32_t adv)
         } else {
             const step_t *s = &t->step[idx];
             uint32_t skip = 0, i, k;
+#if FELUCCA_WORLD
+            step_t lf;
+#endif
             rec_hold(t, idx, len, abs);
             if (t->rskip_n && t->rskip_abs == abs)
                 for (i = 0; i < s->n; i++)
@@ -1515,6 +1527,12 @@ static void seq_tick(track_t *t, uint32_t adv)
             if (wrt.active && s->time == ST_NOTE && !arr_plays(trk_index(t), idx)) {
                 static const step_t rest = {{0, 0, 0, 0}, 0, ST_REST, 0, 0, 0, 0};
                 s = &rest;                           /* H14: the ENERGY band's play mask: this NOTE rests */
+            }
+            if (s->time == ST_NOTE && guard_follows(t)) {   /* H12: the keys loop follows the chord (guard.c) */
+                lf = *s;
+                for (i = 0; i < lf.n; i++)
+                    lf.note[i] = (uint8_t)guard_loop_note(lf.note[i]);
+                s = &lf;
             }
 #endif
             seq_step(t, s, slen, skip);

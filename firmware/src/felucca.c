@@ -50,6 +50,7 @@
 #include "seq.c"
 #if FELUCCA_WORLD
 #include "harmony.c"         /* PLAY MODE, audio ISR group: the chord at the clock (needs SCALE_MASK, the clock) */
+#include "guard.c"           /* the Musical Guardrail Engine: notes, sound ranges and combinations, CPU (kb_*, harm) */
 #include "smartkeys.c"       /* Smart Keys: key maps, sk_note, MIDI, polyphony (needs seq.c's kb_*, input_off) */
 #include "macro.c"           /* the macros: COLOR MOTION SPACE ENERGY, their target table and the ISR overlay */
 #include "arrange.c"         /* ENERGY as arrangement: the band's layers, lanes, density and play masks, fills */

@@ -248,7 +248,12 @@
           "notes": {"$ref": "#/$defs/notes"},
           "ranges": {"type": "object", "additionalProperties": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}},
           "max_level": {"type": "integer"}, "max_reso": {"type": "integer"}, "max_dfdbk": {"type": "integer"},
-          "max_rsize": {"type": "integer"}, "max_dist": {"type": "integer"}, "max_dust": {"type": "integer"}}},
+          "max_rsize": {"type": "integer"}, "max_dist": {"type": "integer"}, "max_dust": {"type": "integer"},
+          "combos": {"description": "sound combinations (docs/guardrails.md): while each 'when' target is above its value, the 'cap' target stays at or under its value. Absent: the firmware's; []: none", "type": "array", "maxItems": 8, "items": {
+            "type": "object", "additionalProperties": false, "required": ["when", "cap"], "properties": {
+              "notes": {"$ref": "#/$defs/notes"},
+              "when": {"type": "object", "minProperties": 1, "maxProperties": 2, "additionalProperties": {"type": "integer", "minimum": -128, "maximum": 127}},
+              "cap": {"type": "object", "minProperties": 1, "maxProperties": 1, "additionalProperties": {"type": "integer", "minimum": -128, "maximum": 127}}}}}}},
         "arrangement": {"type": "object", "additionalProperties": false, "properties": {
           "notes": {"$ref": "#/$defs/notes"},
           "mute_change": {"enum": ["bar", "2bars", 1, 2]}, "density_change": {"enum": ["beat", "bar"]},

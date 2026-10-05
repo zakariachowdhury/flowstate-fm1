@@ -10,7 +10,9 @@
  *  2. the model: for every World, every position of COLOR MOTION SPACE ENERGY on the grid 0, .25, .5, .75, 1 (625
  *     combinations) and the World's default scene, the target table equals an independent model of design 5.2-5.4
  *     written here from the blob with doubles (curves, homes, roles from the TRACKS engines, sums per target,
- *     rules and their strength, the descriptor and guard_limits.h ranges): the same slots, each target within a
+ *     rules and their strength, the descriptor and guard_limits.h ranges, the World's GUARD caps and ranges and its
+ *     distorted-track count; the sound combinations are tests/guard_test.c's and are off here): the same slots,
+ *     each target within a
  *     few 1/256 of a step, each effective parameter value the model's (+-1 where the model sits on a rounding
  *     edge); no effective value outside its descriptor or past a hard limit (delay feedback and reverb gain < 1 as
  *     fx.c computes them, level 120, resonance 110, vmod 64), none at its descriptor's maximum unless the World
@@ -145,12 +147,15 @@ static uint8_t *t_read(const char *path, uint32_t *n)
     *n = (uint32_t)len;
     return b;
 }
+static uint8_t t_ncombos;                        /* the World's sound combinations (--cost puts them back) */
 static int t_start(const tworld_t *w)            /* power-on, then the World (its default scene) */
 {
     int rc;
     t_reset();
     rc = world_start(w->b, w->n);
     CHECK(rc == WE_OK, "%s: world_start %d", w->name, rc);
+    t_ncombos = gu.ncombos;
+    gu.ncombos = 0;                              /* (the sound combinations: tests/guard_test.c against its model) */
     return rc;
 }
 /* the positions now into the ISR's table (the last publication taken first); snap: at the targets */
@@ -186,8 +191,8 @@ typedef struct {
 static mslot_t ms[160];
 static int nms;
 static const uint8_t *M_b;                       /* the World's blob and its sections */
-static const uint8_t *M_maps, *M_curves, *M_rules, *M_tracks;
-static uint32_t M_nmaps, M_ncurves, M_nrules;
+static const uint8_t *M_maps, *M_curves, *M_rules, *M_tracks, *M_guard;
+static uint32_t M_nmaps, M_ncurves, M_nrules, M_nranges;
 
 static void m_world(void)                        /* the loaded World's sections, from its blob (wctx: wb_check's) */
 {
@@ -199,6 +204,60 @@ static void m_world(void)                        /* the loaded World's sections,
     M_rules = wctx.have >> WF_S_RULES & 1u ? wctx.b + wctx.off[WF_S_RULES] : 0;
     M_nrules = wctx.have >> WF_S_RULES & 1u ? wctx.cnt[WF_S_RULES] : 0;
     M_tracks = wctx.b + wctx.off[WF_S_TRACKS];
+    M_guard = wctx.have >> WF_S_GUARD & 1u ? wctx.b + wctx.off[WF_S_GUARD] : 0;
+    M_nranges = M_guard ? wctx.cnt[WF_S_GUARD] : 0;
+}
+static uint32_t m_engine(uint32_t t);
+static int m_gbyte(uint32_t off)                 /* a GUARD fixed field, or the firmware default (design 6.1) */
+{
+    static const uint8_t D[] = WF_GUARD_DEFAULT;
+    return M_guard && M_guard[off] != 255 ? M_guard[off] : D[off - WF_G_POLY];
+}
+/* the World's GUARD on a slot's range (design 6.1, written again from the format): the soft caps (max_level on any
+ * track's level, max_dist, max_reso on the RESO role, GRAIN DENS, max_dfdbk, max_rsize, max_dust), then every target
+ * range naming it (a parameter on a track in its mask, a role resolved on the engine, a global, ~bright / ~shape) */
+static void m_guard_range(int kind, int t, int id, int *lo, int *hi)
+{
+    int cap = 1 << 20, e = t >= 0 && t < NPART ? (int)m_engine((uint32_t)t) : -1;
+    uint32_t i;
+    if (kind == MK_G && id == G_DFDBK)
+        cap = m_gbyte(WF_G_MAXDFDBK);
+    else if (kind == MK_G && id == G_RSIZE)
+        cap = m_gbyte(WF_G_MAXRSIZE);
+    else if (kind == MK_G && id == G_DUST)
+        cap = m_gbyte(WF_G_MAXDUST);
+    else if (kind == MK_P && id == P_LEVEL)
+        cap = m_gbyte(WF_G_MAXLEVEL);
+    else if (kind == MK_P && id == P_DIST)
+        cap = m_gbyte(WF_G_MAXDIST);
+    else if (kind == MK_P && e >= 0 && id >= P_E0 && M_ROLE[e][1] == id - P_E0)
+        cap = m_gbyte(WF_G_MAXRESO);
+    else if (kind == MK_P && e == 8 && id == P_E3)
+        cap = m_gbyte(WF_G_GRAINDENS);
+    if (*hi > cap)
+        *hi = cap;
+    for (i = 0; i < M_nranges; i++) {
+        const uint8_t *r = M_guard + WF_GUARD_FIX + 4 * i;
+        int rk = r[0] >> 5, m = r[0] & 31, hit;
+        if (kind == MK_G)
+            hit = rk == WF_K_GLOBAL && r[1] == id;
+        else if (t < 0 || !(m >> t & 1))
+            hit = 0;
+        else if (kind == MK_VC || kind == MK_VS)
+            hit = rk == (kind == MK_VC ? WF_K_BRIGHT : WF_K_SHAPE);
+        else if (rk == WF_K_PARAM)
+            hit = r[1] == id;
+        else
+            hit = rk == WF_K_ROLE && e >= 0 && r[1] < 8 && M_ROLE[e][r[1]] != WF_NONE && P_E0 + M_ROLE[e][r[1]] == id;
+        if (hit) {
+            if ((int8_t)r[2] > *lo)
+                *lo = (int8_t)r[2];
+            if ((int8_t)r[3] < *hi)
+                *hi = (int8_t)r[3];
+        }
+    }
+    if (*hi < *lo)
+        *hi = *lo;
 }
 static uint32_t m_engine(uint32_t t)             /* track t's engine, as the TRACKS section says */
 {
@@ -257,6 +316,7 @@ static mslot_t *m_slot(int kind, int t, int id)
     if (kind == MK_VC || kind == MK_VS) {
         s->lo = s->dmin = -GL_VMOD_MAX;
         s->hi = s->dmax = GL_VMOD_MAX;
+        m_guard_range(kind, t, id, &s->lo, &s->hi);
         return s;
     }
     d = kind == MK_G ? &GP[id] : t == TRK_DRUM || id < P_E0 ? &TP[id] : &ENGINES[m_engine((uint32_t)t)]->edit[id - P_E0];
@@ -271,6 +331,7 @@ static mslot_t *m_slot(int kind, int t, int id)
         s->hi = GL_LEVEL_MAX;
     if (kind == MK_P && t < NPART && id >= P_E0 && M_ROLE[m_engine((uint32_t)t)][1] == id - P_E0 && s->hi > GL_RESO_MAX)
         s->hi = GL_RESO_MAX;
+    m_guard_range(kind, t, id, &s->lo, &s->hi);
     return s;
 }
 static void m_cls(mslot_t *s, int cls)         /* a mapping's class (-1: a rule's action, none) */
@@ -315,6 +376,7 @@ static void m_add(uint32_t tg, uint32_t id, double off, int ctl)
             s->ctls |= 1u << ctl;
     }
 }
+static int m_effective(const mslot_t *s, int b, double off, int *edge);
 static void m_eval(const uint16_t *pos)          /* the model's slots at these positions */
 {
     const uint8_t *p;
@@ -339,6 +401,23 @@ static void m_eval(const uint16_t *pos)          /* the model's slots at these p
     }
     if (nms > OV_MAX)                            /* (the firmware keeps the first 48 it makes, as made here) */
         nms = OV_MAX;
+    {   /* GUARD max_dist_tracks: a clean track a macro would distort beyond them stays clean; vmod in its range */
+        int n = 0, t, mx = m_gbyte(WF_G_DISTTRK), edge;
+        for (t = 0; t < NPART; t++)
+            n += trk[t].p[P_DIST] > 0;
+        for (i = 0; i < (uint32_t)nms; i++) {
+            mslot_t *s = &ms[i];
+            if (s->kind == MK_P && s->t < NPART && s->id == P_DIST && trk[s->t].p[P_DIST] <= 0 &&
+                m_effective(s, trk[s->t].p[P_DIST], s->off, &edge) > 0) {
+                if (n < mx)
+                    n++;
+                else
+                    s->hi = trk[s->t].p[P_DIST];
+            }
+            if (s->kind >= MK_VC)
+                s->off = s->off < s->lo ? s->lo : s->off > s->hi ? s->hi : s->off;
+        }
+    }
 }
 static int m_kind(uint32_t ov) { return ov == OV_P ? MK_P : ov == OV_G ? MK_G : ov == OV_VCUT ? MK_VC : MK_VS; }
 static void fw_id(const ov_slot_t *s, int *t, int *id)
@@ -1186,6 +1265,7 @@ static int cost(void)
         uint32_t n;
         if (t_start(&worlds[wi]))
             continue;
+        gu.ncombos = t_ncombos;                  /* (the guard whole: its ranges and combinations, guard.c) */
         t_blocks(4);
         c0 = instr_now();                        /* at the World's defaults (mostly home: offsets 0) */
         for (i = 0; i < N; i++)

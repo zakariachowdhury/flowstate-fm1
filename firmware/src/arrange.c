@@ -31,17 +31,14 @@ static uint32_t arr_u16(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[
  * length in beats, its fill (pool index or WF_NONE), the variation's bias -> the staged table et */
 static void arr_stage(wetab_t *et, const uint8_t *e, const uint8_t *g, uint32_t beats, uint32_t fill, int32_t bias)
 {
-    static const uint8_t DEF[] = WF_GUARD_DEFAULT;
     uint32_t k, t, fe;
     memset(et, 0, sizeof *et);
     et->bias = (int8_t)bias;
     et->fill = (uint8_t)fill;
-#define ARR_G(o) (g && g[o] != WF_NONE ? g[o] : DEF[(o) - WF_G_POLY])
-    et->mute_bars = (uint8_t)ARR_G(WF_G_MUTECHG);
-    et->dens_bar = (uint8_t)ARR_G(WF_G_DENSCHG);
-    et->min_bars = (uint8_t)ARR_G(WF_G_BANDBARS);
-    fe = ARR_G(WF_G_FILLS);
-#undef ARR_G
+    et->mute_bars = (uint8_t)guard_byte(g, WF_G_MUTECHG);   /* GUARD's arrangement timing (guard.c) */
+    et->dens_bar = (uint8_t)guard_byte(g, WF_G_DENSCHG);
+    et->min_bars = (uint8_t)guard_byte(g, WF_G_BANDBARS);
+    fe = guard_byte(g, WF_G_FILLS);
     et->phrase = (uint8_t)(fe ? fe : beats >= 4u ? beats / 4u : 1u);
     if (!et->mute_bars)
         et->mute_bars = 1;

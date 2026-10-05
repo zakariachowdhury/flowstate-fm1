@@ -8,7 +8,10 @@
   - bad sources fail with a message that names the place (JSON path) and the problem;
   - the size limits (warning above 2048 B, error above 3072 B), the pool limit;
   - the decoder rejects corruptions with the firmware's error codes;
-  - gen_worlds.py: a valid header with no factory World, sorting, alignment.
+  - gen_worlds.py: a valid header with no factory World, sorting, alignment;
+  - GUARD sound combinations round trip, and their errors; the model of the macros and the guard (design 6.4):
+    `check` passes the factory Worlds and refuses a mapping out of its range, past a hard limit, at the maximum at
+    100 % without "saturate", a Smart Keys range under an octave (the C engine against the model: tests/run_tests.sh).
 """
 import contextlib
 import copy
@@ -90,7 +93,7 @@ def test_schema_enums():
 
 
 def test_roundtrip():
-    for name in ("minimal", "full"):
+    for name in ("minimal", "full", "guard"):
         blob, d = compile_(load(name))
         check(blob is not None, f"{name} compiles: {d.errors}")
         if blob is None:
@@ -336,9 +339,75 @@ def test_gen_worlds():
             check("the same device id" in str(e), "duplicate id message")
 
 
+def model_errors(src):
+    blob, d = compile_(src)
+    if blob is None:
+        return None, "\n".join(d.errors)
+    worldc.model_check(blob, d, d.map_src)
+    return blob, "\n".join(d.errors)
+
+
+def test_guard():
+    w = load("guard")
+    blob, d = compile_(w)
+    ir = worldc.decode(blob)
+    check(len(ir["guard"]["combos"]) == 4 and ir["guard"]["fix"][worldc.F["WF_G_COMBOS"]] == 4, "four combinations")
+    w2 = copy.deepcopy(w)
+    w2["guard"]["sound"]["combos"] = []
+    blob2, _ = compile_(w2)
+    check(worldc.decode(blob2)["guard"]["fix"][worldc.F["WF_G_COMBOS"]] == 0, "combos [] = none (0)")
+    del w2["guard"]["sound"]["combos"]
+    blob2, _ = compile_(w2)
+    check(worldc.decode(blob2)["guard"]["fix"][worldc.F["WF_G_COMBOS"]] == worldc.NONE, "no combos: the firmware's")
+    w2 = copy.deepcopy(w)
+    w2["guard"]["sound"]["combos"] = [{"when": {"pad.~bright": 3}, "cap": {"g.dfdbk": 1}}]
+    expect_error(w2, '$.guard.sound.combos[0].when["pad.~bright"]', "parameters, @roles or globals",
+                 what="vmod in a combo")
+    w2["guard"]["sound"]["combos"] = [{"when": {"g.dfdbk": 300}, "cap": {"g.dfdbk": 1}}]
+    expect_error(w2, '$.guard.sound.combos[0].when["g.dfdbk"]', "above 127", what="a combo value out of i8")
+    w2["guard"]["sound"]["combos"] = [{"when": {"g.dfdbk": 3}}] * 2
+    expect_error(w2, "$.guard.sound.combos[0]", what="a combo without cap")
+    w2["guard"]["sound"]["combos"] = [{"when": {"g.dfdbk": 3}, "cap": {"g.dfdbk": 1}}] * 9
+    expect_error(w2, "$.guard.sound.combos", "more than 8", what="nine combos")
+    check(len(worldc.COMBO_DEF) == 6 and all(len(c) == 3 for c in worldc.COMBO_DEF), "WF_COMBO_DEFAULT: six records")
+    check(worldc.GL["GL_DFDBK_MAX"] == 120 and worldc.GL["GL_RSIZE_MAX"] == 127, "guard_limits.h parsed")
+
+
+def test_model():
+    for f in sorted((ROOT / "worlds" / "factory").glob("*.world.json")):
+        blob, err = model_errors(json.loads(f.read_text()))
+        check(blob is not None and not err, f"{f.name}: worldc check passes: {err[:300]}")
+    blob, err = model_errors(load("extreme"))
+    check(blob is None or err, "extreme.world.json is refused")
+    for needle in ("outside", "past the hard limit", "100 % is never all-max"):
+        check(needle in err, f"extreme: an error with {needle!r}")
+    w = load("minimal")
+    w["macros"] = {"SPACE": [{"to": "g.dfdbk", "min": -10, "max": 100}]}
+    _, err = model_errors(w)
+    check("past the hard limit 120" in err and "$.macros.SPACE[0]" in err, f"dfdbk +100 refused: {err}")
+    w["macros"] = {"COLOR": [{"to": "pad.CUT", "min": -10, "max": 127}]}
+    _, err = model_errors(w)
+    check("all-max" in err, f"CUT to its maximum refused: {err}")
+    w["macros"]["COLOR"][0]["saturate"] = True
+    _, err = model_errors(w)
+    check("all-max" not in err, f"... unless saturate: {err}")
+    w = load("minimal")
+    w["smart_keys"]["range"] = ["C4", "F4"]
+    w["smart_keys"]["tonic"] = "C4"
+    _, err = model_errors(w)
+    check("under an octave" in err, f"a keys range under an octave refused: {err}")
+    # more than 48 targets moving at once is refused (17 parameters on the three synth tracks: 51 slots)
+    w = load("minimal")
+    w["macros"] = {"COLOR": [{"to": f"*.{pn}", "min": -1, "max": 1} for pn in
+                             ("atk", "dec", "sus", "rel", "ed_flt", "lrate", "ld_flt", "ld_amp", "sgate", "chor", "dly",
+                              "rev", "pan", "glide", "ld_pit", "ld_shp", "level")]}
+    blob, err = model_errors(w)
+    check("at most 48" in err, f"51 slots refused: {err[:300]}")
+
+
 def main():
     for t in (test_params_fresh, test_schema_enums, test_roundtrip, test_notation, test_errors, test_limits,
-              test_decoder, test_gen_worlds):
+              test_decoder, test_gen_worlds, test_guard, test_model):
         n = len(FAILS)
         t()
         print(f"{t.__name__[5:]:<14} {'ok' if len(FAILS) == n else 'FAIL'}")

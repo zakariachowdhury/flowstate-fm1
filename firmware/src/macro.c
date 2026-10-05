@@ -15,8 +15,10 @@
  *     strength, 0 at the thresholds and 1 when both controls are at the end. Gain compensation is part of this
  *     data (design 5.6): the World's level mappings on ENERGY and SPACE and the rules' level cuts;
  *   - a target has a slot only while it moves (a non-zero offset, or still ramping home): at home it costs nothing;
- *   - each slot's range: its descriptor, and the hard limits of guard_limits.h (feedback < 1, resonance, level);
- *     its smoothing: the slowest class of the mappings on it (stepped wins, an enum always steps).
+ *   - each slot's range: its descriptor, the hard limits of guard_limits.h (feedback < 1, resonance, level) and
+ *     the World's GUARD caps and ranges (guard.c guard_range); then the guard's rules over the whole table
+ *     (guard_sound: the sound combinations, the distorted tracks); its smoothing: the slowest class of the mappings
+ *     on it (stepped wins, an enum always steps).
  * The table goes to the audio ISR through a double buffer and a publication count (world_rt.h ovb, ov_pub): the
  * main loop writes the table the ISR does not use, and only after the ISR has taken the one before.
  *
@@ -27,7 +29,7 @@
  * (UI, editor, autosave, the stage builder) only ever sees the authored ones. A commit inside the block (world.c,
  * a scene on the bar) takes the overlay out, writes the new bases and puts it back in. Range rule: a slot never
  * goes past its range, and never moves a base that already is past it further away (a cap never changes the
- * authored sound).
+ * authored sound). While the CPU guard holds (guard.c), the costly slots ramp back to their base.
  *
  *   macro_load(...)          world.c: the loaded World's mappings (and its DEFAULTS positions, keep = 0)
  *   macro_set(c, pos), macro_pos(c)    main loop: a control
@@ -35,14 +37,14 @@
  *   macro_eval()             main loop: the target table, published (1: the ISR has not taken the last one yet)
  *   ov_reset()               IRQs off (world.c, a World switch or unload): no overlay until the next table
  *   world_fx_pre / _post     audio ISR (H4, H5)
- *   ov_effective(...)        what a slot makes of a base value (the ISR's rule; the host's inspector reads it) */
+ *   ov_effective(...)        (guard.c) what a slot makes of a base value (the ISR's rule; the host's inspector) */
 
 #define MC_BLOCKS 22u                    /* macro_service evaluates at most once in 22 audio blocks (a main-loop pass) */
 #define MC_ENERGY 3u                     /* the ENERGY control: also the arrangement's position (arrange.c) */
 static const uint16_t MC_HOME[WF_NCTL] = WF_CTL_HOME;
-static const uint8_t MC_ROLE[][WF_NEROLES] = WF_ENG_ROLE;   /* per engine (ENGINES order) the EDIT slot of each role */
-#define MC_NROLE (sizeof MC_ROLE / sizeof MC_ROLE[0])
-#define MC_RESO 1u                       /* WF_EROLE_NAMES: BRIGHT RESO ... */
+#define MC_ROLE GU_ROLE                  /* per engine (ENGINES order) the EDIT slot of each role (guard.c) */
+#define MC_NROLE GU_NROLE
+#define MC_RESO WF_EROLE_RESO
 /* one pole per smoothing class at the block rate (1378 Hz), Q16: fast 10 ms, medium 60 ms, slow 250 ms; stepped */
 static const int32_t OV_K[4] = {4581, 787, 190, 65536};
 
@@ -173,8 +175,8 @@ static int32_t mc_strength(const uint8_t *r)
 
 /* ---------------------------------------------------------------- slots --- */
 /* the slot of (kind, track t / part, id) in table nt. A new one is made when make is 1 (a non-zero offset), or 2 and
- * the target still sounds moved in the live table (it ramps home); its range: the descriptor, guard_limits.h. Idle
- * targets (offset 0, at home) get no slot: the ISR spends nothing on them */
+ * the target still sounds moved in the live table (it ramps home); its range: the descriptor, guard_limits.h, the
+ * World's GUARD (guard.c). Idle targets (offset 0, at home) get no slot: the ISR spends nothing on them */
 static ov_slot_t *mc_slot(ov_tab_t *nt, uint32_t kind, uint32_t t, uint32_t id, uint32_t make)
 {
     int16_t *ptr = kind == OV_P ? &trk[t].p[id] : kind == OV_G ? &song.g[id] : 0;
@@ -207,6 +209,7 @@ static ov_slot_t *mc_slot(ov_tab_t *nt, uint32_t kind, uint32_t t, uint32_t id, 
     if (kind >= OV_VCUT) {
         s->lo = -GL_VMOD_MAX;
         s->hi = GL_VMOD_MAX;
+        guard_range(kind, t, 0, e, &s->lo, &s->hi);
         return s;
     }
     if (kind == OV_G)
@@ -225,6 +228,7 @@ static ov_slot_t *mc_slot(ov_tab_t *nt, uint32_t kind, uint32_t t, uint32_t id, 
         s->hi = GL_LEVEL_MAX;
     if (kind == OV_P && t < NPART && id >= P_E0 && e < MC_NROLE && MC_ROLE[e][MC_RESO] == id - P_E0 && s->hi > GL_RESO_MAX)
         s->hi = GL_RESO_MAX;
+    guard_range(kind, t, id, e, &s->lo, &s->hi);         /* the World's soft caps and ranges inside them */
     return s;
 }
 
@@ -294,6 +298,10 @@ static int macro_eval(void)
         if (s->cls == WF_NONE)
             s->cls = WF_CLASS_DEFAULT;
         s->tgt = clamp(s->tgt, -(span << 8), span << 8);
+    }
+    guard_sound(nt);                                     /* the combinations, the distorted tracks (guard.c) */
+    for (i = 0; i < nt->n; i++) {
+        ov_slot_t *s = &nt->s[i];
         s->from = WF_NONE;
         for (k = 0; k < ot->n; k++)                      /* the same slot before: its smoothing goes on */
             if (ot->s[k].kind == s->kind && ot->s[k].ptr == s->ptr && ot->s[k].part == s->part) {
@@ -334,17 +342,6 @@ static void ov_reset(void)               /* IRQs off, outside a block: no overla
 }
 
 /* ------------------------------------------------------------ audio ISR --- */
-/* what slot s makes of base value b with offset c (Q8): clamped to its range, and never past a limit further than
- * the base already is */
-static int32_t ov_effective(const ov_slot_t *s, int32_t b, int32_t c)
-{
-    int32_t v = b + ((c + 128) >> 8);
-    if (v > s->hi && v > b)
-        v = b > s->hi ? b : s->hi;
-    else if (v < s->lo && v < b)
-        v = b < s->lo ? b : s->lo;
-    return v;
-}
 
 static void ov_take(void)                /* the new table: each slot's offset carried from its slot before */
 {
@@ -360,7 +357,8 @@ static void ov_take(void)                /* the new table: each slot's offset ca
     ov_seen = ov_pub;
 }
 
-/* the overlay in: each slot's base saved, its effective value written; step: one smoothing step first */
+/* the overlay in: each slot's base saved, its effective value written; step: one smoothing step first (toward the
+ * target; while the CPU guard holds, a costly slot toward its base) */
 static void ov_apply(int step)
 {
     const ov_tab_t *tb = &ovb[ov_live];
@@ -368,12 +366,14 @@ static void ov_apply(int step)
     uint32_t i;
     for (i = 0; i < tb->n; i++) {
         const ov_slot_t *s = &tb->s[i];
-        int32_t c = cur[i];
-        if (step && c != s->tgt) {
+        int32_t c = cur[i], tg = s->tgt;
+        if (wg.hold && tg > 0 && guard_costly(s))
+            tg = 0;
+        if (step && c != tg) {
             if (s->cls >= WF_CLASS_STEPPED) {
-                c = s->tgt;
+                c = tg;
             } else {
-                int32_t d = s->tgt - c, st = (d * OV_K[s->cls]) >> 16;   /* (|d| <= 2 x 127 << 8: no overflow) */
+                int32_t d = tg - c, st = (d * OV_K[s->cls]) >> 16;   /* (|d| <= 2 x 127 << 8: no overflow) */
                 c += st ? st : d > 0 ? 1 : -1;
             }
             cur[i] = c;
@@ -406,6 +406,7 @@ static void world_fx_pre(void)           /* H4: fx.c mix_block, before events_bl
     if (!wrt.active)
         return;
     ov_blk++;
+    guard_cpu_block();                                   /* the CPU guard's load, every DMA half (guard.c) */
     if (ov_pub != ov_seen)
         ov_take();
     ov_apply(1);

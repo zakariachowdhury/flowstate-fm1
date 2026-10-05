@@ -72,6 +72,16 @@ static uint32_t arr_dskip(uint32_t idx);                       /* H13: drum lane
 static const dstep_t *arr_dstep(const dstep_t *s, uint32_t idx);   /* H14: the fill's step on a fill bar, else s */
 static int arr_plays(uint32_t t, uint32_t idx);                /* H14: the band lets synth track t's step idx play */
 static void wsession_tick(void); /* project.c autosave_tick (H18): the PLAY session instead of SLOOP's autosave */
+static int guard_follows(const track_t *t);    /* H12 (seq.c): the keys loop follows the chord (guard.c) */
+static uint32_t guard_loop_note(uint32_t n);   /* H12: a loop note over the sounding chord */
+
+/* the Musical Guardrail Engine's state the earlier files read (guard.c, design 6) */
+typedef struct {
+    uint8_t unison;              /* GUARD max_unison: the voices of a UNISON part in a World (voice.c trk_nvoice) */
+    uint8_t ceil;                /* GUARD cpu ceiling, 1/256 of the audio interrupt's time */
+    volatile uint8_t hold;       /* the CPU guard holds: the costly slots at their base, a UNISON part at 2 voices */
+} wguard_t;
+static wguard_t wg;
 
 /* H2, the pitch reference count (design 4.4), audio ISR only, while wrt.refcount: per synth part and pitch, how
  * many holders sound it (voice.c trk_note_on / trk_note_off), and how many of them the live input started
