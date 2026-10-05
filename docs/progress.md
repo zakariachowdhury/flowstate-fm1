@@ -837,3 +837,114 @@ buffer; FREEZE uses the punch ring).
 - CPU costs are host instructions; Phase 17 calibrates them on the device.
 
 **Next.** Phase 14: Advanced Mode and user Worlds.
+
+## Phase 14: Advanced Mode and user Worlds (2026-10-05)
+
+**Done.** Advanced Mode's edits now stay with the World, and a player can keep them as a **user World**. Factory
+Worlds are never written. As built: design §10.5; player rules: [worlds.md §20](worlds.md#20-user-worlds-my-worlds).
+
+**The device edits sounds, patterns and the mix; the Mac tool edits structure.** Advanced Mode is SLOOP's UI over the
+World, so it can change engines, presets, every track parameter, sends and globals, steps, drum hits, pattern lengths
+and the keys loop. Macros, rules, ENERGY, GUARD, scenes, variations and progressions are edited in JSON (Phase 15).
+
+**Edit capture** (`world.c world_capture`). It runs on leaving ADVANCED, before SAVE + a scene key in it, before a save,
+and for LEAVE WORLD's question.
+- The glides are finished. The steps playing go back into their pool entries, with each entry's length and division
+  (`wpl`).
+- The reference is the stage of the scene and variation playing, without the parameter overrides.
+- A synth track's changed engine or preset becomes a sound record. Each changed parameter or whitelisted global
+  becomes a record with its value.
+- A value set back to the reference drops its record. An untouched value keeps its old record, so an edit made in
+  scene A survives a visit to scene B.
+- At most 64 parameter records plus one sound per synth track: more shows `TOO MANY EDITS`.
+
+Leaving ADVANCED with edits shows `EDITS KEPT · SAVE TO KEEP`, and the World plays them.
+
+**How edits compose** (`world_stage`, fwd1-format §16). The order is base (the player's sound, else the variation's
+swap, else TRACKS) → TRACKS pairs → variation → scene → **overrides** → pattern (with its edited length) → keys track
+→ clamp. So an edit applies in every scene and every variation. With another engine, the World's, variation's and
+scene's pairs on that track's `P_E*` are skipped, and so are its MAPS on raw `P_E*` (`wrt.eo`). Role mappings follow
+the new engine.
+
+**User Worlds** (`world_store.c`; D12). Ten slots, `OBJ_UWORLD0..9` at `0xE5000 + 0x2000 k`, each with copies A and B.
+- **The blob.** A whole FWD1 blob with flag USER (`world_encode`), so it needs no factory World and survives a later
+  firmware changing the one it came from. Every section of the source is copied, except META (name, `MY WORLDS`,
+  tempo), PATTERNS (the pool re-encoded, plus the keys loop as one more pattern), KEYS `loop_pat`, DEFAULTS (scene,
+  variation, 12 controls, PULSE, BEAT) and the new **OVERRIDES** section (type 15, USER blobs only: `{scope, id,
+  value}`, scope `128 + t` = a sound).
+- **Size.** At most 3,584 B, so nothing is ever programmed at offset 0xF00 of a sector. The encoder runs `wb_check`
+  on its own output.
+- **Id and name.** The id is FNV-1a of the name. The name is automatic: `NEON RAIN 2`, then the next free number
+  (`MIDNIGHT DRI 10`).
+- **RAM.** Two 3,584 B buffers: the user World playing and the next one (the design budgeted 7,680 B).
+
+**SAVE list** (PLAY MODE, SAVE button). Saving needs the transport stopped (`STOP TO SAVE`).
+- **SAVE AS USER WORLD** uses the first free slot; `MY WORLDS FULL` when all ten are used.
+- **SAVE** saves over the user World loaded; on a factory World it is SAVE AS.
+- **RESET WORLD** asks first. A factory World loads again without edits or loop; a user World loads as last saved,
+  on the bar while playing.
+- **DELETE USER WORLD** asks first and erases both copies; the World plays on. On a factory World it shows
+  `NOT A USER WORLD`.
+- A World over 3,584 B shows `WORLD TOO BIG` and nothing is written.
+- **CHOOSE WORLD** shows a `MY WORLDS` row after the factory Worlds, then the user Worlds. They load like a factory
+  World, at their saved control positions.
+- **The session** names a user World by slot + 1 and id (`wplay_t uslot`). A slot that is empty, damaged or saved over
+  with another World falls back to NEON RAIN (`WORLD NOT FOUND`).
+
+**Advanced polish.**
+- SAVE + white key 5 in ADVANCED toggles immediate scene and variation changes (`SCENES: AT ONCE` /
+  `SCENES: ON THEIR BAR`). It is off at every entry, and PLAY ignores it.
+- With unsaved edits or loop, the menu's LEAVE WORLD reads `LEAVE WORLD? NOT SAVED`, and OK again leaves.
+
+**Host.** `host_world_user`, `host_world_user_load`, `host_world_user_save` and `host_world_user_gen` go through the
+device's own functions. The simulator's Studio lists MY WORLDS after the projects, follows the device's saves and
+deletes, and loads them. The script commands `save` and `saveas` are the SAVE list's rows. With `--flash` the user
+Worlds and the session survive a restart (checked: saved, quit, started again, NEON RAIN 2 loads).
+`host/hal_host.h` records the lowest and highest byte written (`host_nor_lo` / `_hi`).
+
+**Verified.**
+- `./tests/run_tests.sh` and `--host-only` pass every group. New: `userworld_test`, 52 checks under ASan/UBSan, covering:
+  - ADVANCED edits (levels, a send, a global, another engine with preset 1, a step, a drum hit, a length) captured as
+    7 overrides, and the World playing them;
+  - a variation and back, a scene and back: the same instrument exactly (parameters, sounds, steps, globals, pool);
+  - an edit in scene B keeping scene A's;
+  - scenes on their bars while playing;
+  - SAVE + key 5: a scene in the next block, then on its bar line again;
+  - 84 more edits: `TOO MANY EDITS`;
+  - SAVE AS twice (`NEON RAIN 2`, `3`): writes only inside slot 1's sectors (0xE5000–0xE6FFF), 1,426 B, offset
+    0xF00–0xFFF erased;
+  - a reboot of the flash image: MY WORLDS lists both, the session's World is the user World, and loading it gives
+    the same state and a **bit-identical render** (3,000 blocks) as before the reboot;
+  - a slot damaged in both copies and a valid object holding no World: neither listed nor loaded; the session falls
+    back to NEON RAIN;
+  - 10 slots, then `MY WORLDS FULL` with nothing written;
+  - SAVE over a user World (only its slot written), DELETE (asks; both copies erased), DELETE on a factory World;
+  - dense patterns: `WORLD TOO BIG` with nothing written;
+  - RESET WORLD (asks; a knob disarms it) equal to a fresh boot's NEON RAIN in state and **render**; a user World's
+    RESET back to its save;
+  - LEAVE WORLD with edits asking first, then the SLOOP project bit-identical; without edits, leaving at once.
+- `ui_play_test` (141 checks, +2): SAVE + key 5 toggles, key 6 (store) is still refused. `scene_test`'s ADVANCED
+  scenario turns immediate transitions on after entering (entering turns them off).
+- Both regression builds match the 83 goldens; SLOOP mode is untouched.
+
+**Sizes.** Image 560,568 B (+4,376 B, over the 4 KB target by 280 B). **21.0 KB** of the app slot is left. RAM
+`.data` + `.bss` 78,736 B of 98,304 B (+7,632 B: the two blob buffers 7,168, the override table, the MY WORLDS list).
+
+**Deviations** (design §10.5):
+- The overrides are captured against the stage without them, keeping untouched old records, not a plain diff.
+- Sound overrides are OVERRIDES records.
+- A user World is self-contained, at most 3,584 B.
+- SAVE does not ask; RESET and DELETE do.
+- A full MY WORLDS refuses rather than letting PRESETS pick a slot.
+- The session keeps the World by slot and id, not the unsaved overrides (they last until power-off).
+- A blob with an index out of range is refused, not loaded with preset 0.
+- A user World loads at its saved control positions.
+
+**Left for later.**
+- Unsaved edits are not in the session: a power cycle loses them (the toast says SAVE TO KEEP).
+- CHOOSE WORLD asks nothing before leaving a World with unsaved edits. Only LEAVE WORLD asks.
+- worldc's decoder does not read OVERRIDES yet (Phase 15's Mac tool), nor rename user Worlds.
+- GUARD ranges on raw `P_E*` still apply to a track playing another engine (a clamp, never louder).
+- Phase 17 should check on hardware that the update loader and recovery leave `0xE5000–0xF8FFF` alone (Q2).
+
+**Next.** Phase 15: the authoring tool.

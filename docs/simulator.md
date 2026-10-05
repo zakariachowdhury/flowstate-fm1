@@ -94,7 +94,7 @@ from the Studio's model of what plays (`studio_t` in `host/sim/sim.h`), which th
 | Region | Shows |
 | --- | --- |
 | Top | `FLOWSTATE STUDIO`, playing or stopped, the tempo; the World, `· SCENE B`, its category, key and tempo, its blurb (or a message: `RELOADED`, `WORLD ERROR …`); the device's screen at its own size |
-| Choosing a World | `<` `>`, the title, or Option+W highlight an entry of `CHOOSE WORLD`: the four factory Worlds (in the firmware's order, by category), the World file when there is one, then `SLOOP PROJECTS`. The current one plays on. LOAD (or a second click, or Option+Return) confirms: at once while stopped, **on the next bar** while playing (design D10). CANCEL, a click outside or Esc forgets it |
+| Choosing a World | `<` `>`, the title, or Option+W highlight an entry of `CHOOSE WORLD`: the four factory Worlds (in the firmware's order, by category), the World file when there is one, then `SLOOP PROJECTS`, then `MY WORLDS` (Phase 14: the user Worlds in the flash image, `USER WORLD` on the right). The current one plays on. LOAD (or a second click, or Option+Return) confirms: at once while stopped, **on the next bar** while playing (design D10). CANCEL, a click outside or Esc forgets it |
 | Middle | A B C D with the World's scene names; the one playing filled, the one asked for marked `NEXT BAR`, then `CHANGES NEXT BAR: C LIFT · DREAMY`. `VAR < DREAMY >`: the variation, `n/N`; a click on its left or right half (or the wheel, or Option+V) asks for the previous or next one, on the next bar |
 | Controls | COLOR MOTION SPACE ENERGY, 0–100, with DARK/BRIGHT, STILL/ALIVE, CLOSE/HUGE, SPARSE/INTENSE. With a World they are its **macros** (`firmware/src/macro.c`, `host_macro_set`; the World's defaults when it loads): what each moves is the World's, and the line under them names the World and the ENERGY band playing (`ENERGY band 3/4: PAD BASS LEAD DRUMS`). With a SLOOP project they turn SLOOP's KNOB 1–4 by the same steps, and the line says so |
 | Performance | PLAY · REC · PULSE · BEAT · FX, with their LEDs: the FM-1's PLAY, REC, ARP, SEQ and FX buttons, held while the mouse is down (FX is a hold), right-click latches. REC is PLAY MODE's recorder (Phase 10, below), as is the panel's REC (`Return`) |
@@ -105,8 +105,17 @@ from the Studio's model of what plays (`studio_t` in `host/sim/sim.h`), which th
 B MAIN all, C LIFT all with the drums +16 and the synth tracks' echo sends +24, D BREAKDOWN all but the drums), and
 B plays; a scene brings its own mutes, as on the device. Loading one leaves the World (back to SLOOP's paths).
 
-**ADVANCED** is the raw panel, as in Phase 3. Advanced Mode on the device comes in Phase 14; here it means every SLOOP
-control with nothing in between. **The inspector** (Option+I, for developers) shows what the beginner UI never does:
+**ADVANCED** is the raw panel, as in Phase 3: every SLOOP control with nothing in between. The device's own Advanced
+Mode (EDIT held 2 s in PLAY MODE) runs on that panel as on the device.
+
+**MY WORLDS** (Phase 14). The device saves user Worlds through its SAVE list: the panel's SAVE button, or the
+`save` / `saveas` script commands, which call the same function (`wuser_save`). The Studio lists them after the
+projects and follows the device's saves and deletes. LOAD loads one as the device's CHOOSE WORLD does: at once while
+stopped, on the next bar while playing. With `--flash FILE` they live in the image, so they are still there at the
+next run, and the session's World (a user World by slot and id) comes back with them. Without `--flash` they last
+until the simulator quits. Example:
+`flowstate-sim --flash ~/fm1.nor --script '1 macro COLOR 80; 2 saveas; 3 world NEON_RAIN_2; 3.1 confirm'`. The
+macros are not edits: a save keeps them as the World's defaults. **The inspector** (Option+I, for developers) shows what the beginner UI never does:
 with a World, each macro's hidden mappings (`pad.brightness −24..+28 s`, `fx.delay_feedback −30..+8 lin`) with the
 parameter's effective value now on its range (`0.64`, with a bar in the knob's colour), then the cross-macro rules
 with their strength (0 at the thresholds, 1 at 100 %) and their actions, and the ENERGY band (`band 3/4 at 0.55`, the
@@ -128,6 +137,7 @@ it includes, or their order, differ from `felucca.c`'s (hardware-only files apar
 | `host_world_compile(path, …)` | a `.wblob` as it is, or a `.world.json` through `python3 tools/worldc.py compile` (found from the file upwards, or `$FLOWSTATE_ROOT`); any thread |
 | `host_world_request(scene, var)` | a scene and variation (`world_request`); −1 keeps one |
 | `host_world_reload_blob` | the World being authored, changed (`world_hot_reload`) |
+| `host_world_user(k, …)`, `host_world_user_load(k)`, `host_world_user_save(over)`, `host_world_user_gen()` | MY WORLDS (Phase 14): user slot *k* (0..9) as CHOOSE WORLD lists it (category `MY WORLDS`), loaded as CHOOSE WORLD loads it (`world_store.c wuser_read`, `play_world`), the SAVE list's SAVE (1) or SAVE AS USER WORLD (0) (`wuser_save`: 0 saved, 1 stop first, 2 full, 3 too big, 4 the flash failed), and a count of the list's changes |
 | `host_world(&w)` | what is loaded: name, category, blurb, tempo, scene and variation names, the committed and the asked-for ones, roles, the keys track, Smart Keys on, the chord |
 | `host_world_service()` | the main loop's part of a switch (`world_service`) and of the macros (`macro_service`: a new target table when a knob moved, at most once a pass); `host_ui_frame` calls it, and the simulator before every block |
 | `host_macro_set(ctl, 0..1000)`, `host_macro(ctl)`, `host_macro_snap()` | a World's controls: COLOR MOTION SPACE ENERGY (and the later ones); home 500; `snap`: the table now, without the ramp (a renderer's start) |
@@ -186,7 +196,8 @@ old World playing, and worldc's message, which names the place, shows on the sta
 - **Commands:** `play`, `stop`, `scene A..D`, `store A..D`, `mute N [on|off]`, `level N V|±S`, `bpm|swing|filter|dust|duck V|±S`,
   `master V`, `key K [down|up]` (a tap without down / up), `button NAME [down|up]`, `turn ENC STEPS`, `rec` and `undo`
   (REC and EDIT tapped: PLAY REC, below), `print`, `quit`.
-  The Studio: `world NAME|N|next|prev` (choose), `confirm`, `cancel`, `var NAME|N|next|prev`,
+  The Studio: `world NAME|N|next|prev` (choose), `confirm`, `cancel`, `save`, `saveas` (the SAVE list's SAVE and
+  SAVE AS USER WORLD, Phase 14), `var NAME|N|next|prev`,
   `macro COLOR..ENERGY|1..4 V|±S` (0..100: a World's macro, or a project's KNOB 1–4), `select N`. A name with spaces
   takes `_`: `world MIDNIGHT_DRIVE`.
 - **Expectations:** `expect FIELD OP VALUE`. The numeric fields are `playing scene next bpm filter mute1..4 level1..4
@@ -373,5 +384,5 @@ The Studio's model (`studio_t`) and `host_world` are where later phases show up;
 | `keys`, `keys_smart`, `chord` | SLOOP's keys; the chord when the harmony runtime gives it | `SMART MELODY` and the chord (Phase 6 part B: `wrt.keys_on`, `harm_chord_name`) |
 | `macro[]`, `macro_live` | a World's macro positions (Phase 7), a project's KNOB 1–4 | SOUND SHAPE, MOVEMENT and LIVE FX on the same controls (Phase 13) |
 | `pending`, `when`, scene changes | a commit on its transition's line (`host_world`'s `bars_left`, `phrase`), a World switch on the bar without a stop (Phase 11) | — |
-| `w[]` | the factory Worlds, a World file, SLOOP projects | user Worlds from the World store (Phase 14) |
+| `w[]` | the factory Worlds, a World file, SLOOP projects, MY WORLDS (Phase 14: the flash image's user Worlds) | — |
 | `rec`, `loop` (`host_state`) | PLAY REC's state and the keys loop's notes (Phase 10) | — |

@@ -33,6 +33,7 @@ Where to look:
 17. [Limits](#17-limits)
 18. [Gotchas](#18-gotchas)
 19. [Factory Worlds](#19-factory-worlds)
+20. [User Worlds (MY WORLDS)](#20-user-worlds-my-worlds)
 
 ---
 
@@ -791,3 +792,67 @@ under the defaults.
   decays at once, 4.5 LU under, with the same peaks);
 - the output limiter rarely over 1 dB (the synthwave groove, the densest, 13–18 % of the time and never over
   6 dB), every peak under −3 dBFS.
+
+## 20. User Worlds (MY WORLDS)
+
+Factory Worlds are read-only. What a player changes in Advanced Mode is kept in the **working World**, and SAVE turns it
+into a **user World** (Phase 14; design §10.2–10.3, as built §10.5).
+
+**What the device edits, and what the Mac tool edits.** Advanced Mode is SLOOP's UI over the World: the device edits
+the *sound, the patterns and the mix* (engines, presets, every track parameter, the sends and the whitelisted globals,
+steps, drum hits, pattern lengths, the keys loop). The World's *structure* (the macros and their curves, rules,
+ENERGY, GUARD, scenes, variations, progressions, names) is edited in JSON with the authoring tool (Phase 15), not on
+the device. A user World keeps the structure of the World it came from.
+
+**How edits combine with scenes and variations.** Leaving Advanced Mode (or pressing SAVE + a scene key in it) turns
+the edits into *overrides*. Each one is an absolute value for one parameter, a global, or a synth track's sound
+(engine and preset). The stage builds every scene and variation in this order, later steps winning:
+
+1. the engine's defaults and the preset: the player's sound, else the variation's preset swap, else TRACKS;
+2. the World's pairs (TRACKS), the variation's, the scene's. If the player chose **another engine**, these pairs
+   skip that track's engine parameters, because they belong to the World's engine. The World's macros on those
+   parameters also skip the track; macros on roles (`@CUTOFF`, `@BODY`…) follow the new engine;
+3. **the overrides**: in every scene and every variation;
+4. the pattern, with the length the player left it at; the keys loop; the player's mutes; then every value is
+   clamped to its range.
+
+So an edit sticks everywhere. A value the player sets back to what the World gives in the scene playing drops its
+override. A value he did not touch keeps its override, even when it was made in another scene. The steps are written
+back into the pattern pool when a track leaves a pattern, as before. A `(pattern, length)` change is kept per pool
+entry. A drum pattern keeps 16, 32 or 64 steps.
+
+What is not captured: the World's key and scale, the pattern assignment, the mutes, the keys track's arp (PULSE owns
+it), the drum track's parameters outside `WF_P_DRUM` except its kit, and the tempo. The tempo is the session's; a save
+writes the tempo playing into META. At most 64 parameter overrides plus one sound per synth track: more shows
+`TOO MANY EDITS`, and the rest play until the next scene change.
+
+**SAVE** (PLAY MODE, the SAVE button):
+
+| Row | Does |
+| --- | --- |
+| SAVE AS USER WORLD | A new slot: the World's name with the next free number (`NEON RAIN 2`, `NEON RAIN 3`; a user World's own number is replaced: from `NEON RAIN 2` comes `NEON RAIN 3`), shortened to fit 14 characters (`MIDNIGHT DRI 2`). All 10 slots used: `MY WORLDS FULL`. Renaming is for the Mac tool. |
+| SAVE | Saves over the user World loaded, keeping its slot and name. A factory World behaves as SAVE AS. |
+| RESET WORLD | Asks first (SAVE again). A factory World loads again without the edits, pool edits or loop. A user World loads as last saved. While playing, it lands on the next bar. |
+| DELETE USER WORLD | Asks first. Erases the user World loaded (both copies). It plays on, unsaved. A factory World: `NOT A USER WORLD`. |
+
+Saving needs the transport stopped (`STOP TO SAVE`): erasing a sector stalls the audio for about 50 ms. A World over
+the slot's 3,584 B shows `WORLD TOO BIG` and nothing is written.
+
+**CHOOSE WORLD** lists the factory Worlds, then a `MY WORLDS` row (the knob steps over it), then the user Worlds by
+slot. A user World loads like a factory one: at once while stopped, on the next bar while playing. Its category reads
+`MY WORLDS`. It loads at the controls, PULSE and BEAT it was saved with: its saved positions win over the variation's
+macro defaults. After any edit or loop, LEAVE WORLD asks first: `LEAVE WORLD? NOT SAVED`, and OK again leaves.
+
+**The blob.** A user World is a whole FWD1 blob with flag USER, so it plays even if a later firmware changes the
+factory World it came from. Every section of the source is copied as it is, except:
+- META: the name, category `MY WORLDS`, the tempo;
+- PATTERNS: the pool re-encoded, plus the keys loop as one more synth pattern;
+- KEYS: `loop_pat`;
+- DEFAULTS: scene, variation, the 12 controls, PULSE, BEAT;
+- OVERRIDES (type 15, the only extra section): `{scope, id, value}` records. Scope 0–3 is a track parameter (the drum
+  track also its kit, `P_E0`), scope 4 a whitelisted global, and scope `128 | track` a synth track's sound (`id` the
+  engine, `value` the preset).
+
+The world id is FNV-1a over the name. The format: [fwd1-format.md §14](design/fwd1-format.md#14-reserved-types).
+Engine and preset *indices* are stored, so the firmware's preset tables stay append-only.
+

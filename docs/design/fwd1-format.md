@@ -38,7 +38,8 @@ The payloads follow the table back to back, in table order.
 
 **Section table rules.**
 - Types are **strictly ascending**, which also means each type appears at most once.
-- Types run from 1 to 14. Types 15–17 are reserved (see [§14](#14-reserved-types)). Version 1 rejects any other type.
+- Types run from 1 to 14. A blob with flag USER may also have type 15, OVERRIDES (Phase 14). Types 16–17 are
+  reserved (see [§14](#14-reserved-types)). Version 1 rejects any other type.
 - `20 + 4·nsec + Σlen == L`.
 - The required sections must be present: META, TRACKS, PROGS, SCENES, VARS, KEYS, DEFAULTS.
 - All other sections are optional. An optional list section is present only with `count ≥ 1`. GUARD is the exception: it may be present with zero range records.
@@ -431,7 +432,29 @@ The ranges and defaults are `WF_GUARD_MIN`, `WF_GUARD_MAX` and `WF_GUARD_DEFAULT
 
 ## 14. Reserved types
 
-Types 15 OVERRIDES, 16 PATCHES and 17 PLAYSTATE are for user Worlds and the session (design §10.3–10.4). Phase 9 and Phase 14 define them. The version-1 parser of Phase 5 rejects them with `WE_SECTION`. Version stays 1 until the first release, because no parser has shipped yet.
+Types 16 PATCHES and 17 PLAYSTATE are reserved for the session (design §10.4). The parser rejects them with `WE_SECTION`.
+Phase 9 stores the session as a plain record, not a blob (design §8.6). Version stays 1 until the first release,
+because no parser has shipped yet.
+
+**Type 15, OVERRIDES** (Phase 14). It is allowed only with flag USER; without that flag it is `WE_SECTION`.
+
+| | |
+| --- | --- |
+| count | 1 to `WF_MAX_OVR + 3` (64 + one per synth track) |
+| record | 3 B, `{u8 scope, u8 id, i8 value}`; `len = 3 · count` |
+| scope 0–3 | a track parameter, allowed as in TRACKS (`wb_pid_ok`, not strict: structural parameters are allowed). The drum track also takes `P_E0`, its kit (`< DRUM_KITS`). |
+| scope 4 | a global in `WF_G_WHITELIST` |
+| scope `128 + t` (`WF_OVR_SOUND`) | synth track *t*'s sound: `id` is the engine (`< NENGINES`), `value` the preset as a `u8` (`< npresets`) |
+
+Anything else is `WE_PARAM`. The stage applies the records after the scene's pairs, in every scene and variation (see
+[§16](#16-staging-what-a-blob-means)).
+
+A user World needs no factory World. The firmware's encoder (`world.c world_encode`) copies every section of the World
+it came from, re-encodes PATTERNS from the RAM pool (the keys loop is one more synth pattern, named by KEYS
+`loop_pat`), and rewrites META's name, category and tempo, and DEFAULTS. Its world id is FNV-1a over its name. The
+design's alternative (the source's id + OVERRIDES + PATCHES) would break when a later firmware changed that factory
+World. A user World is at most 3,584 B (the storage payload under offset 0xF00, design §8.6). worldc's decoder does not
+read type 15 yet (Phase 15).
 
 ---
 
@@ -460,12 +483,14 @@ These are defined in `world_fmt.h`. worldc resolves the symbols through `sloop-p
 2. **The World's sound:** the TRACKS pairs.
 3. **The variation's pairs** for this track.
 4. **The scene's pairs** for this track.
-5. **(Phase 14) The overrides.**
+5. **(Phase 14) The overrides** (a user World's OVERRIDES section, or the working World's edits). A sound record
+   replaces step 1's preset and engine. With another engine, steps 2–4 skip that track's engine parameters
+   (`P_E0..P_E7`), which belong to the World's engine. Global records apply after the scene's.
 6. **The pattern.**
    - A synth track plays `pat[t]`.
    - The drum track plays `beat[wrt.beat]`, else `beat[GROOVE]`. `wrt.beat` starts at `DEFAULTS.beat`.
    - The variation's swaps apply, the first match winning.
-   - The track's `P_SLEN`/`P_SDIV` come from the pattern record. With no pattern they keep their defaults and the track plays an empty pattern.
+   - The track's `P_SLEN`/`P_SDIV` come from the pattern record, or from the length the player gave that pool entry in ADVANCED (Phase 14). With no pattern they keep their defaults and the track plays an empty pattern.
 7. **The Smart Keys track** never takes a pattern; it keeps its loop.
    - At a World switch, its loop is `P_SLEN = 16 × min(bars of the scene's progression, 4)` with `P_SDIV` = 1/16. Its arp group (`P_AMODE … P_AORDER`) is reset to the defaults, then `AMODE ARATE AOCT AGATE` are taken from the PULSE preset of `DEFAULTS.pulse`:
 

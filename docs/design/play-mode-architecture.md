@@ -1225,6 +1225,31 @@ A factory-World session is about 0.3–1.2 KB: no blob copy, because the factory
 | Boot (H22) | `autosave_resume` (`main.c:93`) runs as today, then `world_boot()`. No session, or a corrupt one: FIRST screen with factory World 0. Mode SLOOP: stay in SLOOP (`wrt.active = 0`). Otherwise: load the World ref (missing → factory 0, "WORLD NOT FOUND"), apply the overrides and patches, stage the scene and variation, set the controls, stopped. |
 | `proj_slot` | Never read or written by a World session, except the explicit TOOLS > SAVE. |
 
+### 10.5 As built (Phase 14)
+
+`world.c` (`world_capture`, `world_dirty`, `world_encode`, `world_adopt`; overrides in `world_stage`), `world_store.c`
+(user slots), `ui_play.c` (SAVE list, MY WORLDS, LEAVE WORLD's question) follow §8.3 and §10.1–10.3, with these
+differences. Player-facing rules: [../worlds.md §20](../worlds.md#20-user-worlds-my-worlds). Tests:
+`tests/userworld_test.c`.
+
+| Here | As built | Why |
+| --- | --- | --- |
+| §10.2: the overrides are the diff against the scene re-decoded without them | the reference is the stage of the scene and variation playing without the *parameter* overrides (`wcap`), with the sounds (engine, preset) as captured. A changed value becomes a record. A value set back to the reference drops its record. An untouched value keeps its old record. | A plain diff would drop an edit made in scene A when scene B's own value equals it. |
+| captured only on exit | also before SAVE + a scene key in ADVANCED, before a save, and for LEAVE WORLD's question. A change on its way is staged again after. | A scene change in ADVANCED would otherwise overwrite edits not yet captured. |
+| sound overrides `{trk, engine, preset}` | OVERRIDES records `{128 + trk, engine, preset}`, among the parameter records (`WF_OVR_SOUND`). With another engine, the World's, the variation's and the scene's pairs on that track's `P_E*` are skipped, and so are its MAPS on raw `P_E*` (`wrt.eo`, `macro.c mc_add`). A user preset counts as its values, not its index. | One record format; a World's engine values mean nothing to another engine. |
+| §10.2 step 4: dirty pool entries | the steps were already written back at each commit (Phase 11). New: each pool entry's length and division (`wpl`), so a length edit survives a scene change. A drum pattern keeps 16, 32 or 64 steps. | — |
+| §10.3: META + verbatim sections + PATTERNS from `wpool` + OVERRIDES + DEFAULTS | as designed, a self-contained blob, at most 3,584 B (`ST_LOW_MAX`), id = FNV-1a of the name. The loop is a pattern; a loop cleared since leaves an empty pattern at its index. | The more robust choice: a user World plays whatever a later firmware does to the factory World it came from. |
+| `wblob_ram` + `wenc_buf` (7,680 B) | `wub[2][3584]` (7,168 B): the user World playing, and the other one for the next load or the encoder. A load reads into the one the World playing does not use, and is refused while a World switch waits for its bar. | A switch lands on the bar while the old World plays from its buffer. `st_buf` is every storage call's. |
+| SAVE AS: the slot PRESETS picks when all 10 are full | `MY WORLDS FULL` (DELETE frees one) | No overwrite without a question. |
+| SAVE: confirm | no question: it is the World loaded, saved again. RESET WORLD and DELETE USER WORLD ask (SAVE again). | The owner's list. |
+| over 3,840 B: "WORLD TOO BIG: SAVE AS PROJECT" | over 3,584 B: `WORLD TOO BIG` | The 0xF00 rule; the toast has 27 characters. |
+| §10.4: the session keeps OVERRIDES and PATCHES | the session keeps the World by id and slot (`wplay_t uslot`, from `rsv`) and the keys loop. Unsaved edits last until power-off: the exit toast says `EDITS KEPT · SAVE TO KEEP`. | A session with the edits would not fit under 0xF00 next to the loop. |
+| "WORLD UPDATED" when an index is out of range | `wb_check` refuses the blob (`WE_TRACK` / `WE_PARAM`). The slot is not listed, and the session falls back to NEON RAIN (`WORLD NOT FOUND`). | Preset tables are append-only, so it cannot happen with this firmware's own saves. |
+| ADVANCED's immediate transitions (Phase 11 API) | SAVE + white key 5 toggles them (`SCENES: AT ONCE` / `SCENES: ON THEIR BAR`). They are off on every entry, and PLAY ignores them. | Key 5 is the first section-store key, refused in a World; it sits next to the scene keys 1–4. |
+| LEAVE WORLD | with unsaved edits or loop (`world_dirty`), the menu row reads `LEAVE WORLD? NOT SAVED`, and OK again leaves. TOOLS > LOAD / NEW keep their own two-detent arm. | — |
+| §15 Q8 | the macros stay frozen in ADVANCED (the default). The overlay is not in `p[]`, so the capture never sees it. | — |
+| a loaded user World's macros | it loads at its saved positions (DEFAULTS). The variation's macro defaults apply from the next variation change. | Saving the positions only to have the variation replace them would surprise. |
+
 ---
 
 ## 11. Budgets
