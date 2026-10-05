@@ -135,7 +135,7 @@ checked with a toolchain and SDK files freshly installed by the scripts above, a
 ## Tests
 
 ```
-./tests/run_tests.sh               # all 24 groups; run ./build.sh first (about 80 s)
+./tests/run_tests.sh               # all 25 groups; run ./build.sh first (about 80 s)
 ./tests/run_tests.sh --host-only   # no ./build.sh, toolchain, Docker or SDK needed
 ```
 
@@ -169,6 +169,7 @@ installed.
 | 22 | regression: target cost of the render loops in `build/felucca.dis` | `tests/target_budget.py` | skip |
 | 23 | installer CLI against a simulated FM-1 (no mido needed) | `tests/install_test.py` | runs |
 | 24 | web pages: editor protocol, samples, packages, update protocol | `web/test_web.mjs` | runs (with Node) |
+| 25 | host renderer: the example projects, 16 bars each, clean and the same bytes twice; `examples/projects/` as `host/examples.c` makes them | `host/render.c`, `host/examples.c` | runs |
 
 Environment:
 
@@ -201,6 +202,53 @@ cc -O2 -w -Ibuild/gen -Ifirmware/src -o build/host/seq2_test tests/seq2_test.c -
 
 Run the full `./build.sh && ./tests/run_tests.sh` before you commit. Only the full run checks the
 target cost and the update path.
+
+## Rendering
+
+`host/` runs the real firmware on the Mac: the engines, voices, drums, effects, mixer, sequencer, arranger,
+projects, flash storage and UI, compiled from `firmware/src` as `src/felucca.c` builds them. Only the
+hardware is replaced, by `host/hal_host.h`: time follows the audio rendered, the LCD is a framebuffer and
+the flash a 1 MiB NOR image. Programs use the small API in `host/host.h`. Nothing in `host/` synthesises
+or sequences anything itself.
+
+```
+make -C host           # build/host-bin/sloop-render and sloop-examples (makes build/gen if it is missing)
+```
+
+**`sloop-render`** turns a SLOOP project (`.fun4`, the format SAVE writes; FUN1–3 are converted) into a
+44.1 kHz stereo 16-bit WAV. It loads the project as the FM-1 does, presses PLAY, plays at the project's
+tempo, presses STOP, and records the release tail. The WAV is the raw mix with the master at unity, as
+the host tests render it; the device's DAC plays it 6 dB lower. The same input always gives the same bytes.
+
+```
+sloop-render [--bars N | --seconds S] [--tail S] [--analyze | --check] [--dump] [--screen OUT.ppm] INPUT.fun4 OUT.wav
+sloop-render [options] --song A.fun4,B.fun4[,C.fun4,D.fun4] [--order A:4,B:8,..] [INPUT.fun4] OUT.wav
+```
+
+| | |
+| --- | --- |
+| `--bars N`, `--seconds S` | how long to play. The default is until every track's pattern has played twice |
+| `--tail S` | seconds recorded after STOP (default 4) |
+| `--song`, `--order` | up to four projects become the sections A–D, and the arranger plays the order in song mode, as on the device. Tempo and global FX come from INPUT, or else from the first section played. The default order plays each section once, until its patterns have played twice |
+| `--analyze` | peak and RMS level, DC offset, samples at full scale, longest silence, and a hash of the audio |
+| `--check` | `--analyze`, then exit 1 if the render is silent, peaks at or above −0.1 dBFS, reaches full scale or has a DC offset |
+| `--dump` | tempo, swing, and each track's engine, preset, pattern length and mix |
+| `--screen OUT.ppm` | also runs the main loop between audio blocks and saves the screen at the end of play. The audio does not change |
+
+```
+mkdir -p build/renders && make -C host
+build/host-bin/sloop-render --dump --analyze examples/projects/cinematic.fun4 build/renders/cinematic.wav
+build/host-bin/sloop-render --song examples/projects/ambient.fun4,examples/projects/cinematic.fun4 \
+    --order A:8,B:8,A:4 build/renders/song.wav
+```
+
+A render runs at about 200 times realtime: 16 bars of `examples/projects/ambient.fun4` (59 s) take 0.3 s.
+
+**`sloop-examples [DIR]`** writes the three example projects in `examples/projects/` (or DIR):
+`ambient.fun4`, `groove.fun4` and `cinematic.fun4`. It builds them with the firmware's own functions
+(TOOLS > NEW, then engines and presets chosen by name, parameters, steps), so each file loads on an FM-1
+like any saved project. `host/examples.c` describes the music. After changing it, run
+`build/host-bin/sloop-examples` and commit the new `.fun4` files. Test group 25 fails while they differ.
 
 ## Troubleshooting
 
