@@ -1,8 +1,11 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* The performance macros (PLAY MODE, docs/design/play-mode-architecture.md 5, decision D1): COLOR (dark - bright),
  * MOTION (still - alive), SPACE (close - huge) and ENERGY (sparse - intense), four knobs with fixed meanings whose
- * hidden mappings each World defines (its MAPS, CURVES and RULES sections), and the slots of the later controls
- * (SOUND SHAPE, MOVEMENT, LIVE FX: ids 4..15, Phase 13 adds their built-in mappings).
+ * hidden mappings each World defines (its MAPS, CURVES and RULES sections), and the later controls (ids 4..15, Phase 13,
+ * design 9.3, 9.4): SOUND SHAPE (SOFT SHORT BODY TAIL: the Smart Keys track's envelope) and MOVEMENT (DRIFT WOBBLE
+ * PULSE RATE: its LFO), which keep their positions, and LIVE FX (FILTER ECHO CRUSH FREEZE: the DJ filter, the delay
+ * bus, DUST; FREEZE the punch engine's loop of the beat), momentary while FX is held. Their mappings are the
+ * firmware's (world_fmt.h WF_CTL_BUILTIN) unless the World's `controls` name the control.
  *
  * Main loop. A control is a position 0..1000 with a home (500 for the four macros) where it moves nothing: the
  * World's DEFAULTS set them on load. On a change macro_eval turns the positions into a target table:
@@ -33,7 +36,8 @@
  *
  *   macro_load(...)          world.c: the loaded World's mappings (and its DEFAULTS positions, keep = 0)
  *   macro_set(c, pos), macro_pos(c)    main loop: a control
- *   macro_service()          main loop, every pass: macro_eval when something changed, at most every MC_BLOCKS
+ *   macro_service()          main loop, every pass: FREEZE (live_freeze), and macro_eval when something changed, at
+ *                            most every MC_BLOCKS
  *   macro_eval()             main loop: the target table, published (1: the ISR has not taken the last one yet)
  *   ov_reset()               IRQs off (world.c, a World switch or unload): no overlay until the next table
  *   world_fx_pre / _post     audio ISR (H4, H5)
@@ -48,6 +52,9 @@ static const uint16_t MC_HOME[WF_NCTL] = WF_CTL_HOME;
 #define MC_RESO WF_EROLE_RESO
 /* one pole per smoothing class at the block rate (1378 Hz), Q16: fast 10 ms, medium 60 ms, slow 250 ms; stepped */
 static const int32_t OV_K[4] = {4581, 787, 190, 65536};
+static const uint8_t MC_BUILTIN[] = WF_CTL_BUILTIN;   /* controls 4..15 (Phase 13): MAPS records */
+#define MC_NBUILTIN (sizeof MC_BUILTIN / WF_MAP_LEN)
+_Static_assert(sizeof MC_BUILTIN % WF_MAP_LEN == 0, "WF_CTL_BUILTIN: whole MAPS records");
 
 static struct {
     uint16_t pos[WF_NCTL];               /* the controls, 0..1000 */
@@ -55,6 +62,8 @@ static struct {
     uint8_t nmaps, ncurves, nrules;
     uint8_t dirty;                       /* a position, the World or an engine changed: evaluate */
     uint16_t touched;                    /* controls macro_set moved since the World loaded (world.c wvar_macros) */
+    uint16_t wctl;                       /* controls the World's MAPS name: their built-in mappings stand aside */
+    uint8_t frz;                         /* 1 + the punch effect FREEZE asked for, 0 none (live_freeze) */
     uint8_t snap;                        /* the next table starts at its targets (a World loaded) */
     uint8_t eng[NPART];                  /* the engines the last table resolved the roles for */
     uint8_t n, over;                     /* slots in the last table; targets that found no slot (> OV_MAX) */
@@ -75,6 +84,9 @@ static void macro_load(const uint8_t *maps, uint32_t nmaps, const uint8_t *curve
     mac.ncurves = (uint8_t)ncurves;
     mac.rules = rules;
     mac.nrules = (uint8_t)nrules;
+    mac.wctl = 0;
+    for (i = 0; i < nmaps; i++)
+        mac.wctl |= (uint16_t)(1u << maps[WF_MAP_LEN * i] % WF_NCTL);
     if (!keep) {
         for (i = 0; i < WF_NCTL; i++)
             mac.pos[i] = MC_HOME[i];
@@ -178,6 +190,22 @@ static int32_t mc_strength(const uint8_t *r)
 }
 
 /* ---------------------------------------------------------------- slots --- */
+/* the Smart Keys track's windows (guard_limits.h GL_K*): parameter, lo, hi */
+static const int8_t MC_KWIN[][3] = {{P_ATK, 0, GL_KATK_MAX}, {P_DEC, GL_KDEC_MIN, 127}, {P_REL, GL_KREL_MIN, GL_KREL_MAX},
+                                    {P_LD_PIT, -GL_KLDPIT_MAX, GL_KLDPIT_MAX}, {P_LD_FLT, -GL_KLDFLT_MAX, GL_KLDFLT_MAX},
+                                    {P_LD_AMP, 0, GL_KLDAMP_MAX}, {P_LRATE, GL_KLRATE_MIN, GL_KLRATE_MAX}};
+static void mc_kwin(uint32_t id, int16_t *lo, int16_t *hi)
+{
+    uint32_t i;
+    for (i = 0; i < sizeof MC_KWIN / sizeof MC_KWIN[0]; i++)
+        if (MC_KWIN[i][0] == (int32_t)id) {
+            if (*lo < MC_KWIN[i][1])
+                *lo = MC_KWIN[i][1];
+            if (*hi > MC_KWIN[i][2])
+                *hi = MC_KWIN[i][2];
+        }
+}
+
 /* the slot of (kind, track t / part, id) in table nt. A new one is made when make is 1 (a non-zero offset), or 2 and
  * the target still sounds moved in the live table (it ramps home); its range: the descriptor, guard_limits.h, the
  * World's GUARD (guard.c). Idle targets (offset 0, at home) get no slot: the ISR spends nothing on them */
@@ -232,6 +260,8 @@ static ov_slot_t *mc_slot(ov_tab_t *nt, uint32_t kind, uint32_t t, uint32_t id, 
         s->hi = GL_LEVEL_MAX;
     if (kind == OV_P && t < NPART && id >= P_E0 && e < MC_NROLE && MC_ROLE[e][MC_RESO] == id - P_E0 && s->hi > GL_RESO_MAX)
         s->hi = GL_RESO_MAX;
+    if (kind == OV_P && t == wrt.keys_trk)
+        mc_kwin(id, &s->lo, &s->hi);                     /* (the Smart Keys track: a playable envelope and LFO) */
     guard_range(kind, t, id, e, &s->lo, &s->hi);         /* the World's soft caps and ranges inside them */
     return s;
 }
@@ -273,12 +303,20 @@ static void mc_add(ov_tab_t *nt, uint32_t tg, uint32_t id, uint32_t cls, int32_t
     }
 }
 
+/* a built-in record's target byte (WF_TMASK_KEYS: the Smart Keys track); WF_NONE when the World's controls replace it */
+static uint32_t mc_btg(const uint8_t *p)
+{
+    if (mac.wctl >> p[0] & 1u)
+        return WF_NONE;
+    return p[1] & WF_TMASK_KEYS ? (p[1] & ~(uint32_t)WF_TMASK) | 1u << wrt.keys_trk % NPART : p[1];
+}
+
 /* the target table from the positions now, published to the ISR; 1 when the ISR has not taken the last one yet */
 static int macro_eval(void)
 {
     ov_tab_t *nt, *ot;
     const uint8_t *p;
-    uint32_t i, k;
+    uint32_t i, k, tg;
     if (ov_pub != ov_seen)
         return 1;
     ot = &ovb[ov_live];
@@ -287,6 +325,9 @@ static int macro_eval(void)
     mac.over = 0;
     for (i = 0, p = mac.maps; i < mac.nmaps; i++, p += WF_MAP_LEN)
         mc_add(nt, p[1], p[2], WF_NONE, mc_offset(p));
+    for (i = 0, p = MC_BUILTIN; i < MC_NBUILTIN; i++, p += WF_MAP_LEN)   /* (controls 4..15 the World leaves) */
+        if ((tg = mc_btg(p)) != WF_NONE)
+            mc_add(nt, tg, p[2], WF_NONE, mc_offset(p));
     for (i = 0, p = mac.rules; i < mac.nrules; i++, p += WF_RULE_HDR + WF_ACT_LEN * p[3]) {
         int32_t st = mc_strength(p);
         for (k = 0; k < p[3]; k++) {
@@ -296,6 +337,9 @@ static int macro_eval(void)
     }
     for (i = 0, p = mac.maps; i < mac.nmaps; i++, p += WF_MAP_LEN)   /* the classes, from every mapping */
         mc_add(nt, p[1], p[2], p[3] >> 6, MC_CLASS);
+    for (i = 0, p = MC_BUILTIN; i < MC_NBUILTIN; i++, p += WF_MAP_LEN)   /* (a built-in control at home: invisible) */
+        if ((tg = mc_btg(p)) != WF_NONE && mac.pos[p[0]] != MC_HOME[p[0]])
+            mc_add(nt, tg, p[2], p[3] >> 6, MC_CLASS);
     for (i = 0; i < nt->n; i++) {
         ov_slot_t *s = &nt->s[i];
         int32_t span = s->kind >= OV_VCUT ? GL_VMOD_MAX : s->hi - s->lo;
@@ -304,6 +348,7 @@ static int macro_eval(void)
         s->tgt = clamp(s->tgt, -(span << 8), span << 8);
     }
     guard_sound(nt);                                     /* the combinations, the distorted tracks (guard.c) */
+    guard_live(nt, mac.pos[WF_CTL_ECHO] != 0, mac.pos[WF_CTL_CRUSH] != 0);   /* (LIVE FX's, whatever the World's) */
     for (i = 0; i < nt->n; i++) {
         ov_slot_t *s = &nt->s[i];
         s->from = WF_NONE;
@@ -358,9 +403,27 @@ static void wgl_block(void)              /* H5, after the bases are back: each g
     }
 }
 
+/* FREEZE (control 15, design 9.3): while FX is held in PLAY and the knob is past WF_FREEZE_ON, SLOOP's punch-in loop of
+ * the beat playing (1 beat, then 1/2, 1/4 as it turns on); the punch engine crossfades in and out over 64 samples and
+ * the loop has no feedback. A white key held (its own punch FX, punch.keybit) wins; let go, the freeze comes back
+ * while the knob is up. FX let go, the knob under 25 %, another mode, no World: the request goes, the mix is dry.
+ * Only a request this function made is ever withdrawn here, so SLOOP's punch FX are never touched */
+static void live_freeze(void)
+{
+    uint32_t x = mac.pos[WF_CTL_FREEZE];
+    int32_t want = -1;
+    if (wrt.active && wrt.mode == WM_PLAY && punch.hold && x >= WF_FREEZE_ON)
+        want = PX_LOOP4 + (int32_t)(x >= 750u ? 2u : x >= 500u ? 1u : 0u);
+    if (!punch.keybit && (want >= 0 ? punch.req != want : mac.frz && punch.req == mac.frz - 1))
+        punch.req = (int8_t)want;
+    mac.frz = (uint8_t)(want + 1);
+}
+
 static void macro_service(void)          /* main loop, every pass */
 {
     uint32_t t;
+    if (mac.frz || punch.hold)
+        live_freeze();
     if (!wrt.active || wrt.swp)
         return;                                          /* (a World switch staged: its own table after its commit) */
     for (t = 0; t < NPART; t++)

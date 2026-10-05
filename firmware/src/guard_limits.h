@@ -15,7 +15,19 @@
 #define GL_RSIZE_MAX 127             /* G_RSIZE: reverb comb gain (25000 + 127 * 50) / 32768 = 0.957 < 1 (155: 1.0) */
 #define GL_LEVEL_MAX 120             /* P_LEVEL of a track in a World: +4 dB over 0 dB (112), 0.5 dB a step */
 #define GL_RESO_MAX 110              /* the engines' resonance (role RESO: ANALOG RES, VOICE Q, TRIO RES), 0..127 */
-#define GL_ECHO_DFDBK 96             /* LIVE ECHO's feedback (Phase 13): 0.67 */
+#define GL_ECHO_DFDBK 96             /* while LIVE ECHO is up, the delay feedback at most 96: 0.67 (Phase 13) */
+/* the Smart Keys track's envelope and LFO, whatever moves them (SOUND SHAPE, MOVEMENT, a World's macros, MOTION and
+ * MOVEMENT summed): playable lengths, a pitch drift under a semitone, a depth and rate that stay musical. TIME_MS
+ * steps (params.c F_TIME): 88 = 0.59 s, 104 = 1.9 s, 56 = 58 ms, 44 = 25 ms; LFO_HZ: 16 = 0.12 Hz, 100 = 9.6 Hz */
+#define GL_KATK_MAX 88
+#define GL_KDEC_MIN 56
+#define GL_KREL_MIN 44
+#define GL_KREL_MAX 104
+#define GL_KLDPIT_MAX 4              /* ld_pit +-4: +-0.75 semitone (voice.c: x 3 / 128 of the LFO, 1/4096 st) */
+#define GL_KLDFLT_MAX 48             /* ld_flt +-48 */
+#define GL_KLDAMP_MAX 80             /* ld_amp 80: a tremolo of 63 % at most */
+#define GL_KLRATE_MIN 16
+#define GL_KLRATE_MAX 100
 #define GL_VMOD_MAX 64               /* ~bright, ~shape: at most +-64 steps of the engine's cutoff / shape (Q8: << 8) */
 #define GL_CPU_FULL 2700             /* the CPU guard: host instructions a sample taken as the whole audio interrupt's
                                       * time on the device (so GL_CPU_BUDGET is the 85 % ceiling); Phase 17 measures */

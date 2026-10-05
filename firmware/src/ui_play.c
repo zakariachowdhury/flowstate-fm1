@@ -293,6 +293,8 @@ static void pl_ui_reset(void)                      /* SLOOP's UI state that must
     ui.confirm = 0;
     song.seq_mode = 0;
     punch.hold = 0;
+    for (b = WF_CTL_LIVE; b < WF_NCTL; b++)
+        macro_set(b, MC_HOME[b]);                  /* (LIVE FX is momentary: home across a mode change; FREEZE goes) */
     for (b = 0; b < NB; b++) {
         pl.bt0[b] = 0;                             /* (buttons held across the change: no tap, no hold) */
         pl.bused[b] = 1;
@@ -649,8 +651,8 @@ static void play_input(void)
             pl_screen(PS_PAGE);
         }
         if (rel & bit) {
-            if (page == PG_LIVEFX) {               /* LIVE FX is momentary: its targets home (the clean way back) */
-                for (k = 12; k < 16u; k++)
+            if (page == PG_LIVEFX) {               /* LIVE FX is momentary: its targets home (the clean way back: */
+                for (k = WF_CTL_LIVE; k < WF_NCTL; k++)    /* the overlay ramps them, the punch engine fades) */
                     macro_set(k, MC_HOME[k]);
                 if (punch.req >= 0 && !(fm1_in.notes & punch.keybit))
                     punch.req = -1;
@@ -1453,7 +1455,7 @@ static void play_boot(const wplay_t *s, int restore)
         return;
     }
     if (restore) {
-        for (k = 0; k < WF_NCTL; k++)
+        for (k = 0; k < WF_CTL_LIVE; k++)          /* (LIVE FX, momentary, stay home) */
             macro_set(k, s->ctl[k] * 4 + (int32_t)(s->ctl_lo >> (2u * k) & 3u));
         mac.snap = mac.dirty = 1;                  /* (at its positions: no ramp) */
         pl_pulse_set(s->pulse);

@@ -2520,6 +2520,19 @@ _cd = [PR.sym(x[0]) if isinstance(x, list) else x for x in F["WF_COMBO_DEFAULT"]
 COMBO_DEF = [tuple((_cd[o + 3 * j] >> 5, _cd[o + 3 * j] & 31, _cd[o + 3 * j + 1],
                     _cd[o + 3 * j + 2] - 256 if _cd[o + 3 * j + 2] > 127 else _cd[o + 3 * j + 2]) for j in range(3))
              for o in range(0, len(_cd), F["WF_COMBO_LEN"])]
+_cl = [PR.sym(x[0]) if isinstance(x, list) else x for x in F["WF_COMBO_LIVE"]]
+COMBO_LIVE = [tuple((_cl[o + 3 * j] >> 5, _cl[o + 3 * j] & 31, _cl[o + 3 * j + 1], _cl[o + 3 * j + 2]) for j in range(3))
+              for o in range(0, len(_cl), F["WF_COMBO_LEN"])]
+assert COMBO_LIVE[1][2][3] == GL["GL_ECHO_DFDBK"], "world_fmt.h WF_COMBO_LIVE: ECHO's feedback cap is GL_ECHO_DFDBK"
+# the built-in mappings of controls 4..15 (Phase 13), as decode() reads MAPS: (ctl, kind, mask, id, class, curve, min, max)
+_cb = [PR.sym(x[0]) if isinstance(x, list) else x for x in F["WF_CTL_BUILTIN"]]
+BUILTIN = [(_cb[o], _cb[o + 1] >> 5, _cb[o + 1] & 31, _cb[o + 2], _cb[o + 3] >> 6, _cb[o + 3] & 63,
+            _cb[o + 4] - 256 if _cb[o + 4] > 127 else _cb[o + 4], _cb[o + 5] - 256 if _cb[o + 5] > 127 else _cb[o + 5])
+           for o in range(0, len(_cb), F["WF_MAP_LEN"])]
+KWIN = {PR.sym(n): (lo, hi) for n, lo, hi in (
+    ("P_ATK", 0, GL["GL_KATK_MAX"]), ("P_DEC", GL["GL_KDEC_MIN"], 127), ("P_REL", GL["GL_KREL_MIN"], GL["GL_KREL_MAX"]),
+    ("P_LD_PIT", -GL["GL_KLDPIT_MAX"], GL["GL_KLDPIT_MAX"]), ("P_LD_FLT", -GL["GL_KLDFLT_MAX"], GL["GL_KLDFLT_MAX"]),
+    ("P_LD_AMP", 0, GL["GL_KLDAMP_MAX"]), ("P_LRATE", GL["GL_KLRATE_MIN"], GL["GL_KLRATE_MAX"]))}
 
 
 def stage_bases(ir, scene, var):
@@ -2599,6 +2612,10 @@ class Model:
         self.ranges = gd["ranges"] if gd else []
         nc = self.fix[F["WF_G_COMBOS"]] if self.fix else NONE
         self.combos = COMBO_DEF if nc == NONE else gd["combos"]
+        self.kt = ir["keys"]["trk"] % (NTRK - 1)
+        wctl = {m[0] for m in ir["maps"]}           # macro.c mc_btg: the World's controls replace the built-in ones
+        self.maps = list(ir["maps"]) + [(c, k, 1 << self.kt if mk & F["WF_TMASK_KEYS"] else mk, *rest)
+                                        for c, k, mk, *rest in BUILTIN if c not in wctl]
         d = ir["defaults"]
         self.pos = list(CTL_HOME)
         for i in range(4):
@@ -2683,6 +2700,8 @@ class Model:
                 lim = GL["GL_RESO_MAX"]
             if lim is not None and hi > lim:
                 hi = lim
+            if kind == OV_P and t == self.kt and pid in KWIN:      # macro.c mc_kwin: the Smart Keys track's windows
+                lo, hi = max(lo, KWIN[pid][0]), min(hi, KWIN[pid][1])
             s.lo, s.hi = self.guard_range(kind, t, pid, e, lo, hi)
         self.tab.append(s)
         return s
@@ -2719,14 +2738,16 @@ class Model:
     def evaluate(self, pos):
         """macro_eval at positions pos (the 16 controls), a fresh overlay: the slot table"""
         self.tab, self.over = [], 0
-        for mi, m in enumerate(self.ir["maps"]):
+        for mi, m in enumerate(self.maps):
             self.add(m[1], m[2], m[3], None, self.offset(m, pos), mi)
         for r in self.ir["rules"]:
             st = self.strength(r, pos)
             for kd, msk, i, a in r["acts"]:
                 self.add(kd, msk, i, None, a * st >> 4)
-        for m in self.ir["maps"]:
-            self.add(m[1], m[2], m[3], m[4], 0)
+        nw = len(self.ir["maps"])
+        for mi, m in enumerate(self.maps):        # (a built-in control at home adds no smoothing class)
+            if mi < nw or pos[m[0]] != CTL_HOME[m[0]]:
+                self.add(m[1], m[2], m[3], m[4], 0)
         for s in self.tab:
             span = GL["GL_VMOD_MAX"] if s.kind >= OV_VCUT else s.hi - s.lo
             if s.cls == NONE:
@@ -2734,6 +2755,9 @@ class Model:
             s.raw = s.tgt
             s.tgt = max(-(span << 8), min(span << 8, s.tgt))
         self.guard_sound()
+        for i, c in enumerate(COMBO_LIVE):         # guard.c guard_live: ECHO's two, CRUSH's one
+            if pos[F["WF_CTL_ECHO"] if i < 2 else F["WF_CTL_CRUSH"]]:
+                self.combo(c, NONE)
         return self.tab
 
     def base(self, s):

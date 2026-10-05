@@ -32,6 +32,7 @@
  *   guard_rec_note, _dup, _room, _len, _quant         play_rec.c (PLAY REC), audio ISR
  *   guard_range(kind, t, id, e, &lo, &hi)             macro.c mc_slot (main loop)
  *   guard_sound(nt)                                   macro.c macro_eval (main loop)
+ *   guard_live(nt, echo, crush)                       macro.c macro_eval: LIVE FX's combinations (WF_COMBO_LIVE)
  *   ov_effective(s, b, c)        what a slot makes of a base value (the ISR, the host's inspector)
  *   guard_costly(s)              audio ISR: a slot the CPU guard holds
  *   guard_cpu_block()            audio ISR (macro.c world_fx_pre), every block: the load and the hold
@@ -39,11 +40,14 @@
 
 static const uint8_t GU_DEF[] = WF_GUARD_DEFAULT;
 static const uint8_t GU_COMBO_DEF[] = WF_COMBO_DEFAULT;
+static const uint8_t GU_COMBO_LIVE[] = WF_COMBO_LIVE;   /* while ECHO (the first two) and CRUSH (the third) are up */
 static const uint8_t GU_ROLE[][WF_NEROLES] = WF_ENG_ROLE;   /* per engine (ENGINES order) the EDIT slot of each role */
 #define GU_NROLE (sizeof GU_ROLE / sizeof GU_ROLE[0])
 _Static_assert(sizeof GU_DEF == WF_G_RESERVED - WF_G_POLY, "a default per GUARD field");
 _Static_assert(sizeof GU_COMBO_DEF % WF_COMBO_LEN == 0 && sizeof GU_COMBO_DEF / WF_COMBO_LEN <= WF_MAX_COMBOS,
                "WF_COMBO_DEFAULT: whole records");
+_Static_assert(sizeof GU_COMBO_LIVE == 3 * WF_COMBO_LEN, "WF_COMBO_LIVE: ECHO's two, CRUSH's one (its feedback cap is "
+               "GL_ECHO_DFDBK: tools/worldc.py and tests/livefx_test.c check)");
 #define GU_RANGE_LO 48u                  /* a synth track's range when GUARD sets none: C3..C6 (design 6.1) */
 #define GU_RANGE_HI 84u
 #define GU_NOVAL (-0x8000)               /* a combination's condition that names nothing */
@@ -366,6 +370,17 @@ static void guard_sound(ov_tab_t *nt)
     }
 }
 
+/* main loop (macro.c macro_eval), after guard_sound: while LIVE ECHO is up, a big room shortens the echo and its
+ * feedback stays at most GL_ECHO_DFDBK; while CRUSH is up, DUST stays moderate on a distorted part. These hold
+ * whatever combinations the World's GUARD sets (Phase 13, design 9.3) */
+static void guard_live(ov_tab_t *nt, int echo, int crush)
+{
+    uint32_t i;
+    for (i = 0; i < 3u; i++)
+        if (i < 2u ? echo : crush)
+            gu_combo(nt, GU_COMBO_LIVE + WF_COMBO_LEN * i, WF_NONE);
+}
+
 /* ==================================================================== CPU === */
 /* host instructions a sample (cc -O2) of what sounds, fitted by least squares over the DMA halves of the factory and
  * test Worlds' sweeps (tests/guard_sweep.c --calib, about 800,000 halves, a residual of 77) and rounded up about 10 %:
@@ -378,8 +393,19 @@ static const uint8_t GU_VCOST[] = {135, 95, 160, 70, 125, 220, 205, 165, 30};
 #define GU_COST_DIST 55u                 /* a part's DIST stage */
 #define GU_COST_SLICER 40u               /* a part's SLICER */
 #define GU_COST_DUST 30u                 /* DUST on the master */
+#define GU_COST_DJF 66u                  /* the DJ filter (LIVE FX FILTER; tests/livefx_test.c --cost: 56..60) */
+#define GU_COST_PUNCH 96u                /* a punch-in effect (FREEZE's loop, a white key's FX; measured 88) */
 #define GU_COST_GRAIN 360u               /* a GRAIN voice at DENS 127 (its grains), scaled by DENS */
 
+static int gu_moved(const int16_t *p)    /* the overlay (its live table) moves *p up now: the base is what p holds */
+{
+    const ov_tab_t *t = &ovb[ov_live];
+    uint32_t i;
+    for (i = 0; i < t->n; i++)
+        if (t->s[i].kind < OV_VCUT && t->s[i].ptr == p)
+            return ov_cur[ov_live][i] > 0;
+    return 0;
+}
 static uint32_t guard_cpu_est(void)
 {
     uint32_t p, i, n = GU_COST_BASE;
@@ -398,8 +424,12 @@ static uint32_t guard_cpu_est(void)
     }
     for (i = 0; i < NDRUM; i++)
         n += drums.v[i].active ? GU_COST_DRUM : 0u;
-    if (song.g[G_DUST] > 0)
+    if (song.g[G_DUST] > 0 || gu_moved(&song.g[G_DUST]))
         n += GU_COST_DUST;
+    if (djf.mode)
+        n += GU_COST_DJF;
+    if (punch.cur >= 0)
+        n += GU_COST_PUNCH;
     return n;
 }
 

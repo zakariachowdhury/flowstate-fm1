@@ -237,6 +237,8 @@
 #define WF_NEROLES 8
 #define WF_EROLE_RESO 1
 #define WF_EROLE_DRIVE 2
+#define WF_EROLE_DETUNE 4
+#define WF_EROLE_BODY 7
 /* engine roles: per engine (ENGINES[] order) the EDIT slot (0..7 = P_E0..P_E7) of each role, WF_NONE = none */
 #define WF_ENG_ROLE {{4, 5, 6, 2, 1, 3, WF_NONE, WF_NONE},              /* ANALOG  CUT RES DRV MIX DTN NOIS */ \
                      {4, WF_NONE, 6, 5, WF_NONE, WF_NONE, WF_NONE, WF_NONE},   /* DIGITAL IDX FB MDEC */ \
@@ -255,6 +257,47 @@
 #define WF_CLASS_NAMES "fast medium slow stepped"
 #define WF_CLASS_DEFAULT 1           /* medium; a stepped (enum) target is always class 3 */
 #define WF_CLASS_STEPPED 3
+/* The built-in mappings of controls 4..15 (Phase 13; design 9.3, 9.4), MAPS records: a World's `controls` that name a
+ * control replace all of that control's records. The track mask WF_TMASK_KEYS means the Smart Keys track (built-in
+ * records only); a negative offset is written 256 - n. SOUND SHAPE moves the keys track's envelope and MOVEMENT its
+ * LFO (guard_limits.h GL_K*: the windows that keep them playable); LIVE FX the master (DJ filter, delay bus, DUST).
+ * FREEZE has no record: macro.c asks the punch engine for its loop (WF_FREEZE_ON) */
+#define WF_TMASK_KEYS 16
+#define WF_CTL_LIVE 12               /* FILTER ECHO CRUSH FREEZE: momentary (FX held), never saved in the session */
+#define WF_CTL_ECHO 13
+#define WF_CTL_CRUSH 14
+#define WF_CTL_FREEZE 15
+#define WF_FREEZE_ON 250             /* FREEZE: off under 25 %, then a loop of 1 beat, 1/2 beat from 50 %, 1/4 from 75 % */
+#define WF_CTL_BUILTIN { \
+    4, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_ATK, 1 << 6 | 1, 0, 70,                   /* SOFT    atk +70 exp */ \
+    5, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_DEC, 1 << 6, 0, 256 - 40,                /* SHORT   dec -40 */ \
+    5, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_REL, 1 << 6, 0, 256 - 50,                /*         rel -50 */ \
+    5, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_SUS, 1 << 6, 0, 256 - 60,                /*         sus -60 */ \
+    6, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_SUS, 1 << 6, 0, 40,                      /* BODY    sus +40 */ \
+    6, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_DEC, 1 << 6, 0, 30,                      /*         dec +30 */ \
+    6, WF_K_ROLE << 5 | WF_TMASK_KEYS, WF_EROLE_BODY, 1 << 6, 0, 30,               /*         @BODY +30 */ \
+    7, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_REL, 1 << 6, 0, 56,                      /* TAIL    rel +56 */ \
+    7, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_REV, 1 << 6 | 3, 0, 35,                  /*         rev +35 s */ \
+    8, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_LD_PIT, 2 << 6 | 4, 0, 2,                /* DRIFT   ld_pit +2 late */ \
+    8, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_LD_FLT, 2 << 6, 0, 10,                   /*         ld_flt +10 */ \
+    8, WF_K_ROLE << 5 | WF_TMASK_KEYS, WF_EROLE_DETUNE, 2 << 6, 0, 15,             /*         @DETUNE +15 */ \
+    9, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_LD_FLT, 2 << 6, 0, 45,                   /* WOBBLE  ld_flt +45 */ \
+    10, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_LD_AMP, 2 << 6, 0, 70,                  /* PULSE   ld_amp +70 */ \
+    11, WF_K_PARAM << 5 | WF_TMASK_KEYS, P_LRATE, 2 << 6, 256 - 24, 24,            /* RATE    lrate -24..+24 */ \
+    12, WF_K_GLOBAL << 5, G_FILT, 1 << 6, 256 - 64, 63,                            /* FILTER  filt -64..+63 */ \
+    13, WF_K_GLOBAL << 5, G_DMIX, 1 << 6, 0, 40,                                   /* ECHO    dmix +40 */ \
+    13, WF_K_PARAM << 5 | WF_TMASK_SYNTH, P_DLY, 1 << 6, 0, 60,                    /*         *.dly +60 */ \
+    13, WF_K_GLOBAL << 5, G_DFDBK, 1 << 6, 0, 30,                                  /*         dfdbk +30 */ \
+    14, WF_K_GLOBAL << 5, G_DUST, 1 << 6, 0, 90,                                   /* CRUSH   dust +90 */ \
+    14, WF_K_PARAM << 5 | WF_TMASK_SYNTH, P_LEVEL, 1 << 6, 0, 256 - 5,             /*         *.level -5 */ \
+    14, WF_K_GLOBAL << 5, G_DRLVL, 1 << 6, 0, 256 - 5}                             /*         drums -5 */
+/* the guard's combinations while LIVE FX play, whatever the World's (WF_COMBO_DEFAULT's records): ECHO up, a big room
+ * and a long echo shorten the echo, and its feedback stays at most GL_ECHO_DFDBK; CRUSH up, DUST stays moderate on a
+ * distorted part */
+#define WF_COMBO_LIVE { \
+    WF_K_GLOBAL << 5, G_RSIZE, 104, WF_K_GLOBAL << 5, G_DFDBK, 72, WF_K_GLOBAL << 5, G_DFDBK, 72, \
+    WF_K_GLOBAL << 5, G_DFDBK, 96, WF_K_GLOBAL << 5, G_DFDBK, 96, WF_K_GLOBAL << 5, G_DFDBK, 96, \
+    WF_K_PARAM << 5 | 7, P_DIST, 80, WF_K_GLOBAL << 5, G_DUST, 64, WF_K_GLOBAL << 5, G_DUST, 64}
 /* RULES: u8 a << 4 | b, u8 ta, u8 tb (0..249, units of 1/250), u8 nact, then {target, id, i8 add, u8 0} x nact;
  * a one-condition rule repeats it (b = a, tb = ta) */
 #define WF_THRESH_MAX 249
