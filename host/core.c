@@ -56,11 +56,15 @@
 #include "ui_input.c"
 #if FELUCCA_WORLD
 #include "world.c"
+#include "ui_play.c"
 #endif
 /* felucca.c's flash glue (st_read, st_erase, st_prog): hal_host.h */
 #include "storage.c"
 #include "upreset.c"
 #include "project.c"
+#if FELUCCA_WORLD
+#include "world_store.c"
+#endif
 /* ota.c, editor.c, console.c, recovery.c: not built */
 #include "splash.c"
 #include "fw_main.h"                 /* main.c: only felucca_init(), the power-on state (verbatim) */
@@ -120,7 +124,8 @@ static void host_wait_ms(uint32_t ms)
 
 /* ------------------------------------------------ boot and the main loop --- */
 static const char *flash_file;
-static int booted, halted;
+static int booted, halted, device_boot;
+void host_boot_device(int on) { device_boot = on != 0; }
 
 int host_boot(const char *flash_image)
 {
@@ -160,6 +165,9 @@ int host_boot(const char *flash_image)
     }
     felucca_dbg.boots++;
     panel_init();
+#if FELUCCA_WORLD
+    wss_sloop = (uint8_t)!device_boot;           /* (world_store.c: SLOOP whatever the session says, unless asked) */
+#endif
     felucca_init();
     host_wait_ms(30 + 900);                      /* fm1_delay_ms(30), fm1_delay_ms(900): the logo stays */
     lcd_fill(0, 0, 240, 240, C_BLACK);
@@ -176,6 +184,7 @@ int host_flash_write(const char *path)
     return fclose(f) || n != sizeof host_nor ? -1 : 0;
 }
 
+static void host_blob_gc(void);
 /* one pass of fm1_main's loop body. The device then spins on ui_input until 15 ms have passed; here the
  * program renders HOST_FRAME_BLOCKS blocks between two passes. */
 void host_ui_frame(void)
@@ -232,7 +241,9 @@ void host_ui_frame(void)
     felucca_dbg.stage = 8;
     autosave_tick();                             /* the working project into flash, when quiet */
 #if FELUCCA_WORLD
-    host_world_service();                        /* (the Phase 9 main loop calls world_service: the host here) */
+    play_service();                              /* (main.c's loop: a World switch on its bar, the modes; the macros) */
+    macro_service();
+    host_blob_gc();
 #endif
     sections_flush();
     felucca_dbg.stage = 9;
@@ -320,8 +331,12 @@ static int host_read(const char *path, project_t *q)
 int host_project_load(const char *path)
 {
     int fmt = host_read(path, &host_proj);
-    if (fmt > 0)
+    if (fmt > 0) {
+#if FELUCCA_WORLD
+        play_leave();                            /* (a World session: SLOOP again first, as TOOLS > LOAD) */
+#endif
         project_apply(&host_proj);               /* project.c: what project_load does with a slot */
+    }
     return fmt;
 }
 int host_project_save(const char *path)
@@ -634,20 +649,20 @@ int host_world_factory_find(const char *name)
     }
     return -1;
 }
-int host_world_load(int i)
+int host_world_load(int i)                       /* (ui_play.c play_world: from SLOOP, the project parked first) */
 {
     const uint8_t *b;
     uint32_t n;
     if (i < 0 || world_factory((uint32_t)i, &b, &n))
         return -WE_STATE;
-    return host_wrc(world_switch(b, n));
+    return host_wrc(play_world(b, n));
 }
 int host_world_load_blob(uint8_t *b, uint32_t n)
 {
     int rc;
     if (host_blob_keep(b))
         return -WE_BUSY;
-    rc = world_switch(b, n);
+    rc = play_world(b, n);
     host_blob_gc();                              /* (b too, when it was refused) */
     return host_wrc(rc);
 }
@@ -775,7 +790,7 @@ int host_world_request(int scene, int var)
     return host_wrc(world_request(scene >= 0 ? (uint32_t)scene : pend ? ps : wrt.scene,
                                   var >= 0 ? (uint32_t)var : pend ? pv : wrt.var));
 }
-void host_world_unload(void) { world_unload(); }
+void host_world_unload(void) { play_leave(); }    /* (LEAVE WORLD: the parked SLOOP project back) */
 void host_world_service(void)
 {
     world_service();
@@ -788,6 +803,7 @@ void host_world(host_world_t *w)
     memset(w, 0, sizeof *w);
     w->loaded = wrt.loaded;
     w->active = wrt.active;
+    w->mode = wrt.mode;
     w->pending_scene = w->pending_var = -1;
     if (world_pending(&ps, &pv)) {
         w->pending = ps == WF_NONE ? 2 : 1;

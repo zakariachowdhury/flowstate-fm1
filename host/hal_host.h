@@ -124,6 +124,7 @@ static int32_t fm1_adc_read(uint32_t ch)
  * and host_lcd_clipped counts what reached past the edge (the UI test asserts there is none) */
 static uint16_t host_fb[240 * 240];
 static uint32_t host_lcd_clipped;
+static uint64_t host_lcd_px;                     /* pixels sent to the panel (fills and blits): the SPI's work */
 static void lcd_init(void) { memset(host_fb, 0, sizeof host_fb); }
 static void lcd_sync(void) {}
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
@@ -135,6 +136,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
         host_lcd_clipped++;
     w = x + w > 240u ? 240u - x : w;
     h = y + h > 240u ? 240u - y : h;
+    host_lcd_px += (uint64_t)w * h;
     for (j = 0; j < h; j++)
         for (i = 0; i < w; i++)
             host_fb[(y + j) * 240u + x + i] = c;
@@ -146,6 +148,7 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
         return;
     if (x + w > 240u || y + h > 240u)
         host_lcd_clipped++;
+    host_lcd_px += (uint64_t)w * h;
     for (j = 0; j < h && y + j < 240u; j++)
         for (i = 0; i < w && x + i < 240u; i++) {
             uint16_t p = px[j * w + i];

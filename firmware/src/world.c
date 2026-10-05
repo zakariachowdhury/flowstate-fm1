@@ -25,6 +25,7 @@ typedef struct {                       /* a checked blob: where its sections and
     uint16_t trk[WF_NTRK], pat[WF_MAX_PAT], scene[WF_NSCENE], var[WF_MAX_VARS];   /* record offsets */
 } wb_ctx_t;
 static wb_ctx_t wctx;                  /* the loaded World */
+static uint8_t wbeat_pat = WF_NONE;    /* BEAT: the pool entry wreq_block swaps in on the next bar (WF_NONE: none) */
 
 static const uint8_t WB_PFIXED[] = {WF_P_FIXED}, WB_PDRUM[] = {WF_P_DRUM}, WB_PSTRUCT[] = {WF_P_STRUCT};
 static const uint8_t WB_GWHITE[] = {WF_G_WHITELIST}, WB_GSTRUCT[] = {WF_G_STRUCT}, WB_GNOVAR[] = {WF_G_NOVAR};
@@ -590,6 +591,7 @@ static int world_load(const uint8_t *b, uint32_t n)
         wb_pattern(c.b + c.pat[i], &wpool[i]);
     for (i = 0; i < NTRK; i++)
         wrt.cur_pat[i] = WF_NONE;                         /* (the pool is new: nothing to write back into it) */
+    wbeat_pat = WF_NONE;
     wrt.keys_trk = c.keys;
     wrt.beat = c.b[c.off[WF_S_DEFAULTS] + 7u];
     wrt.id = wb_u32(b + 8);
@@ -842,13 +844,14 @@ static int world_start(const uint8_t *b, uint32_t n)   /* load a World and play 
     return world_apply(wctx.b[wctx.off[WF_S_DEFAULTS]], wctx.b[wctx.off[WF_S_DEFAULTS] + 1u]);
 }
 
-static void world_unload(void)                         /* back to SLOOP's paths (Phase 9 restores the project) */
+static void world_unload(void)                         /* back to SLOOP's paths (ui_play.c restores the project) */
 {
     fm1_irq_off();
     wrt.active = 0;
     wrt.refcount = 0;
     wrt.keys_on = 0;
     wrt.mute = 0;                                         /* (H1: no track left out by an ENERGY band) */
+    wbeat_pat = WF_NONE;
     ov_reset();                                           /* (no macro overlay, no vmod offset: SLOOP's sound) */
     guard_reset();
     fm1_irq_on();
@@ -871,12 +874,6 @@ static void world_block(void)          /* seq.c events_block (H15), audio ISR, w
         return;
     wreq_block();                      /* a READY stage, or a World switch, on the next bar */
     /* Phase 11: the scene's transition (2 and 4 bars), held-note continuity and tails */
-}
-
-static void wsession_tick(void)        /* project.c autosave_tick (H18), while a World is active */
-{
-    /* Phase 9: the PLAY session (playstate, overrides, patches) saved like the autosave. Until then nothing is
-     * saved, and SLOOP's FUN4 autosave stays fenced off: the user's SLOOP project in flash is never touched. */
 }
 
 static void world_boot(void)           /* main.c felucca_init after autosave_resume (H22) */
@@ -930,6 +927,12 @@ static const char *world_blurb(void) { return world_meta_str(WF_NAME_LEN + WF_CA
 static uint32_t world_bpm(void)        /* the authored tempo (the player's nudge is song.g[G_BPM]) */
 {
     return wrt.loaded ? wctx.b[wctx.off[WF_S_META] + WF_NAME_LEN + WF_CAT_LEN + WF_BLURB_LEN] : 0u;
+}
+static void world_tempo(uint32_t *lo, uint32_t *hi)     /* the authored tempo range (GLO + SELECT keeps inside) */
+{
+    const uint8_t *m = wctx.b + wctx.off[WF_S_META] + WF_NAME_LEN + WF_CAT_LEN + WF_BLURB_LEN;
+    *lo = wrt.loaded ? m[1] : (uint32_t)GP[G_BPM].min;
+    *hi = wrt.loaded ? m[2] : (uint32_t)GP[G_BPM].max;
 }
 static uint32_t world_nscenes(void) { return WF_NSCENE; }
 static const char *world_scene_name(uint32_t s)
@@ -999,6 +1002,45 @@ static int world_pending(uint32_t *scene, uint32_t *var)
     return 0;
 }
 
+/* BEAT (design 9.2; SEQ in PLAY): the scene's drum pattern for beat b (WF_BEAT_*; none authored: its GROOVE) from
+ * the next bar, without a clock reset (the drum track is bar-aligned): wreq_block swaps it in. Stopped: at once.
+ * Later stages keep it (wrt.beat). Phase 11 adds the BEAT masks: MINIMAL's lanes, BUSY's density, BREAK's hats */
+static void wbeat_swap(uint32_t pat)   /* the drum track to pool entry pat (ISR on a bar, or IRQs off) */
+{
+    track_t *d = TDRUM;
+    uint32_t cp = wrt.cur_pat[TRK_DRUM];
+    const uint8_t *pr;
+    if (pat >= WF_MAX_PAT || pat == cp)
+        return;
+    pr = wctx.b + wctx.pat[pat];
+    if (cp < WF_MAX_PAT)
+        memcpy(&wpool[cp], d->dstep, sizeof d->dstep);   /* (with any edits) */
+    memcpy(d->dstep, &wpool[pat], sizeof d->dstep);
+    d->p[P_SLEN] = pr[1];
+    d->p[P_SDIV] = pr[0] & WF_PAT_DIVMASK;
+    wrt.cur_pat[TRK_DRUM] = (uint8_t)pat;
+}
+static int world_beat(uint32_t b)
+{
+    const uint8_t *sc;
+    uint32_t pat;
+    if (!wrt.active || b >= WF_NBEATS || wreq.sw)
+        return WE_STATE;
+    wrt.beat = (uint8_t)b;
+    if (wst.st == WST_READY)           /* a scene on its way: staged again with this BEAT (it lands with the scene) */
+        return world_stage(wst.scene, wst.var);
+    sc = wctx.b + wctx.scene[wrt.scene];
+    pat = sc[19u + b] != WF_NONE ? sc[19u + b] : sc[19u + WF_BEAT_GROOVE];
+    fm1_irq_off();
+    wbeat_pat = WF_NONE;
+    if (!song.playing && !transport_req)
+        wbeat_swap(pat);
+    else if (pat != wrt.cur_pat[TRK_DRUM])
+        wbeat_pat = (uint8_t)pat;
+    fm1_irq_on();
+    return WE_OK;
+}
+
 static int world_switch(const uint8_t *b, uint32_t n)
 {
     wb_ctx_t c;
@@ -1059,8 +1101,13 @@ static void wreq_block(void)           /* world_block: audio ISR, a World playin
         transport_req = 2;
         return;
     }
-    if (wst.st != WST_READY)
+    if (wst.st != WST_READY) {
+        if (wbeat_pat != WF_NONE)      /* a BEAT: the drum pattern from this bar, the clock runs on */
+            wbeat_swap(wbeat_pat);
+        wbeat_pat = WF_NONE;
         return;
+    }
+    wbeat_pat = WF_NONE;               /* (the stage carries the BEAT)  */
     for (t = 0; t < NTRK; t++)
         seq_release(&trk[t]);          /* the sequencer's notes (not the held keys): nothing hangs */
     world_commit();

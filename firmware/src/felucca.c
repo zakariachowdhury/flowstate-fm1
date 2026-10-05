@@ -67,6 +67,7 @@
 #include "ui_input.c"
 #if FELUCCA_WORLD
 #include "world.c"           /* Musical Worlds: blob check, pattern pool, stage, commit (needs preset_fill) */
+#include "ui_play.c"         /* PLAY MODE: its screens, controls and LEDs, the runtime modes (needs gfx, ui_*, world.c) */
 #endif
 #ifndef FELUCCA_FLASH
 #define FELUCCA_FLASH 1          /* flash driver + storage.c */
@@ -126,6 +127,9 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
 #endif
 #include "upreset.c"          /* user presets (RAM mirror; flash with FELUCCA_FLASH) */
 #include "project.c"
+#if FELUCCA_WORLD
+#include "world_store.c"      /* the PLAY session in flash, the parked SLOOP project (needs st_*, proj_capture) */
+#endif
 #if FELUCCA_OTA
 static uint8_t recovery_active;
 #define OTA_IDENTITY (recovery_active ? "FM-1_000" : FELUCCA_ID)

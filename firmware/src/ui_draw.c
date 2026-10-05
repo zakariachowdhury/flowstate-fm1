@@ -244,7 +244,7 @@ static void graph_roll(const track_t *t, uint16_t c)
     uint32_t i, j, len = (uint32_t)t->p[P_SLEN], base = ui.bank * 16u;
     int32_t lo = 127, hi = 0, prev_y = -1;
     for (i = 0; i < len; i++)
-        for (j = 0; j < t->step[i].n; j++) {
+        for (j = 0; j < t->step[i].n && j < 4u; j++) {   /* (the drum track's steps read as notes: bounded) */
             if (t->step[i].note[j] < lo)
                 lo = t->step[i].note[j];
             if (t->step[i].note[j] > hi)
@@ -275,7 +275,7 @@ static void graph_roll(const track_t *t, uint16_t c)
             prev_y = -1;
             continue;
         }
-        for (j = 0; j < st->n; j++) {
+        for (j = 0; j < st->n && j < 4u; j++) {
             int32_t y = 80 - (st->note[j] - lo) * 74 / (hi - lo);
             cv_rect(x + 2, y, 10, 1, (st->flags & SF_ACCENT) ? C_WHITE : c);
             if (j == 0)
@@ -918,6 +918,12 @@ static void ui_timers(void)
 static void ui_draw(void)
 {
     ui.frame++;
+#if FELUCCA_WORLD
+    if (wrt.mode == WM_PLAY) {                          /* H19: PLAY MODE's screens (ui_play.c) */
+        play_draw();
+        return;
+    }
+#endif
     pads_tick();
     if (rec_go) {                                       /* the take started: say so */
         rec_go = 0;

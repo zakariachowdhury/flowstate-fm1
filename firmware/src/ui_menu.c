@@ -1,17 +1,34 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* SLOOP menu (HOME held): COLOR, LOWCUT, ZOOM, HARDWARE CALIBRATION, ABOUT. */
+/* SLOOP menu (HOME held): COLOR, LOWCUT, ZOOM, HARDWARE CALIBRATION, ABOUT. With Musical Worlds (H24) first PLAY
+ * MODE (from SLOOP and ADVANCED) and LEAVE WORLD (in a World session). */
 #ifndef FELUCCA_BUILD_DATE
 #define FELUCCA_BUILD_DATE __DATE__  /* build.py: SOURCE_DATE_EPOCH pins it (reproducible builds) */
 #endif
 /* ------------------------------------------------------------ menu --- */
-enum { MI_COLOR, MI_LOWCUT, MI_ZOOM, MI_PANEL, MI_ABOUT, MI_BACK, MI_COUNT };
-static const char *const MI_NAME[MI_COUNT] = {"COLOR", "LOWCUT", "ZOOM", "HARDWARE CALIBRATION", "ABOUT", "BACK"};
+enum { MI_COLOR, MI_LOWCUT, MI_ZOOM, MI_PANEL, MI_ABOUT, MI_BACK, MI_PLAY, MI_LEAVE, MI_COUNT };
+static const char *const MI_NAME[MI_COUNT] = {"COLOR", "LOWCUT", "ZOOM", "HARDWARE CALIBRATION", "ABOUT", "BACK",
+                                              "PLAY MODE", "LEAVE WORLD"};
+
+static uint32_t menu_items(uint8_t *ids)               /* the rows shown, in order; returns how many */
+{
+    uint32_t n = 0, i;
+#if FELUCCA_WORLD
+    if (wrt.mode != WM_PLAY)
+        ids[n++] = MI_PLAY;
+    if (wrt.mode != WM_SLOOP)
+        ids[n++] = MI_LEAVE;
+#endif
+    for (i = 0; i <= MI_BACK; i++)
+        ids[n++] = (uint8_t)i;
+    return n;
+}
 
 static void draw_menu(void)
 {
-    uint32_t i, pass, sig = ui.menu * 7u + ui.menu_sel * 131u + settings.palette * 1009u + settings.lowcut * 7919u +
-                            settings.zoom * 104729u;
+    uint8_t ids[MI_COUNT];
+    uint32_t i, pass, nmi = menu_items(ids), sig = ui.menu * 7u + ui.menu_sel * 131u + settings.palette * 1009u +
+                                                  settings.lowcut * 7919u + settings.zoom * 104729u + nmi * 3u;
     if (!ui.force && sig == ui.menu_sig)
         return;
     ui.menu_sig = sig;
@@ -42,15 +59,16 @@ static void draw_menu(void)
             cv_text(4, 185, &FONT_S, "PHASE: CRISPYZEBRA (GPL)", C_DIM);
             cv_text(4, 198, &FONT_S, "VOICE: REF. KLATTSCH (MIT)", C_DIM);
         } else {
-            for (i = 0; i < MI_COUNT; i++) {
-                int32_t y = 4 + (int32_t)i * 24;
+            for (i = 0; i < nmi; i++) {
+                int32_t y = 4 + (int32_t)i * (nmi > 6u ? 20 : 24);
+                uint32_t id = ids[i];
                 int sel = i == ui.menu_sel;
                 if (sel)
                     cv_rect(4, y + 6, 3, 3, C_WHITE);
-                cv_text(14, y, &FONT_S, MI_NAME[i], sel ? C_WHITE : C_GRAY);
-                if (i == MI_LOWCUT || i == MI_ZOOM)
-                    cv_text(90, y, &FONT_S, (i == MI_LOWCUT ? settings.lowcut : settings.zoom) ? "ON" : "OFF", C_HI);
-                if (i == MI_COLOR) {
+                cv_text(14, y, &FONT_S, MI_NAME[id], sel ? C_WHITE : C_GRAY);
+                if (id == MI_LOWCUT || id == MI_ZOOM)
+                    cv_text(90, y, &FONT_S, (id == MI_LOWCUT ? settings.lowcut : settings.zoom) ? "ON" : "OFF", C_HI);
+                if (id == MI_COLOR) {
                     uint32_t k;
                     cv_text(90, y, &FONT_S, PALETTES[settings.palette].name, C_HI);
                     for (k = 0; k < 5u; k++)
@@ -84,7 +102,8 @@ static void menu_close(void)
 static void menu_input(uint32_t pressed)
 {
     int32_t s;
-    uint32_t ok = (pressed >> panel.btn[B_OCTUP]) & 1u, back = (pressed >> panel.btn[B_OCTDN]) & 1u;
+    uint8_t ids[MI_COUNT];
+    uint32_t ok = (pressed >> panel.btn[B_OCTUP]) & 1u, back = (pressed >> panel.btn[B_OCTDN]) & 1u, nmi, item;
     if (back) {
         if (ui.menu == 2)
             ui.menu = 1, ui.force = 1;
@@ -92,22 +111,26 @@ static void menu_input(uint32_t pressed)
             menu_close();
         return;
     }
+    nmi = menu_items(ids);
+    if (ui.menu_sel >= nmi)
+        ui.menu_sel = 0;
     if ((s = panel_enc(EN_PRESET)) != 0 && ui.menu == 1)
-        ui.menu_sel = (uint8_t)((ui.menu_sel + (s > 0 ? 1u : MI_COUNT - 1u)) % MI_COUNT);
+        ui.menu_sel = (uint8_t)((ui.menu_sel + (s > 0 ? 1u : nmi - 1u)) % nmi);
+    item = ids[ui.menu_sel];
     s = panel_enc(EN_K1);
-    if (s != 0 && ui.menu == 1 && ui.menu_sel == MI_COLOR) {
+    if (s != 0 && ui.menu == 1 && item == MI_COLOR) {
         settings.palette = (settings.palette + (s > 0 ? 1u : NPALETTES - 1u)) % NPALETTES;
         palette_set(settings.palette);              /* (the menu signature redraws) */
     }
-    if ((s != 0 || ok) && ui.menu == 1 && (ui.menu_sel == MI_LOWCUT || ui.menu_sel == MI_ZOOM)) {
+    if ((s != 0 || ok) && ui.menu == 1 && (item == MI_LOWCUT || item == MI_ZOOM)) {
         /* KNOB 1: right = ON, left = OFF; OCT+ toggles */
-        uint32_t *v = ui.menu_sel == MI_LOWCUT ? &settings.lowcut : &settings.zoom;
+        uint32_t *v = item == MI_LOWCUT ? &settings.lowcut : &settings.zoom;
         *v = s > 0 ? 1u : s < 0 ? 0u : !*v;
         fx_lowcut = (uint8_t)(settings.lowcut != 0);
         ok = 0;
     }
     if (ok && ui.menu == 1) {
-        switch (ui.menu_sel) {
+        switch (item) {
         case MI_COLOR:                                 /* OCT+ steps through the palettes too */
             settings.palette = (settings.palette + 1u) % NPALETTES;
             palette_set(settings.palette);
@@ -120,6 +143,13 @@ static void menu_input(uint32_t pressed)
             ui.menu = 2;
             ui.force = 1;
             break;
+#if FELUCCA_WORLD
+        case MI_PLAY:
+        case MI_LEAVE:
+            menu_close();
+            play_menu(item == MI_LEAVE);                /* (ui_play.c) */
+            break;
+#endif
         default:
             menu_close();
             break;

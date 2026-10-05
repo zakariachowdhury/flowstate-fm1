@@ -255,6 +255,10 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
         char b[2] = {0, 0};
         if (w < 0)
             return;
+#if FELUCCA_WORLD
+        if (wrt.active && play_scene_key((uint32_t)w))   /* H17: a World session: its scenes */
+            return;
+#endif
         b[0] = (char)('A' + (w & 3));
         if (w < 4) {
             if (arrangement_clock.running) {

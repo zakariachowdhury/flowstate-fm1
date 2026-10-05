@@ -24,6 +24,10 @@
  * resume, the 930 ms the logo stays (rendered). flash_image: a 1 MiB NOR image file to boot from (it need
  * not exist; host_flash_write saves it), NULL = an erased chip. 0 = ok */
 int host_boot(const char *flash_image);
+/* before host_boot: 1 = boot as the device does, the PLAY session in the flash image decides (none: PLAY MODE with
+ * NEON RAIN, the FIRST screen; the simulator); 0, the default = SLOOP as it boots whatever the session says (the
+ * renderer, the examples) */
+void host_boot_device(int on);
 int host_flash_write(const char *path);
 
 /* ---- audio */
@@ -101,6 +105,7 @@ typedef struct {
 } host_world_entry_t;
 typedef struct {
     int loaded, active;                      /* a World loaded; it drives the tracks */
+    int mode;                                /* the UI: 0 SLOOP, 1 PLAY MODE, 2 ADVANCED over the World */
     uint32_t id;
     char name[16], category[12], blurb[26];
     int bpm, scene, var, nvar;               /* the authored tempo; the committed scene and variation */
@@ -121,7 +126,7 @@ int host_world_load_blob(uint8_t *b, uint32_t n);       /* takes b (malloc'd): k
 int host_world_reload_blob(uint8_t *b, uint32_t n);     /* the same World changed (authoring): at once, playing or not */
 int host_world_load_file(const char *path, char *msg, int mlen);   /* host_world_compile + host_world_load_blob */
 int host_world_request(int scene, int var);  /* -1 keeps the current one */
-void host_world_unload(void);                /* back to SLOOP (the working project as the World left it) */
+void host_world_unload(void);                /* back to SLOOP: LEAVE WORLD, the SLOOP project parked before back */
 void host_world_service(void);               /* the main loop's part: call it every pass (host_ui_frame does) */
 void host_world(host_world_t *w);
 const char *host_world_error(int code);      /* "BUSY", "CRC", ... (code: WE_*, or its negative) */

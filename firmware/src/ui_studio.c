@@ -108,6 +108,12 @@ static void te_dials(int32_t y0, const char *const lab[4], const char *const val
 static void studio_open(uint32_t scope)
 {
     uint32_t i;
+#if FELUCCA_WORLD
+    if (scope == SC_SONG && wrt.active) {               /* H26: no song mode over a World's scenes (v1) */
+        ui_message("NO SONG IN A WORLD");
+        return;
+    }
+#endif
     if (scope == SC_SONG && rec_wait)
         rec_wait = 0;                                   /* (an arm does not follow into the song page) */
     for (i = 0; i < NPAGES; i++) if (PAGES[i].scope == scope) {

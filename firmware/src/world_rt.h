@@ -6,9 +6,11 @@
 #include "world_fmt.h"
 #include "guard_limits.h"
 
+enum { WM_SLOOP, WM_PLAY, WM_ADV };   /* the runtime modes (design 1.5): SLOOP, PLAY MODE, ADVANCED over a World */
 typedef struct {
     volatile uint8_t active;     /* a World drives the tracks (PLAY, ADV_WORLD); 0 = SLOOP. Written with IRQs off,
                                   * together with the first commit */
+    uint8_t mode;                /* WM_*: the UI that runs (ui_play.c sets it; the main loop only) */
     uint8_t loaded;              /* world_load succeeded: wctx and wpool hold that World */
     uint8_t keys_trk;            /* the Smart Keys track (KEYS trk): plays the user loop, never a scene pattern */
     uint8_t refcount;            /* Phase 6 (H2): per-pitch voice reference counts on */
@@ -71,9 +73,28 @@ static void arr_block(void);     /* seq.c events_block (H16): the ENERGY band (a
 static uint32_t arr_dskip(uint32_t idx);                       /* H13: drum lanes the band leaves out at step idx */
 static const dstep_t *arr_dstep(const dstep_t *s, uint32_t idx);   /* H14: the fill's step on a fill bar, else s */
 static int arr_plays(uint32_t t, uint32_t idx);                /* H14: the band lets synth track t's step idx play */
-static void wsession_tick(void); /* project.c autosave_tick (H18): the PLAY session instead of SLOOP's autosave */
+static int wsession_tick(void);  /* project.c autosave_tick (H18): the PLAY session; 1 = SLOOP's autosave waits */
 static int guard_follows(const track_t *t);    /* H12 (seq.c): the keys loop follows the chord (guard.c) */
 static uint32_t guard_loop_note(uint32_t n);   /* H12: a loop note over the sounding chord */
+
+/* the PLAY session's PLAYSTATE (design 10.4; world_store.c, OBJ_WSESSION). Phases 10 and 14 append the keys loop
+ * and the overrides after it; a shorter (older) record reads with its missing fields at their defaults */
+#define WP_MAGIC 0x31594C50u     /* "PLY1" */
+typedef struct {
+    uint32_t magic;
+    uint16_t size;               /* the record's size as written */
+    uint8_t mode;                /* WM_* */
+    uint8_t first;               /* 1: PLAY was pressed once (no FIRST screen at the next boot) */
+    uint32_t world;              /* world_id of the World (a factory one: user Worlds are Phase 14) */
+    uint8_t scene, var, pulse, beat;
+    uint8_t ctl[WF_NCTL];        /* the controls, 0..250 (x 4: 0..1000) */
+    uint8_t kmode;               /* KEYS mode (WF_KMODE_NAMES order) */
+    int8_t octave;
+    uint16_t bpm;                /* the tempo (the World's range) */
+    uint32_t ctl_lo;             /* each control's last 2 bits (position % 4): the positions exactly */
+    uint8_t rsv[8];
+} wplay_t;
+_Static_assert(sizeof(wplay_t) == 48, "PLAYSTATE is 48 bytes (design 10.4)");
 
 /* the Musical Guardrail Engine's state the earlier files read (guard.c, design 6) */
 typedef struct {

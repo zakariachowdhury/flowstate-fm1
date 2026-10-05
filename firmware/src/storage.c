@@ -19,8 +19,14 @@
 /* flash map (FL_DATA 0x97000..0xDFFFF, FL_GLOB 0xFC000..): settings 0xFC000 / 0xFD000, projects
  * 0x97000..0x9EFFF, user sample slots 0xA0000..0xDBFFF (eng_sample.c), user preset banks 0xDC000..0xDFFFF
  * (upreset.c); the working project (autosave, project.c): copy A 0x9F000, copy B 0xFE000 (the two sectors
- * left: A/B needs no two neighbours) */
-enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_AUTOSAVE = OBJ_UPRESET0 + 2, OBJ_COUNT };
+ * left: A/B needs no two neighbours). Flowstate (FL_WORLD 0xE5000..0xFBFFF, design 10.1): user Worlds 0..9 at
+ * 0xE5000 + 0x2000 k (Phase 14), the PLAY session 0xF9000 / 0xFA000 (world_store.c), 0xFB000 spare. Ids are
+ * appended: the headers already in flash keep their types */
+enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_AUTOSAVE = OBJ_UPRESET0 + 2,
+       OBJ_UWORLD0, OBJ_WSESSION = OBJ_UWORLD0 + 10, OBJ_COUNT };
+/* in FL_WORLD a payload stays below offset 0xF00 of its sector: the update loader and the SPL take a sector whose
+ * bytes there look like an update record for one (fm1_flash.h); erased bytes never do */
+#define ST_LOW_MAX (0xF00u - ST_PAYLOAD_OFF)
 
 typedef struct {
     uint32_t magic;
@@ -54,6 +60,10 @@ static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy 
         return 0xFC000u + copy * ST_SECTOR;
     if (obj == OBJ_AUTOSAVE)
         return copy ? 0xFE000u : 0x9F000u;
+    if (obj == OBJ_WSESSION)
+        return 0xF9000u + copy * ST_SECTOR;
+    if (obj >= OBJ_UWORLD0 && obj < OBJ_WSESSION)
+        return 0xE5000u + (obj - OBJ_UWORLD0) * 2u * ST_SECTOR + copy * ST_SECTOR;
     if (obj >= OBJ_UPRESET0 && obj < OBJ_AUTOSAVE)
         return 0xDC000u + (obj - OBJ_UPRESET0) * 2u * ST_SECTOR + copy * ST_SECTOR;
     return 0x97000u + (obj - OBJ_PROJECT0) * 2u * ST_SECTOR + copy * ST_SECTOR;
@@ -122,7 +132,7 @@ static int st_save(uint32_t obj, const void *src, uint32_t len)
     uint32_t seq, base, off;
     int cur, rc;
     st_hdr_t h;
-    if (len > ST_PAYLOAD_MAX)
+    if (len > ST_PAYLOAD_MAX || (obj >= OBJ_UWORLD0 && len > ST_LOW_MAX))
         return -1;
     cur = st_current(obj, &h);
     seq = cur < 0 ? 0u : h.seq;

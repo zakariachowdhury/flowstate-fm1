@@ -22,6 +22,14 @@ static uint32_t user_of(const track_t *t)    /* user preset slot its sound came 
 {
     return t->user && up_used(t->user - 1u) ? t->user - 1u : UP_SLOTS;
 }
+#if FELUCCA_WORLD                            /* PLAY MODE (ui_play.c, after world.c): the hooks of SLOOP's UI */
+static int play_input_hook(void);            /* H19: PLAY takes the panel (1); SLOOP / ADVANCED: EDIT held back to PLAY */
+static void play_leds(void);                 /* H19 */
+static void play_draw(void);                 /* H19 */
+static void play_menu(uint32_t item);        /* H24: the menu's PLAY MODE (0) and LEAVE WORLD (1) */
+static void play_leave(void);                /* back to SLOOP: the parked project as it was */
+static int play_scene_key(uint32_t w);       /* H17: SAVE + key in a World session (1: taken) */
+#endif
 static uint32_t up_gen;                      /* bumped on every user bank change (redraws) */
 static uint8_t sync_reload;                  /* engine / preset / project / user preset loaded: editor RELOAD push */
 

@@ -52,10 +52,20 @@ static uint32_t panel_btn_of(uint32_t matrix_id)        /* label of a matrix but
 static void panel_led(uint32_t label, int on) { fm1_led_key(panel.btn[label], on); }
 
 /* steps of a role, + = clockwise */
+#if FELUCCA_WORLD
+static uint32_t panel_turns;                     /* turns taken (ui_play.c: EDIT held untouched) */
+static int32_t panel_enc(uint32_t role)
+{
+    int32_t s = fm1_enc_take(panel.enc[role]) * panel.dir[role];
+    panel_turns += s != 0;
+    return s;
+}
+#else
 static int32_t panel_enc(uint32_t role)
 {
     return fm1_enc_take(panel.enc[role]) * panel.dir[role];
 }
+#endif
 
 /* user settings that survive a reset */
 #define SETTINGS_MAGIC 0x53455433u              /* "SET3" */

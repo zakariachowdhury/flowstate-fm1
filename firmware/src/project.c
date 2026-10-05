@@ -382,10 +382,8 @@ static int audio_quiet(void)
 static void autosave_tick(void)                /* main loop */
 {
 #if FELUCCA_WORLD
-    if (wrt.active) {                          /* a World session: the SLOOP project in flash stays as it is (H18) */
-        wsession_tick();
-        return;
-    }
+    if (wsession_tick())                       /* the PLAY session (world_store.c); while a World is active the SLOOP */
+        return;                                /* project in flash stays as it is (H18) */
 #endif
 #if FELUCCA_FLASH
     uint32_t h, now = fm1_ms;

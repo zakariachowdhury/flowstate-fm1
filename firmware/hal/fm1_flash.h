@@ -41,12 +41,20 @@ static inline void *fl_far(void *p) { void *volatile q = p; return q; }
 #define FL_GLOB_HI      0x000FF000u
 #define FL_OTA_LO       0x000E0000u                /* M-UPGRADE loader staging, ota.c */
 #define FL_OTA_HI       0x000E5000u
+/* Flowstate's region (design D12, storage.c): user Worlds and the PLAY session. Unused by the stock firmware,
+ * the .fwsc loader (it writes [0x4000, 0x93000)) and OTA staging. The update loader and the SPL look for an
+ * update record at offset 0xF00 of every sector in [0x93000, 0xFC000) (ldr_core.c ldr_records_drop: a match is
+ * erased): objects here never program that far (storage.c ST_LOW_MAX), so those bytes stay erased (0xFF) and
+ * never match */
+#define FL_WORLD_LO     0x000E5000u
+#define FL_WORLD_HI     0x000FC000u
 /* [off, off + n) inside [lo, hi), without wrapping: off + n can overflow, and
  * the 1 MiB part ignores the high address bits, so a wrapped range lands low. */
 #define FL_IN(off, n, lo, hi) ((uint32_t)(off) >= (lo) && (uint32_t)(off) <= (hi) && \
                                (uint32_t)(n) <= (hi) - (uint32_t)(off))
-/* Felucca's own store (projects, user samples; settings) */
-#define FL_STORE_OK(off, n) (FL_IN(off, n, FL_DATA_LO, FL_DATA_HI) || FL_IN(off, n, FL_GLOB_LO, FL_GLOB_HI))
+/* Felucca's own store (projects, user samples; settings), and Flowstate's */
+#define FL_STORE_OK(off, n) (FL_IN(off, n, FL_DATA_LO, FL_DATA_HI) || FL_IN(off, n, FL_GLOB_LO, FL_GLOB_HI) || \
+                             FL_IN(off, n, FL_WORLD_LO, FL_WORLD_HI))
 /* Where the RAM driver may erase / program. The app build allows only its own
  * data regions; the update loader (firmware/loader) defines its own window. */
 #ifndef FL_RANGE_OK

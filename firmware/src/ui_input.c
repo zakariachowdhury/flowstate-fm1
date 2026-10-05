@@ -127,6 +127,12 @@ static void ui_leds(void)
         led_pos_init();
         ready = 1;
     }
+#if FELUCCA_WORLD
+    if (wrt.mode == WM_PLAY) {                     /* H19: PLAY MODE's lights (ui_play.c) */
+        play_leds();
+        return;
+    }
+#endif
     led_put(nl, panel.btn[ui.layer != LY_PLAY ? LAYER_BTN[ui.layer] : cur_btn()], 1);
     led_put(nl, panel.btn[B_PLAY], play_led() || (song.playing && !song.rec && ft_on));
     led_put(nl, panel.btn[B_REC], song.rec != 0u || ft_on || (rec_wait && ((fm1_ms / 125u) & 1u)) ||
@@ -318,6 +324,10 @@ static void edit_param(uint32_t slot, int32_t steps)
     ui.arm = 0;
     if (pg->scope != SC_GLOBAL)
         return;
+#if FELUCCA_WORLD
+    if (wrt.mode != WM_SLOOP && (id == G_NEWPRJ || (id == G_LOAD && !song.playing && !transport_req)))
+        play_leave();                                     /* a project in a World session: SLOOP again first */
+#endif
     switch (id) {                                         /* GO buttons: act, then back to 0 */
     case G_LOAD:
         *vp = 0;
@@ -594,10 +604,17 @@ static void holds_input(uint32_t pressed, uint32_t now_ms)
 
 static void ui_input(void)
 {
-    uint32_t pressed = fm1_input_edges(0), notes = fm1_input_note_edges(), now = fm1_ticks(), id, b, k;
-    uint32_t home = btn_hold(&ui.home_t0, B_HOME, now, 1);
+    uint32_t pressed, notes, now, id, b, k, home;
     int32_t s;
     int layered;
+#if FELUCCA_WORLD
+    if (play_input_hook())                              /* H19: PLAY MODE (ui_play.c) */
+        return;
+#endif
+    pressed = fm1_input_edges(0);
+    notes = fm1_input_note_edges();
+    now = fm1_ticks();
+    home = btn_hold(&ui.home_t0, B_HOME, now, 1);
     if (pressed || notes)
         ui_input_ms = fm1_ms;
     if (home == BT_HOLD) {                              /* HOME held: open the menu, or leave it */

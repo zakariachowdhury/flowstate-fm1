@@ -91,11 +91,13 @@ static void felucca_init(void)
     song.sel = 0;
     song.master_q12 = 2048;
     autosave_resume();                        /* the project as it was left (project.c) */
-#if FELUCCA_WORLD
-    world_boot();                             /* world.c (H22): checks the factory Worlds; SLOOP boots as before */
-#endif
     layers_init();                            /* the panel's layer buttons for the keys (ui_layers.c) */
     go_home();
+#if FELUCCA_WORLD
+    world_boot();                             /* world.c (H22): checks the factory Worlds */
+    wsession_boot();                          /* world_store.c: the session decides: PLAY MODE (a first boot: NEON
+                                               * RAIN), or SLOOP as it booted */
+#endif
     ui.force = 1;
 }
 
@@ -226,6 +228,7 @@ static void fm1_main(void)
         felucca_dbg.stage = 8;
         autosave_tick();                                /* the working project into flash, when quiet */
 #if FELUCCA_WORLD
+        play_service();                                 /* a World switch on its bar, the modes (ui_play.c) */
         macro_service();                                /* the macros' target table, when a control moved */
 #endif
 #if FELUCCA_ARRANGER
